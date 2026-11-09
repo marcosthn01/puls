@@ -834,3 +834,61 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 .plan .headline { font-size: 19px; }
 .factor .val { font-family: var(--display); font-size: 21px; font-weight: 700; }
 .factor .name { font-size: 15px; }
+
+/* ================= v4.2: Bewegung ================= */
+
+/* Inhalte gleiten nacheinander herein */
+.screen.anim { animation: none; }
+.screen.anim > * { animation: rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.screen.anim > :nth-child(2) { animation-delay: 40ms; }
+.screen.anim > :nth-child(3) { animation-delay: 80ms; }
+.screen.anim > :nth-child(4) { animation-delay: 120ms; }
+.screen.anim > :nth-child(5) { animation-delay: 160ms; }
+.screen.anim > :nth-child(6) { animation-delay: 200ms; }
+.screen.anim > :nth-child(7) { animation-delay: 240ms; }
+.screen.anim > :nth-child(n + 8) { animation-delay: 280ms; }
+@keyframes rise { from { opacity: 0; transform: translateY(16px) scale(0.985); } }
+
+/* Diagramme bauen sich auf */
+.chart .bar { transform-box: fill-box; transform-origin: 50% 100%; animation: grow 0.75s cubic-bezier(0.2, 0.9, 0.25, 1) both; animation-delay: calc(min(var(--i), 60) * 10ms); }
+@keyframes grow { from { transform: scaleY(0); opacity: 0.4; } }
+.chart .draw { stroke-dasharray: 1; animation: draw 1.2s cubic-bezier(0.45, 0, 0.2, 1) both 0.1s; }
+@keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.chart .area { animation: areain 1s ease both 0.5s; }
+@keyframes areain { from { opacity: 0; } }
+
+/* Ringe: weiches Füllen, Zahlen zählen hoch (bestehend), Detail-Schimmer atmet */
+.ringval.anim { animation-duration: 1.3s; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+.hero::before { animation: breathe 7s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(0.95); } 50% { opacity: 1; transform: translateX(-50%) scale(1.05); } }
+
+/* Antippen fühlt sich an wie eine echte Taste */
+.dtile, .drow, .prow, .rowlink, .ringbox, .btn, .tabbar button, .datepill button, .avatar {
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.18s, background-color 0.25s;
+}
+.dtile:active, .drow:active, .prow:active, .ringbox:active, .btn:active, .avatar:active { transform: scale(0.97); opacity: 0.85; }
+.tabbar button:active { transform: scale(0.9); }
+
+/* Puls-Alter: schwebende Kugel */
+.agehero { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px; margin: 4px 0 6px; }
+.ah-side { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.ah-side b { font-family: var(--display); font-size: 28px; font-weight: 700; line-height: 1; }
+.ah-side span { font-family: var(--display); font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+.orbwrap { position: relative; display: grid; place-items: center; animation: float 6s ease-in-out infinite; }
+.orb { display: block; }
+.orb-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); }
+.orb-txt b { font-family: var(--display); font-size: 40px; font-weight: 700; line-height: 1; }
+.orb-txt span { font-family: var(--display); font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.75); margin-top: 4px; }
+@keyframes float { 0%, 100% { transform: translateY(-4px); } 50% { transform: translateY(5px); } }
+.ar-legend { display: flex; justify-content: space-between; font-family: var(--display); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 10px 0 2px; }
+.agerow2 { padding: 10px 0; border-top: 1px solid var(--line); }
+.ar-top { display: grid; grid-template-columns: 1fr auto 64px; align-items: baseline; gap: 8px; }
+.ar-top span { font-size: 14px; font-weight: 600; }
+.ar-top b { font-size: 13px; color: var(--muted); font-weight: 500; font-family: inherit; }
+.ar-top em { font-style: normal; text-align: right; font-family: var(--display); font-size: 17px; font-weight: 700; }
+.ar-track { position: relative; height: 6px; border-radius: 3px; margin-top: 8px; background: linear-gradient(90deg, #ff8a3d 0%, #ffc23d 35%, #3fd88f 65%, #1ee08e 100%); opacity: 0.85; }
+.ar-track i { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); box-shadow: 0 0 0 3px var(--card), 0 0 10px rgba(255, 255, 255, 0.4); }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen.anim > *, .chart .bar, .chart .draw, .chart .area, .hero::before, .orbwrap { animation: none !important; }
+}

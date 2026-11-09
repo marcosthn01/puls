@@ -1,11 +1,11 @@
 // Puls – Oberfläche. Lädt data.enc.json, entschlüsselt sie auf dem Gerät und zeigt die Auswertung.
 
 import * as E from './engine.js';
-import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, strainGauge } from './charts.js';
+import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, strainGauge, orb, startOrbs } from './charts.js';
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '4.1.0';
+const VERSION = '4.2.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -564,6 +564,7 @@ function render() {
   app.innerHTML = `${head}<div class="screen${anim ? ' anim' : ''}">${state.tab === 'heute' ? statusBanner() : ''}${views[state.tab](anim)}</div>`;
   if (draft && document.getElementById('askbox')) document.getElementById('askbox').value = draft;
   if (anim) animateCounts();
+  startOrbs(app);
   queueMicrotask(maybeReport);
 }
 
@@ -1121,15 +1122,24 @@ function ageCard(m) {
   const a = E.healthAge(m);
   if (!a) return '';
   const younger = a.diff <= 0;
+  const color = younger ? '#1ee08e' : '#ffb13d';
   const rows = a.items
-    .map((x) => `<div class="agerow"><span>${x.label}<small>${esc(x.value)}</small></span><b class="${x.years <= 0 ? 'up' : 'down'}">${sign(x.years, 1)} J.</b></div>`)
+    .map((x) => {
+      const pos = Math.max(4, Math.min(96, 50 - (x.years / 4) * 46));
+      return `<div class="agerow2"><div class="ar-top"><span>${x.label}</span><b>${esc(x.value)}</b><em class="${x.years <= 0 ? 'up' : 'down'}">${sign(x.years, 1)} J.</em></div><div class="ar-track"><i style="left:${pos}%"></i></div></div>`;
+    })
     .join('');
   const worst = a.items.find((x) => x.years > 0.3);
   return card(
     'Puls-Alter',
-    `<div class="age"><div class="agebig">${de1(a.pulsAge)}</div><div><b class="${younger ? 'up' : 'down'}">${de1(Math.abs(a.diff))} Jahre ${younger ? 'jünger' : 'älter'}</b><p class="muted small">als dein echtes Alter (${a.age})</p></div></div>
-    ${rows}${worst ? `<p class="small" style="margin-top:8px">Größter Hebel: <b>${worst.label}</b> – ${esc(worst.better)}</p>` : ''}`,
-    '',
+    `<div class="agehero">
+      <div class="ah-side"><b class="${younger ? 'up' : 'down'}">${de1(Math.abs(a.diff))}</b><span>Jahre ${younger ? 'jünger' : 'älter'}</span></div>
+      ${orb({ size: 156, color, label: de1(a.pulsAge), sub: 'Puls-Alter' })}
+      <div class="ah-side"><b>${a.age}</b><span>Echtes Alter</span></div>
+    </div>
+    <div class="ar-legend"><span>älter</span><span>jünger</span></div>
+    ${rows}${worst ? `<p class="small" style="margin-top:10px">Größter Hebel: <b>${worst.label}</b> – ${esc(worst.better)}</p>` : ''}`,
+    'agecard',
     'age',
   );
 }

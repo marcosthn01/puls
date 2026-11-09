@@ -69,6 +69,110 @@ function axisLabels(labels, x, y, every) {
 }
 
 /** Säulen. values: [{v, color}], refs: [{v, color, dash, label}] */
+let gradId = 0;
+
+/** Schwebende Kugel (Puls-Alter): Platzhalter, die Animation startet startOrbs(). */
+export function orb({ size = 168, color = '#1ee08e', label = '', sub = '' }) {
+  return `<div class="orbwrap" style="--orb:${color};width:${size}px;height:${size}px"><canvas class="orb" data-orb="${color}" width="${size * 2}" height="${size * 2}" style="width:${size}px;height:${size}px"></canvas><div class="orb-txt"><b>${esc(label)}</b><span>${esc(sub)}</span></div></div>`;
+}
+
+/** Zeichnet alle Kugeln auf der Seite: weiches Licht im Inneren, kreisende Lichtpunkte. */
+export function startOrbs(root = document) {
+  const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  root.querySelectorAll('canvas[data-orb]:not([data-run])').forEach((cv) => {
+    cv.dataset.run = '1';
+    const ctx = cv.getContext('2d');
+    if (!ctx) return;
+    const W2 = cv.width;
+    const c = W2 / 2;
+    const R = W2 * 0.4;
+    const color = cv.dataset.orb;
+    const rgb = hexRgb(color);
+    const dots = Array.from({ length: 90 }, (_, k) => ({ th: Math.acos(1 - (2 * (k + 0.5)) / 90), ph: k * 2.39996, s: 0.6 + ((k * 37) % 10) / 10 }));
+    const t0 = performance.now();
+    const frame = (now) => {
+      if (!cv.isConnected) return;
+      const t = (now - t0) / 1000;
+      ctx.clearRect(0, 0, W2, W2);
+      // Außenleuchten
+      const glow = ctx.createRadialGradient(c, c, R * 0.7, c, c, R * 1.25);
+      glow.addColorStop(0, `rgba(${rgb},0.35)`);
+      glow.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W2, W2);
+      // Kugel
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(c, c, R, 0, Math.PI * 2);
+      ctx.clip();
+      const body = ctx.createRadialGradient(c - R * 0.35, c - R * 0.4, R * 0.1, c, c, R);
+      body.addColorStop(0, `rgba(${rgb},0.55)`);
+      body.addColorStop(0.55, `rgba(${rgb},0.18)`);
+      body.addColorStop(1, 'rgba(4,8,8,0.95)');
+      ctx.fillStyle = body;
+      ctx.fillRect(c - R, c - R, 2 * R, 2 * R);
+      // wandernde Lichtschleier
+      ctx.globalCompositeOperation = 'screen';
+      for (let k = 0; k < 3; k++) {
+        const a = t * (0.25 + k * 0.11) + k * 2.1;
+        const bx = c + Math.cos(a) * R * 0.38;
+        const by = c + Math.sin(a * 1.3) * R * 0.32;
+        const g = ctx.createRadialGradient(bx, by, 0, bx, by, R * (0.55 - k * 0.08));
+        g.addColorStop(0, `rgba(${rgb},${0.32 - k * 0.07})`);
+        g.addColorStop(1, `rgba(${rgb},0)`);
+        ctx.fillStyle = g;
+        ctx.fillRect(c - R, c - R, 2 * R, 2 * R);
+      }
+      // Lichtpunkte auf einer sich drehenden Kugelschale
+      const rot = t * 0.22;
+      for (const d of dots) {
+        const ph = d.ph + rot;
+        const x3 = Math.sin(d.th) * Math.cos(ph);
+        const y3 = Math.cos(d.th);
+        const z3 = Math.sin(d.th) * Math.sin(ph);
+        const depth = (z3 + 1) / 2;
+        const tw = 0.55 + 0.45 * Math.sin(t * 2 * d.s + d.ph);
+        ctx.fillStyle = `rgba(255,255,255,${(0.08 + depth * 0.6) * tw})`;
+        ctx.beginPath();
+        ctx.arc(c + x3 * R * 0.86, c + y3 * R * 0.86, (0.8 + depth * 1.8) * (W2 / 336) * d.s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.globalCompositeOperation = 'source-over';
+      // Rand und Umlaufbahn
+      ctx.strokeStyle = `rgba(${rgb},0.55)`;
+      ctx.lineWidth = W2 / 160;
+      ctx.beginPath();
+      ctx.arc(c, c, R, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(c, c);
+      ctx.rotate(-0.35);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = W2 / 320;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, R * 1.18, R * 0.34, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      const oa = t * 0.9;
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor = color;
+      ctx.shadowBlur = W2 / 30;
+      ctx.beginPath();
+      ctx.arc(Math.cos(oa) * R * 1.18, Math.sin(oa) * R * 0.34, W2 / 110, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      if (!still) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+function hexRgb(hex) {
+  const h = String(hex).replace('#', '');
+  const n = parseInt(h.length === 3 ? h.replace(/./g, (x) => x + x) : h, 16);
+  return Number.isFinite(n) ? `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}` : '30,224,142';
+}
+
 export function bars({ values, labels = [], height = 130, max = null, min = 0, refs = [], every = 1, unit = '', line = null }) {
   const top = unit ? 16 : 10;
   const bottom = height - 18;
@@ -83,7 +187,7 @@ export function bars({ values, labels = [], height = 130, max = null, min = 0, r
     .map((b, i) =>
       b.v == null
         ? ''
-        : `<rect x="${f1(x(i) - bw / 2)}" y="${f1(y(b.v))}" width="${f1(bw)}" height="${f1(Math.max(1.5, bottom - y(b.v)))}" rx="${f1(Math.min(3, bw / 2))}" fill="${b.color}"/>`,
+        : `<rect class="bar" style="--i:${i}" x="${f1(x(i) - bw / 2)}" y="${f1(y(b.v))}" width="${f1(bw)}" height="${f1(Math.max(1.5, bottom - y(b.v)))}" rx="${f1(Math.min(3, bw / 2))}" fill="${b.color}"/>`,
     )
     .join('');
   const refLines = refs
@@ -95,7 +199,7 @@ export function bars({ values, labels = [], height = 130, max = null, min = 0, r
   let path = '';
   if (line) {
     const pts = line.map((v, i) => (v == null ? null : `${f1(x(i))},${f1(y(v))}`));
-    path = `<polyline points="${pts.filter(Boolean).join(' ')}" fill="none" stroke="var(--text)" stroke-opacity=".8" stroke-width="1.6" stroke-linejoin="round"/>`;
+    path = `<polyline class="draw" pathLength="1" points="${pts.filter(Boolean).join(' ')}" fill="none" stroke="var(--text)" stroke-opacity=".8" stroke-width="1.6" stroke-linejoin="round"/>`;
   }
   return `<svg class="chart" viewBox="0 0 ${W} ${height}" preserveAspectRatio="xMidYMid meet" role="img">
     ${refLines}${rects}${path}${axisLabels(labels, x, height - 4, every)}
@@ -138,9 +242,20 @@ export function lines({ series, labels = [], height = 140, band = null, every = 
       bandPath = `<path d="M${upper.map((p) => p.map(f1).join(',')).join('L')}L${lower.map((p) => p.map(f1).join(',')).join('L')}Z" fill="var(--band)"/>`;
     }
   }
+  // Weicher Farbverlauf unter der Hauptlinie (die breiteste Linie ohne Strichelung)
+  const main = series.filter((s) => !s.dash).sort((a, b) => (b.width || 2) - (a.width || 2))[0];
+  let area = '';
+  if (main) {
+    const pts = main.values.map((v, i) => (v == null ? null : [x(i), y(v)])).filter(Boolean);
+    if (pts.length > 2) {
+      const id = `g${++gradId}`;
+      area = `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${main.color}" stop-opacity=".28"/><stop offset="1" stop-color="${main.color}" stop-opacity="0"/></linearGradient></defs>
+        <path class="area" d="M${f1(pts[0][0])},${f1(bottom)}L${pts.map((p) => p.map(f1).join(',')).join('L')}L${f1(pts[pts.length - 1][0])},${f1(bottom)}Z" fill="url(#${id})"/>`;
+    }
+  }
   const paths = series
     .map(
-      (s) => `<path d="${pathOf(s.values)}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" stroke-linecap="round" stroke-linejoin="round" ${s.dash ? 'stroke-dasharray="3 4"' : ''} ${s.opacity ? `stroke-opacity="${s.opacity}"` : ''}/>
+      (s) => `<path ${s.dash ? '' : 'class="draw" pathLength="1"'} d="${pathOf(s.values)}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" stroke-linecap="round" stroke-linejoin="round" ${s.dash ? 'stroke-dasharray="3 4"' : ''} ${s.opacity ? `stroke-opacity="${s.opacity}"` : ''}/>
       ${dots || s.dots ? s.values.map((v, i) => (v == null ? '' : `<circle cx="${f1(x(i))}" cy="${f1(y(v))}" r="2.2" fill="${s.color}"/>`)).join('') : ''}`,
     )
     .join('');
@@ -148,7 +263,7 @@ export function lines({ series, labels = [], height = 140, band = null, every = 
     .map((v) => `<text x="2" y="${f1(y(v) + (v === hi - pad ? 10 : -3))}" class="axis" text-anchor="start">${Math.round(v)}${unit ? ' ' + esc(unit) : ''}</text>`)
     .join('');
   return `<svg class="chart" viewBox="0 0 ${W} ${height}" preserveAspectRatio="xMidYMid meet" role="img">
-    ${bandPath}${paths}${ticks}${axisLabels(labels, x, height - 4, every)}
+    ${bandPath}${area}${paths}${ticks}${axisLabels(labels, x, height - 4, every)}
   </svg>`;
 }
 
