@@ -165,6 +165,8 @@ button.card { display: flex; width: 100%; text-align: left; color: inherit; font
 .act .meta { font-size: 13px; color: var(--muted); }
 .act .st { font-size: 20px; font-weight: 750; color: var(--strain); text-align: right; }
 .act .st small { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
+.act.tap { cursor: pointer; }
+.act.tap:active { opacity: 0.7; }
 .zonebar { display: grid; grid-template-columns: 34px 1fr 72px; gap: 10px; align-items: center; font-size: 13px; padding: 3px 0; }
 .zonebar .bar { height: 10px; border-radius: 5px; background: var(--track); overflow: hidden; }
 .zonebar .bar i { display: block; height: 100%; border-radius: 5px; }
@@ -535,3 +537,10 @@ body.chatmode #app { padding-bottom: calc(var(--safe-bottom) + 160px); }
 .toggle i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.2s; }
 .toggle input:checked + i { background: var(--green); }
 .toggle input:checked + i::after { transform: translateX(18px); }
+
+/* Walking-Pad-Einrichtung */
+.sheet h4 { font-size: 15px; margin: 16px 0 4px; }
+.steps.small { font-size: 14px; }
+.copyrow { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.copyrow b { color: var(--green); font-size: 14px; }
+.copyrow:active { opacity: 0.7; }

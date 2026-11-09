@@ -197,3 +197,25 @@ test('Coach-Kontext enthält alle wichtigen Abschnitte und bleibt kompakt', () =
   assert.ok(E.dayDetails(model, '1999-01-01').error);
   assert.equal(E.daysTable(model, model.days[last - 6].date, model.days[last].date).length, 7);
 });
+
+test('Walking-Pad: Schritte werden ohne Doppelzählung addiert', () => {
+  const d = model.days.find((x) => x.pad);
+  assert.ok(d, 'Demo hat Walking-Pad-Tage');
+  const raw = store.days[d.date];
+  assert.equal(d.stats.steps, raw.stats.steps + raw.pad.add);
+  assert.equal(d.stats.watchSteps, raw.stats.steps);
+  assert.equal(d.stats.padSteps, raw.pad.add);
+  assert.equal(d.pad.total, raw.pad.total);
+  const det = E.dayDetails(model, d.date);
+  assert.match(det.walkingPad.sessions[0], /^14:00–14:45: \d+ Schritte$/);
+  assert.match(E.coachContext({ ...model, days: [...model.days.slice(0, d.i + 1)] }, {}), /vom Walking-Pad/);
+  // Uhr hat alles gezählt: Schritte bleiben wie gemessen
+  const copy = structuredClone(store);
+  copy.days[d.date].pad.add = 0;
+  const m = E.analyze(copy, {});
+  assert.equal(m.days[d.i].stats.steps, raw.stats.steps);
+  assert.ok(m.days[d.i].pad);
+  // nur Walking-Pad, keine Uhr-Daten an dem Tag
+  const only = E.analyze({ days: { '2026-11-09': { pad: { samples: [[0, 60, 500]], total: 500 } } } }, {});
+  assert.equal(only.days[0].stats.steps, 500);
+});

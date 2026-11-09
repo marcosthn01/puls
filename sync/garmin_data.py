@@ -287,6 +287,27 @@ def normalize_stress(raw: dict[str, Any] | None, day: dt.date, tz: ZoneInfo) -> 
     return compact({"stress": _bucket_series(stress, day, tz), "bb": _bucket_series(battery, day, tz)}) or None
 
 
+def normalize_steps(raw: Any, day: dt.date, tz: ZoneInfo) -> list[int] | None:
+    """Schritte je 15 Minuten (96 Werte, Ortszeit) – zum Abgleich mit dem Walking-Pad."""
+    if not isinstance(raw, list):
+        return None
+    slots = [0] * 96
+    seen = False
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        start = parse_gmt(item.get("startGMT"))
+        steps = num(item.get("steps"))
+        if start is None or steps is None:
+            continue
+        local = start.astimezone(tz)
+        if local.date() != day:
+            continue
+        seen = True
+        slots[(local.hour * 60 + local.minute) // 15] += int(steps)
+    return slots if seen else None
+
+
 def normalize_activity(raw: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
     if not isinstance(raw, dict):
         return None
@@ -368,4 +389,5 @@ def strip_details(record: dict[str, Any]) -> dict[str, Any]:
     if isinstance(out.get("hr"), dict) and "series" in out["hr"]:
         out["hr"] = {k: v for k, v in out["hr"].items() if k != "series"}
     out.pop("stressDay", None)
+    out.pop("stepsDay", None)
     return out

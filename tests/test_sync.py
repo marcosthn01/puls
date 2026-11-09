@@ -228,6 +228,11 @@ def fake_module(needs_mfa=False, valid_tokens=("tok-1",)):
             t0 = ms(*dt.date.fromisoformat(d).timetuple()[:3], 10, 0)
             return {"stressValuesArray": [[t0, 25]], "bodyBatteryValuesArray": [[t0, "MEASURED", 80, 3.0]]}
 
+        def get_steps_data(self, d):
+            day = dt.date.fromisoformat(d)
+            # Uhr zählt 14:00–14:30 je 300 Schritte (Hände auf der Tastatur)
+            return [{"startGMT": gmt(day.year, day.month, day.day, 14, m), "steps": 300} for m in (0, 15)]
+
         def get_activities_by_date(self, start, end):
             return [{"activityId": 7, "startTimeLocal": f"{end} 18:00:00", "duration": 3600, "averageHR": 150,
                      "activityType": {"typeKey": "running"}}]
@@ -314,3 +319,39 @@ def test_prune_strips_old_details():
     assert store["days"]["2026-10-01"] == {"sleep": {"dur": 1}, "hr": {"hist": [1]}}
     assert "levels" in store["days"]["2026-11-08"]["sleep"]
     assert "2023-01-01" not in store["days"]
+
+
+WALK = "2026-11-09T14:00:00+01:00;2026-11-09T14:30:00+01:00;3000\n09.11.26, 9:00;09.11.26, 9:10;800"
+
+
+def test_walkpad_steps_are_added_without_double_counting(tmp_path):
+    mod, _ = fake_module()
+    creds = {"GARMIN_EMAIL": "a@b.de", "GARMIN_PASSWORD": "pw"}
+    assert run(tmp_path, mod, inputs={"walk": WALK}, event="workflow_dispatch", **creds) == 0
+    day = read_store(tmp_path)["days"]["2026-11-09"]
+    assert day["stepsDay"][56] == 300 and day["stepsDay"][57] == 300 and sum(day["stepsDay"]) == 600
+    pad = day["pad"]
+    assert pad["total"] == 3800
+    assert pad["add"] == 3800 - 600  # was die Uhr in der Zeit schon gezählt hat, wird abgezogen
+    assert pad["units"] == [[540, 550, 800], [840, 870, 3000]]
+    assert pad["min"] == 40
+
+    # derselbe Kurzbefehl noch einmal: nichts doppelt
+    assert run(tmp_path, mod, inputs={"walk": WALK}, event="workflow_dispatch") == 0
+    assert read_store(tmp_path)["days"]["2026-11-09"]["pad"]["total"] == 3800
+
+
+def test_walkpad_saved_even_when_garmin_needs_code(tmp_path):
+    mod, _ = fake_module(needs_mfa=True)
+    creds = {"GARMIN_EMAIL": "a@b.de", "GARMIN_PASSWORD": "pw"}
+    assert run(tmp_path, mod, inputs={"walk": WALK}, event="workflow_dispatch", **creds) == 3
+    assert read_store(tmp_path)["days"]["2026-11-09"]["pad"]["total"] == 3800
+    # danach normal: Garmin-Daten werden trotzdem vollständig nachgeladen
+    assert run(tmp_path, mod, inputs={"mfa_code": "123456"}, event="workflow_dispatch", **creds) == 0
+    assert len(read_store(tmp_path)["days"]) == 5
+
+
+def test_prune_drops_step_buckets():
+    store = {"days": {"2026-10-01": {"stepsDay": [0] * 96, "pad": {"samples": [[0, 60, 10]]}}}}
+    puls_sync.prune(store, dt.date(2026, 11, 9))
+    assert store["days"]["2026-10-01"] == {"pad": {"samples": [[0, 60, 10]]}}

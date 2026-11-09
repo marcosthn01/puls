@@ -7,6 +7,7 @@ name: Puls Sync
 # - Morgens: alle 20 Min., bis deine Nacht da ist – dann Benachrichtigung und Schluss für den Morgen.
 # - Mit Benachrichtigungen zusätzlich: mittags (Bewegung, Stress), nachmittags (Trainingsziel,
 #   freitags Wochenziel, sonntags Wochenbericht), früher Abend (Schritte) und zur Schlafenszeit.
+# - Wenn der iPhone-Kurzbefehl Walking-Pad-Schritte schickt (input "walk").
 # Geplante Läufe ohne Anlass enden nach wenigen Sekunden, ohne Garmin zu fragen.
 # Zeiten im Zeitplan sind UTC (Deutschland = UTC+1 im Winter, UTC+2 im Sommer).
 on:
@@ -27,6 +28,10 @@ on:
         default: false
       push_subscription:
         description: "Nur für die App: Abo für Benachrichtigungen"
+        required: false
+        default: ""
+      walk:
+        description: "Nur für den iPhone-Kurzbefehl: Walking-Pad-Schritte aus Apple Health"
         required: false
         default: ""
   push:

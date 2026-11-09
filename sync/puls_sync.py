@@ -35,8 +35,10 @@ from garmin_data import (  # noqa: E402
     normalize_profile,
     normalize_sleep,
     normalize_stats,
+    normalize_steps,
     strip_details,
 )
+import walkpad  # noqa: E402
 
 STORE_VERSION = 1
 STORE_FILE = "data.enc.json"
@@ -106,7 +108,8 @@ def load_store(cache_dir: Path, site_url: str | None, passphrase: str) -> tuple[
 
 
 def dates_to_fetch(store: dict, today: dt.date, backfill: int, full: bool) -> list[dt.date]:
-    if full or not store.get("days"):
+    has_garmin = any(set(v) - {"pad"} for v in (store.get("days") or {}).values())
+    if full or not has_garmin:
         return [today - dt.timedelta(days=i) for i in range(backfill - 1, -1, -1)]
     wanted = {today - dt.timedelta(days=i) for i in range(REFRESH_DAYS)}
     missing = [
@@ -159,9 +162,11 @@ def sync_days(fetch: Fetcher, store: dict, days: list[dt.date], today: dt.date, 
             "stats": "get_stats",
             "hr": "get_heart_rates",
         }
-        if detail:  # Stress- und Body-Battery-Verlauf nur für die letzten 14 Tage
+        if detail:  # Verläufe (Stress, Body Battery, Schritte) nur für die letzten 14 Tage
             parts["stressDay"] = lambda raw: normalize_stress(raw, day, tz)
             calls["stressDay"] = "get_stress_data"
+            parts["stepsDay"] = lambda raw: normalize_steps(raw, day, tz)
+            calls["stepsDay"] = "get_steps_data"
         record = dict(store["days"].get(key) or {})
         for part, method in calls.items():
             raw = fetch(method, key)
@@ -244,6 +249,14 @@ def run(
 
     store, salt = load_store(cache_dir, site_url, passphrase)
 
+    # Walking-Pad-Schritte vom iPhone-Kurzbefehl (werden auch gespeichert, wenn Garmin hakt)
+    walk_raw = inputs.get("walk")
+    if walk_raw:
+        samples = walkpad.parse_input(str(walk_raw), tz)
+        changed = walkpad.merge(store, samples)
+        log(f"Walking-Pad: {len(samples)} Einträge erkannt, {changed} Tag(e) aktualisiert.")
+    walkpad.refresh(store, today, DETAIL_DAYS)
+
     try:
         api = connect(
             garmin_module.Garmin,
@@ -293,6 +306,7 @@ def run(
         status = "partial"
 
     save_tokens(api, cache_dir, passphrase)
+    walkpad.refresh(store, today, DETAIL_DAYS)
     prune(store, today)
     store["v"] = STORE_VERSION
     store["tz"] = str(tz)

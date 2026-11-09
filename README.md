@@ -15,6 +15,7 @@ und so auswertet wie Whoop:
   - früher Abend: „Noch 2.600 Schritte bis zu deinem Ziel“ oder „Schrittziel geschafft“
   - abends: Erinnerung zum Schlafengehen
   - freitags: fehlende Intensitätsminuten der Woche · sonntags: Wochenbericht
+  - nach dem Walking-Pad: kurze Bestätigung mit deinen Schritten heute
 - **Morgen-Check** (wie das Whoop-Journal) mit gemessenem Effekt, z. B. „Alkohol: −14 % Recovery“.
 - **Körper-Check** (HRV, Ruhepuls, Atmung, SpO₂), **Stress & Body Battery** im Tagesverlauf,
   **Puls-Alter** (wie Whoops Healthspan), **Trainingslast**, **Wochenbericht** und **Kalender**.
@@ -113,6 +114,19 @@ Auf der Startseite steht eine Karte mit drei Punkten. Jeder Punkt führt dich Sc
 
 Beide Schlüssel bleiben nur auf deinem iPhone gespeichert.
 
+## Walking-Pad (PitPat) – optional
+
+Am Schreibtisch zählt die Uhr kaum Schritte, weil der Arm still bleibt. Puls übernimmt die Schritte
+vom Walking-Pad automatisch: **PitPat → Apple Health → iPhone-Kurzbefehl → Puls**. Die genaue
+Anleitung mit Kopier-Knöpfen steht in der App unter Einstellungen → **Walking-Pad (PitPat)**.
+
+- Doppelt zählt nichts: Puls zieht ab, was die Uhr in derselben Zeit schon gezählt hat
+  (aus Garmins 15-Minuten-Schritten), und addiert nur den Rest.
+- Die Schritte erscheinen unter Heute → Dein Tag, zählen für Schrittziel, Benachrichtigungen,
+  Statistiken und den Coach. Nach dem Laufen kommt auf Wunsch eine kurze Bestätigung.
+- **Auf der Uhr selbst** und in Garmin Connect erscheinen sie nicht: Garmin übernimmt keine
+  Schritte von anderen Apps in die Tagessumme.
+
 ## Gut zu wissen
 
 - **Daten kommen über die Garmin-Connect-App in die Cloud.**
@@ -164,6 +178,7 @@ sync/         Garmin-Abruf (Python 3.12+)
   garmin_data.py  Garmin-Antworten → kompaktes Tagesformat
   crypto_box.py   AES-256-GCM + PBKDF2
   notify.mjs      Benachrichtigungen (Web Push)
+  walkpad.py      Walking-Pad-Schritte vom iPhone-Kurzbefehl (ohne Doppelzählung)
 tests/        pytest (Sync), node --test (Auswertung, Coach, Benachrichtigungen), live_check.mjs
 .github/workflows/sync.yml   Zeitplan, Sync, Benachrichtigungen, Veröffentlichung
 .github/workflows/check.yml  Selbsttest der echten App

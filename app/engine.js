@@ -185,6 +185,21 @@ export function zoneOf(rec) {
 }
 const P = (z) => 100 * normCdf(z + 0.15);
 
+/** Walking-Pad (z. B. PitPat über Apple Health): was die Uhr nicht gezählt hat. */
+function padInfo(raw) {
+  const p = raw.pad;
+  if (!p || !isNum(p.total) || p.total <= 0) return null;
+  return { total: p.total, added: isNum(p.add) ? p.add : p.total, minutes: p.min ?? null, units: p.units || [] };
+}
+
+/** Schritte = Uhr + Walking-Pad (ohne Doppelzählung). Die Uhr-Schritte bleiben als watchSteps erhalten. */
+function withPad(raw) {
+  const st = raw.stats || {};
+  const p = padInfo(raw);
+  if (!p || p.added <= 0) return st;
+  return { ...st, steps: (isNum(st.steps) ? st.steps : 0) + p.added, watchSteps: st.steps ?? null, padSteps: p.added };
+}
+
 function computeDay(i, date, raw, days, S) {
   const win = (n, f) => {
     const out = [];
@@ -202,7 +217,8 @@ function computeDay(i, date, raw, days, S) {
     wd: weekday(date),
     raw,
     sleep: sl,
-    stats: raw.stats || {},
+    stats: withPad(raw),
+    pad: padInfo(raw),
     hrv: firstNum(raw.hrv?.avg, sl?.hrv),
     rhr: firstNum(sl?.rhr, raw.stats?.rhr, raw.hr?.rhr),
     resp: firstNum(sl?.resp),
@@ -972,7 +988,7 @@ export function coachContext(model, journal = {}, i = model.days.length - 1) {
   const coach = buildCoach(model, i);
   if (coach.plan) L(`App-Empfehlung Training: ${coach.plan} ${coach.remaining?.text || ''}`);
   const st = d.stats || {};
-  L(`Tageswerte: Schritte ${fmtN(st.steps)}, Kalorien ${fmtN(st.kcal)}, Stress Ø ${fmtN(st.stress)}, Body Battery max ${fmtN(st.bbHigh)}${isNum(st.bbNow) ? ` jetzt ${st.bbNow}` : ''}.`);
+  L(`Tageswerte: Schritte ${fmtN(st.steps)}${st.padSteps ? ` (davon ${fmtN(st.padSteps)} vom Walking-Pad, das die Uhr nicht gezählt hat)` : ''}, Kalorien ${fmtN(st.kcal)}, Stress Ø ${fmtN(st.stress)}, Body Battery max ${fmtN(st.bbHigh)}${isNum(st.bbNow) ? ` jetzt ${st.bbNow}` : ''}.`);
   if (i === model.days.length - 1) {
     const plan = bedtimePlan(model, i);
     L(`Schlaf heute Nacht: Bedarf ${fmtDur(plan.need.total)} Std. (Basis ${fmtDur(plan.need.base)}, +${Math.round(plan.need.strain)} Belastung, +${Math.round(plan.need.debt)} Schlafschuld, +${plan.need.recovery} Erholung). Aufstehen ${fmtClock(plan.wake)} → ins Bett ${plan.options.map((o) => `${o.label} ${fmtClock(o.bed)}`).join(', ')}.`);
@@ -1050,6 +1066,7 @@ export function dayDetails(model, date, journal = {}) {
     activities: d.acts.map((a) => ({ name: a.name, type: a.type, start: a.start, minutes: Math.round(a.dur / 60), km: a.dist ? Math.round(a.dist / 100) / 10 : null, avgHr: a.avgHr, maxHr: a.maxHr, strain: Math.round(a.strain * 10) / 10, trainingEffect: a.te ?? null })),
     hrZoneMinutes: d.zoneMin,
     stats: d.stats,
+    walkingPad: d.pad ? { steps: d.pad.total, addedToWatch: d.pad.added, minutes: d.pad.minutes, sessions: d.pad.units.map(([s, e, n]) => `${fmtClock(s)}–${fmtClock(e)}: ${n} Schritte`) } : null,
     stress: stressSummary(d).minutes,
     insights: buildInsights(model, i, journal).map((x) => `${x.title}: ${x.text}`),
     morningCheckPreviousDay: journal?.[addDays(date, -1)] || null,
@@ -1071,6 +1088,7 @@ export function daysTable(model, from, to, journal = {}) {
       sleepPerf: d.perf != null ? Math.round(d.perf) : null,
       strain: d.strain != null ? Math.round(d.strain * 10) / 10 : null,
       steps: d.stats?.steps ?? null,
+      ...(d.pad ? { walkingPad: { steps: d.pad.total, addedToWatch: d.pad.added, minutes: d.pad.minutes } } : {}),
       stress: d.stats?.stress ?? null,
       activities: d.acts.map((a) => `${a.name || a.type} ${Math.round(a.dur / 60)}min`),
       behaviorsThisDay: j?._done ? JOURNAL_QUESTIONS.filter((q) => j[q.id]).map((q) => q.label) : null,

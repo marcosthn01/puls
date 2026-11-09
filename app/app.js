@@ -5,7 +5,7 @@ import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, str
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '3.2.0';
+const VERSION = '3.3.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -30,6 +30,7 @@ const PUSH_KINDS = [
   ['steps', 'Schritte', 'früher Abend: fehlende Schritte oder „geschafft“'],
   ['bedtime', 'Schlafenszeit', 'kurz bevor du ins Bett solltest'],
   ['weekly', 'Woche', 'freitags Wochenziel, sonntags Wochenbericht'],
+  ['pad', 'Walking-Pad', 'kurze Bestätigung nach dem Laufen'],
 ];
 
 const ls = {
@@ -175,6 +176,7 @@ const INFO = {
   stress: ['Stress & Body Battery', 'Garmin schätzt deinen Stress über den Tag aus der HRV (0–100). Body Battery ist deine Energiereserve: Schlaf lädt sie, Belastung und Stress leeren sie.'],
   age: ['Puls-Alter', 'Eine Schätzung, wie alt dein Körper wirkt – aus Fitness (VO₂max), Ruhepuls, Schlaf und Bewegung der letzten 30 Tage. Jeder Faktor zählt nur ein paar Jahre. Kein medizinischer Wert.'],
   load: ['Trainingslast', 'Deine Belastung der letzten 7 Tage im Vergleich zu den letzten 28. Zwischen 0,8 und 1,3 machst du Fortschritte, darüber steigt das Verletzungsrisiko.'],
+  pad: ['Walking-Pad', 'Schritte von deinem Walking-Pad (PitPat → Apple Health → Kurzbefehl). Wenn du am Schreibtisch läufst, zählt die Uhr kaum mit, weil der Arm still bleibt. Puls zieht ab, was die Uhr in der Zeit schon gezählt hat, und addiert nur den Rest. So zählt nichts doppelt.'],
   journal: ['Morgen-Check', 'Tippe jeden Morgen an, was gestern war (z. B. Alkohol, spätes Essen). Nach ein paar Wochen zeigt Puls, was deine Recovery wirklich hebt oder senkt.'],
 };
 
@@ -637,6 +639,7 @@ function setupState() {
     sync: !!ghConfig().token,
     coach: !!Coach.coachConfig().apiKey,
     push: pushReady(),
+    pad: !!state.model?.days?.slice(-14).some((d) => d.pad),
   };
 }
 
@@ -731,14 +734,26 @@ const trendWord = (t, upGood = true) => {
 function dayCard(d) {
   const st = d.stats || {};
   const facts = [];
-  if (st.steps != null) facts.push(tile('Schritte', int(st.steps), '', st.stepGoal ? `Ziel ${int(st.stepGoal)}` : ''));
+  if (st.steps != null) facts.push(tile('Schritte', int(st.steps), '', st.padSteps ? `inkl. ${int(st.padSteps)} Pad` : st.stepGoal ? `Ziel ${int(st.stepGoal)}` : ''));
   if (st.kcal != null) facts.push(tile('Kalorien', int(st.kcal), 'kcal', st.activeKcal != null ? `aktiv ${int(st.activeKcal)}` : ''));
   if (st.bbHigh != null) facts.push(tile('Body Battery', st.bbNow ?? st.bbHigh, '', st.bbNow != null ? `max. heute ${st.bbHigh}` : `tiefster ${st.bbLow ?? '–'}`));
   if (st.stress != null) facts.push(tile('Stress Ø', st.stress, '', st.stress >= 50 ? 'hoch' : st.stress >= 26 ? 'mittel' : 'niedrig'));
   if (d.zoneMin) facts.push(tile('Aktive Min.', d.zoneMin.reduce((a, b) => a + b, 0), '', 'ab Zone 1'));
   if (st.floors != null) facts.push(tile('Etagen', st.floors));
-  if (!facts.length && !d.acts.length) return '';
-  return card('Dein Tag', `${d.acts.length ? d.acts.map(actRow).join('') + '<div class="sep"></div>' : ''}${facts.length ? `<div class="grid">${facts.join('')}</div>` : ''}`);
+  const rows = [...d.acts.map(actRow), d.pad ? padRow(d.pad) : ''].join('');
+  if (!facts.length && !rows) return '';
+  return card('Dein Tag', `${rows ? rows + '<div class="sep"></div>' : ''}${facts.length ? `<div class="grid">${facts.join('')}</div>` : ''}`);
+}
+
+/** Walking-Pad-Einheiten (von PitPat über Apple Health). */
+function padRow(p) {
+  const times = p.units.map(([s, e]) => `${E.fmtClock(s)}–${E.fmtClock(e)}`).join(', ');
+  const meta = [times, p.minutes ? `${p.minutes} Min.` : ''].filter(Boolean).join(' · ');
+  const counted = p.total - p.added;
+  const sub = counted > 50 ? `Uhr hatte ${int(counted)} davon schon gezählt` : 'Uhr hatte davon nichts gezählt';
+  return `<div class="act tap" data-info="pad" role="button"><div class="ic" style="color:var(--strain)">${I.walk}</div>
+    <div class="body"><div class="name">Walking-Pad</div><div class="meta">${esc(meta)}</div><div class="meta">${sub}</div></div>
+    <div class="st">${int(p.total)}<small>Schritte</small></div></div>`;
 }
 
 function statsCard(m, i) {
@@ -1329,9 +1344,35 @@ function renderSheet() {
       <a class="btn ghost" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Schlüssel erstellen ↗</a>
       <input id="coach-key" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(cfg.apiKey)}" style="margin-top:10px">
       <button class="btn" data-act="save-coach">Speichern & testen</button>`;
+  } else if (sh.type === 'setup-pad') {
+    const gh = ghConfig();
+    const url = `https://api.github.com/repos/${gh.repo || 'DEIN-NAME/puls'}/actions/workflows/${WORKFLOW}/dispatches`;
+    const copy = (label, value) => `<button class="copyrow" data-act="copy" data-copy="${esc(value)}"><span>${label}</span><b>Kopieren</b></button>`;
+    body = `<h3>Walking-Pad (PitPat)</h3>
+      <p class="muted">Am Schreibtisch zählt die Uhr kaum mit, weil dein Arm still bleibt. So kommen die Schritte von PitPat automatisch in Puls. Einmal einrichten, ca. 5 Minuten.</p>
+      ${gh.token ? '' : '<p class="small" style="margin:8px 0"><b>Zuerst:</b> „Automatisch aktualisieren“ einrichten – der Kurzbefehl nutzt denselben Schlüssel.</p>'}
+      <h4>1 · PitPat</h4>
+      <p class="small">In PitPat die Verbindung zu <b>Apple Health</b> einschalten und <b>Schritte</b> erlauben. Danach einmal kurz laufen, damit PitPat in Health auftaucht.</p>
+      <h4>2 · Kurzbefehl bauen</h4>
+      <ol class="steps small">
+        <li>App <b>Kurzbefehle</b> → <b>+</b> → Name: <b>Puls Walking-Pad</b>.</li>
+        <li>Aktion <b>Health-Samples suchen</b>: Typ <b>Schritte</b>. <b>Filter hinzufügen</b>: <b>Quelle ist PitPat</b>, dann <b>Startdatum ist in den letzten 2 Tagen</b>.</li>
+        <li>Aktion <b>Wiederholen mit jedem Objekt</b> (in Health-Samples).</li>
+        <li>Darin eine Aktion <b>Text</b> mit drei Variablen, getrennt durch Semikolon:<br><b>Startdatum ; Enddatum ; Wert</b><br><span class="muted">Jeweils <b>Wiederholungsobjekt</b> einsetzen, antippen und die Eigenschaft wählen.</span></li>
+        <li>Nach <b>Ende</b> der Wiederholung: Aktion <b>Inhalte von URL abrufen</b>. URL einfügen ↓, dann <b>Mehr anzeigen</b>:
+          Methode <b>POST</b> · Header <b>Authorization</b> = Schlüssel ↓ · Hauptteil <b>JSON</b> mit
+          <b>ref</b> (Text) = <b>main</b> und <b>inputs</b> (Wörterbuch) → darin <b>walk</b> (Text) = Variable <b>Wiederholungsergebnisse</b>.</li>
+        <li>Kurzbefehl einmal antippen und Zugriff auf Health und GitHub <b>erlauben</b>.</li>
+      </ol>
+      ${copy('URL', url)}
+      ${copy('Schlüssel (Authorization)', gh.token ? `Bearer ${gh.token}` : '')}
+      <h4>3 · Automatisch starten</h4>
+      <p class="small">Kurzbefehle → <b>Automation</b> → <b>+</b> → <b>App</b> → <b>PitPat</b> → <b>Wird geschlossen</b> → <b>Sofort ausführen</b> → Kurzbefehl <b>Puls Walking-Pad</b>.</p>
+      <p class="muted small" style="margin-top:10px">Etwa 1 Minute nach dem Laufen steht die Einheit unter Heute → Dein Tag. Was die Uhr in der Zeit schon gezählt hat, zieht Puls ab – nichts zählt doppelt.</p>
+      <button class="btn" data-act="sheet-close" style="margin-top:12px">Fertig</button>`;
   } else if (sh.type === 'setup-push') {
     body = `<h3>Benachrichtigungen</h3>
-      <p class="muted">Puls meldet sich höchstens viermal am Tag:</p>
+      <p class="muted">Puls meldet sich nur, wenn es etwas zu sagen gibt:</p>
       <ul class="steps"><li><b>Morgens</b>, sobald deine Nacht da ist: Recovery, Ziel und Schlaf.</li><li><b>Mittags</b>: wenn du kaum gelaufen bist oder dein Stress hoch ist.</li><li><b>Nachmittags</b>: wie viel Training bis zu deinem Ziel fehlt.</li><li><b>Früher Abend</b>: wie viele Schritte noch fehlen.</li><li><b>Abends</b>: wann du ins Bett solltest.</li></ul>
       <p class="muted small">Nur wenn es etwas zu sagen gibt – jede Art einzeln abschaltbar in den Einstellungen.</p>
       ${isStandalone() ? '' : '<p class="small" style="margin:8px 0"><b>Wichtig:</b> Das klappt nur, wenn du Puls vom Home-Bildschirm aus öffnest.</p>'}
@@ -1351,6 +1392,16 @@ sheetEl.addEventListener('click', async (e) => {
   if (!t) return;
   const act = t.dataset.act;
   if (act === 'sheet-close') closeSheet();
+  if (act === 'copy') {
+    const text = t.dataset.copy;
+    if (!text) return toast('Zuerst „Automatisch aktualisieren“ einrichten.');
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Kopiert.');
+    } catch {
+      prompt('Kopieren:', text);
+    }
+  }
   if (act === 'sheet-save' || act === 'sheet-none') {
     const answers = { _done: true };
     if (act === 'sheet-save') sheetEl.querySelectorAll('.qchip.on').forEach((c) => (answers[c.dataset.q] = true));
@@ -1462,6 +1513,7 @@ function viewSettings() {
     <button class="setrow" data-act="setup-sync"><span>Automatisch aktualisieren</span>${status(setup.sync)}</button>
     <button class="setrow" data-act="setup-coach"><span>KI-Coach</span>${status(setup.coach)}</button>
     <button class="setrow" data-act="setup-push"><span>Benachrichtigungen</span>${status(setup.push)}</button>
+    <button class="setrow" data-act="setup-pad"><span>Walking-Pad (PitPat)</span>${status(setup.pad)}</button>
     ${setup.coach ? `<label class="field" style="margin-top:12px"><span>Coach-Modell</span><select data-coach-model>${Object.entries(Coach.MODELS).map(([id, mm]) => opt(id, `${mm.label} – ${mm.note}`, cfg.model)).join('')}</select></label>` : ''}
   </section>
 
@@ -1572,6 +1624,7 @@ app.addEventListener('click', async (e) => {
     case 'setup-sync':
     case 'setup-coach':
     case 'setup-push':
+    case 'setup-pad':
       openSheet({ type: t.dataset.act });
       break;
     case 'setup-hide':

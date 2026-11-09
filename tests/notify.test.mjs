@@ -139,3 +139,22 @@ test('Lokale Zeit in Berlin', () => {
   const t = localNow(new Date('2026-11-09T21:15:00Z'), 'Europe/Berlin');
   assert.deepEqual(t, { date: '2026-11-09', minutes: 22 * 60 + 15, weekday: 1 });
 });
+
+test('Walking-Pad: Bestätigung nach dem Laufen, nur bei neuen Schritten', async () => {
+  const { padMessage } = await import('../sync/notify.mjs');
+  const m = todayWith({ steps: 5000, stepGoal: 8000 });
+  const copy = structuredClone(store);
+  const key = Object.keys(copy.days).sort().pop();
+  Object.assign(copy.days[key].stats, { steps: 5000, stepGoal: 8000 });
+  copy.days[key].pad = { samples: [[50400, 53100, 3600]], total: 3600, add: 3000, units: [[840, 885, 3600]], min: 45 };
+  const withPad = E.analyze(copy, {});
+  const msg = padMessage(withPad, at(15), 0);
+  assert.equal(msg.title, '👟 Walking-Pad: 3.600 Schritte heute');
+  assert.equal(msg.body, 'Heute insgesamt 8.000 von 8.000 – Ziel geschafft 🎉');
+  assert.equal(padMessage(withPad, at(15), 3600), null); // schon gemeldet
+  assert.equal(padMessage(withPad, at(15), 0, { pad: false }), null);
+  assert.equal(padMessage(m, at(15), 0)?.kind ?? null, m.days[m.days.length - 1].pad ? 'pad' : null);
+  copy.days[key].pad.add = 0;
+  const counted = padMessage(E.analyze(copy, {}), at(15), 0);
+  assert.match(counted.body, /^Deine Uhr hatte sie schon mitgezählt\. Heute insgesamt 5\.000 von 8\.000 – noch 3\.000\.$/);
+});

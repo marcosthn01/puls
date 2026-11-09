@@ -10,6 +10,7 @@
 //   weekly    – freitags Intensitätsminuten der Woche, sonntags Wochenbericht
 //   steps     – früher Abend: noch fehlende Schritte oder „geschafft“
 //   bedtime   – kurz vor der empfohlenen Schlafenszeit
+//   pad       – nach dem Walking-Pad (vom iPhone-Kurzbefehl): Schritte heute
 // Schlüssel, Abo und Versandstatus liegen verschlüsselt im Zwischenspeicher (push.enc.json).
 // Im Log stehen keine Gesundheitswerte.
 
@@ -73,6 +74,7 @@ export const KINDS = {
   steps: 'Schritte am Abend',
   bedtime: 'Schlafenszeit',
   weekly: 'Wochenbericht & Wochenziel',
+  pad: 'Walking-Pad',
 };
 const wants = (state, kind) => state?.prefs?.[kind] !== false;
 
@@ -215,6 +217,19 @@ export function dueMessages(model, now, sent = {}, prefs = {}) {
   return out;
 }
 
+/** Bestätigung, wenn der iPhone-Kurzbefehl neue Walking-Pad-Schritte geschickt hat. */
+export function padMessage(model, now, seen = 0, prefs = {}) {
+  if (!model || model.empty || prefs?.pad === false) return null;
+  const d = model.days[model.days.length - 1];
+  if (d.date !== now.date || !d.pad || d.pad.total <= (seen || 0)) return null;
+  const st = d.stats || {};
+  const goal = E.isNum(st.stepGoal) && st.stepGoal > 0 ? st.stepGoal : 8000;
+  let body = '';
+  if (E.isNum(st.steps)) body = st.steps >= goal ? `Heute insgesamt ${n0(st.steps)} von ${n0(goal)} – Ziel geschafft 🎉` : `Heute insgesamt ${n0(st.steps)} von ${n0(goal)} – noch ${n0(goal - st.steps)}.`;
+  if (d.pad.added <= 0) body = `Deine Uhr hatte sie schon mitgezählt. ${body}`.trim();
+  return { kind: 'pad', title: `👟 Walking-Pad: ${n0(d.pad.total)} Schritte heute`, body, tag: 'pad', total: d.pad.total };
+}
+
 // ------------------------------------------------------------------ Ablauf in GitHub Actions
 
 function validSubscription(sub) {
@@ -299,7 +314,9 @@ async function send(cacheDir, pass) {
     }
   };
 
-  const raw = String(eventInputs().push_subscription || '').trim();
+  const inputs = eventInputs();
+  const walkRun = !!String(inputs.walk || '').trim();
+  const raw = String(inputs.push_subscription || '').trim();
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
@@ -326,7 +343,16 @@ async function send(cacheDir, pass) {
     const last = model && !model.empty ? model.days[model.days.length - 1] : null;
     if (last && last.date === now.date && last.recovery != null) state.morningDone = now.date;
     const scheduled = process.env.GITHUB_EVENT_NAME === 'schedule';
-    for (const msg of dueMessages(model, now, state.sent, state.prefs)) {
+    if (walkRun) {
+      // Vom Kurzbefehl nach dem Laufen: nur die Walking-Pad-Bestätigung, sonst nichts abhaken.
+      const msg = padMessage(model, now, state.padSeen?.[now.date], state.prefs);
+      if (msg) {
+        const ok = state.subscription ? await push(msg) : true;
+        if (ok) state.padSeen = { [now.date]: msg.total };
+        if (ok && state.subscription && inWin(now.minutes, WINDOWS.steps)) state.sent.steps = now.date;
+      }
+    }
+    for (const msg of walkRun ? [] : dueMessages(model, now, state.sent, state.prefs)) {
       // Wer die App gerade geöffnet hat, sieht alles schon – dann nur als erledigt merken.
       const ok = state.subscription && scheduled ? await push(msg) : true;
       if (ok) state.sent[msg.kind] = now.date;

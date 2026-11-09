@@ -220,6 +220,12 @@ export function makeDemoStore({ now = new Date(), days = 90, seed = 11 } = {}) {
       ...(acts.length ? { acts } : {}),
       ...(stressDay ? { stressDay } : {}),
     };
+    // Walking-Pad im Homeoffice: dienstags und donnerstags 14:00–14:45 (Uhr zählt am Schreibtisch kaum mit)
+    if ((wd === 2 || wd === 4) && sick < 0.3 && (!isToday || nowMin > 15 * 60)) {
+      const total = 3600 + (n % 5) * 220;
+      const counted = 400 + (n % 3) * 150;
+      store.days[date].pad = { samples: [[50400, 53100, total]], total, add: total - counted, units: [[840, 885, total]], min: 45 };
+    }
   }
   return store;
 }
