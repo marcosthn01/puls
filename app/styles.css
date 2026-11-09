@@ -770,3 +770,67 @@ input, select, .field textarea { background: var(--card2); border-color: transpa
 .impact .ival { grid-column: 2; grid-row: 1; align-self: start; }
 .impact .ib { grid-column: 1 / -1; grid-row: 2; }
 .impact .cmp { grid-column: 1 / -1; }
+
+/* ================= v4.1: Feinschliff – eine Typo-Hierarchie, keine Emojis ================= */
+
+/* Mikro-Labels überall gleich */
+.tile .k, .hero-stats small, .nm-l, .nmi em, .ntag, .stat .sl, .vital .vl, .trow .tl, .zonebar span:first-child {
+  font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-style: normal;
+}
+.tile { border-radius: 16px; padding: 12px; }
+.tile .k { font-size: 12px; color: var(--muted); }
+.tile .v { font-size: 24px; font-weight: 700; line-height: 1.15; margin-top: 2px; }
+.tile .v small { font-family: var(--display); font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+.tile .s { font-size: 12px; margin-top: 2px; }
+.trow .tl { font-size: 13px; color: #c9ced3; }
+.vital .vl { font-size: 13px; color: #c9ced3; }
+
+/* Ernährung */
+.nhero { display: flex; align-items: flex-end; justify-content: space-between; margin: 2px 0 12px; }
+.nk b { font-family: var(--display); font-size: 44px; font-weight: 700; line-height: 1; }
+.nk small { font-family: var(--display); font-size: 16px; font-weight: 600; color: var(--muted); margin-left: 4px; letter-spacing: 0.06em; text-transform: uppercase; }
+.ntag { font-size: 12px; color: var(--text); background: var(--card2); padding: 6px 10px; border-radius: 999px; }
+.nbar { display: flex; gap: 3px; height: 8px; margin-bottom: 12px; }
+.nbar i { display: block; height: 100%; border-radius: 4px; }
+.nmacros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.nm { display: flex; flex-direction: column; gap: 2px; }
+.nm-l { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+.nm-l i { width: 8px; height: 8px; border-radius: 2px; display: block; }
+.nm b { font-family: var(--display); font-size: 24px; font-weight: 700; }
+.nm b small, .nmi b small { font-family: var(--display); font-size: 13px; color: var(--muted); margin-left: 2px; font-weight: 600; }
+.nmini { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px 0 4px; }
+.nmi { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nmi > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.nmi b { font-family: var(--display); font-size: 19px; font-weight: 700; line-height: 1.1; }
+.nmi em { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ntips { list-style: none; margin: 8px 0 0; padding: 0; }
+.ntips li { position: relative; padding-left: 14px; font-size: 13.5px; line-height: 1.45; color: #c9ced3; }
+.ntips li + li { margin-top: 4px; }
+.ntips li::before { content: ''; position: absolute; left: 2px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+
+/* Aufklapper: ruhig, mit Pfeil statt Plus */
+summary::after, .rp-sec summary::after {
+  content: ''; float: none; margin-left: auto; width: 7px; height: 7px; flex: none;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg) translate(-2px, -2px); transition: transform 0.2s;
+}
+details[open] > summary::after, .rp-sec[open] summary::after { content: ''; transform: rotate(-135deg) translate(-2px, -2px); }
+summary { display: flex; align-items: center; gap: 10px; }
+details.disclose { border-top: 1px solid var(--line); margin-top: 12px; padding: 12px 0 0; }
+details.disclose summary { font-family: var(--display); font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+details.disclose p { font-size: 13.5px; line-height: 1.5; }
+.rp-sec summary .dt-ic { width: 30px; height: 30px; }
+
+/* Ursachen-Chips: neutral, nur der Pfeil farbig */
+.dchip, .dchip.good, .dchip.bad { background: var(--card2); color: var(--text); font-size: 12.5px; padding: 5px 10px; }
+.dchip i { font-style: normal; margin-right: 5px; font-size: 10px; color: var(--muted); }
+.dchip.good i { color: var(--green); }
+.dchip.bad i { color: var(--red); }
+
+/* Hinweise, Statuszeilen */
+.okline { display: flex; align-items: center; gap: 10px; font-size: 14px; margin-bottom: 10px; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.card p.small, .card .muted.small { line-height: 1.5; }
+.headline { letter-spacing: -0.01em; }
+.plan .headline { font-size: 19px; }
+.factor .val { font-family: var(--display); font-size: 21px; font-weight: 700; }
+.factor .name { font-size: 15px; }

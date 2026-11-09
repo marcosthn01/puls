@@ -5,7 +5,7 @@ import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, str
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '4.0.0';
+const VERSION = '4.1.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -113,6 +113,11 @@ const I = {
   walk: svg('<circle cx="12" cy="4.5" r="1.8"/><path d="M10 21l1.5-6L9 12l1-4 4 1 2 4"/><path d="M14 21l-1-5"/>'),
   swim: svg('<path d="M2 18c2 0 2-1.5 4-1.5S8 18 10 18s2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/><circle cx="16" cy="7" r="1.8"/><path d="M5 13l5-5 4 3 3-1"/>'),
   act: svg('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
+  drop: svg('<path d="M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11z"/>'),
+  coffee: svg('<path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z"/><path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 3.5c0 1 1 1.2 1 2.2M11.5 3.5c0 1 1 1.2 1 2.2"/>'),
+  fork: svg('<path d="M7 3v8a2 2 0 0 0 2 2v8"/><path d="M11 3v8a2 2 0 0 1-2 2"/><path d="M17 21V3c-2 1-3 3.5-3 6.5V13h3"/>'),
+  steth: svg('<path d="M6 3v5a4 4 0 0 0 8 0V3"/><path d="M10 12v3a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="11" r="2"/>'),
+  bowl: svg('<path d="M3 11h18a9 9 0 0 1-18 0z"/><path d="M8 7c1-2 3-2 4-3M13 7c.5-1.3 2-1.8 3-2.5"/>'),
   user: svg('<circle cx="12" cy="8.5" r="3.6"/><path d="M4.5 20c1.4-3.6 4.2-5.4 7.5-5.4s6.1 1.8 7.5 5.4"/>'),
   watch: svg('<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l.6-3h4.8l.6 3M9 18l.6 3h4.8l.6-3"/>'),
   heart: svg('<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>'),
@@ -802,7 +807,7 @@ function reportCard(m, i) {
   const r = today.report;
   const sec = (key, icon, title) => {
     const x = r[key];
-    return `<details class="rp-sec"><summary><span class="rp-ic">${icon}</span>${title}</summary><p>${rich(x.text)}</p>${x.punkte.length ? `<ul>${x.punkte.map((p) => `<li>${rich(p)}</li>`).join('')}</ul>` : ''}</details>`;
+    return `<details class="rp-sec"><summary><span class="dt-ic">${icon}</span>${title}</summary><p>${rich(x.text)}</p>${x.punkte.length ? `<ul>${x.punkte.map((p) => `<li>${rich(p)}</li>`).join('')}</ul>` : ''}</details>`;
   };
   const level = { arzt: ['var(--red)', 'Ärztlich abklären'], beobachten: ['var(--yellow)', 'Beobachten'], info: ['var(--muted)', 'Info'] };
   const notes = r.hinweise.length
@@ -816,7 +821,7 @@ function reportCard(m, i) {
     <p class="rp-sum">${rich(r.einschaetzung)}</p>
     <div class="rp-focus"><span>Heute im Fokus</span>${rich(r.fokus)}</div>
     ${notes}
-    ${sec('koerper', '🩺', 'Körper & Gesundheit')}${sec('training', '🏃', 'Training')}${sec('ernaehrung', '🥗', 'Ernährung')}${sec('schlaf', '🌙', 'Schlaf')}
+    ${sec('koerper', I.steth, 'Körper & Gesundheit')}${sec('training', I.strain, 'Training')}${sec('ernaehrung', I.bowl, 'Ernährung')}${sec('schlaf', I.sleep, 'Schlaf')}
     <p class="muted small rp-foot">${fresh ? '' : 'Neue Daten seit dem Bericht · '}Erstellt ${when} · ${esc(label)} · keine ärztliche Diagnose</p>
   </section>`;
 }
@@ -853,16 +858,30 @@ async function makeReport() {
 function nutritionCard(m, i) {
   const n = E.nutritionPlan(m, i, profile(), journal(), { partial: m.days[i].date === todayIso() });
   if (n.missing) {
-    return `<section class="card slim">${rowLink(I.plus, 'var(--green)', 'Ernährung für heute', 'Gewicht & Ziel eintragen – dann rechnet Puls deinen Bedarf aus', 'data-act="profile"')}</section>`;
+    return `<section class="card slim">${rowLink(I.bowl, 'var(--green)', 'Ernährung für heute', 'Gewicht & Ziel eintragen – dann rechnet Puls deinen Bedarf', 'data-act="profile"')}</section>`;
   }
-  const t = (k, v, u, sub = '') => tile(k, v, u, sub);
-  const tips = n.tips.slice(0, 3).map((x) => `<li>${esc(x.text)}</li>`).join('');
+  const split = [
+    ['Eiweiß', n.protein, 4, 'var(--green)'],
+    ['Kohlenhydrate', n.carbs, 4, 'var(--strain)'],
+    ['Fett', n.fat, 9, 'var(--yellow)'],
+  ];
+  const total = split.reduce((sum, [, g, k]) => sum + g * k, 0);
+  const bar = split.map(([, g, k, c]) => `<i style="width:${((100 * g * k) / total).toFixed(1)}%;background:${c}"></i>`).join('');
+  const macros = split.map(([label, g, , c]) => `<div class="nm"><span class="nm-l"><i style="background:${c}"></i>${label}</span><b>${g}<small>g</small></b></div>`).join('');
+  const mini = [
+    [I.drop, String(n.water).replace('.', ','), 'L', 'Wasser'],
+    n.caffeineCut ? [I.coffee, n.caffeineCut, '', 'Kaffee bis'] : null,
+    n.lastMeal ? [I.fork, n.lastMeal, '', 'Essen bis'] : null,
+  ].filter(Boolean);
+  const tips = n.tips.filter((t) => t.key !== 'koffein').slice(0, 2);
   return card(
     'Ernährung heute',
-    `<div class="grid four">${t('Energie', int(n.kcal), 'kcal', n.goal === 'gesund' ? n.strainWord : n.goalLabel)}${t('Eiweiß', n.protein, 'g', `${String(Math.round((n.protein / n.refKg) * 10) / 10).replace('.', ',')} g/kg`)}${t('Kohlenh.', n.carbs, 'g')}${t('Fett', n.fat, 'g')}</div>
-    <p class="small" style="margin:10px 0 4px">💧 <b>${String(n.water).replace('.', ',')} L</b> trinken${n.caffeineCut ? ` · ☕ letzter Kaffee bis <b>${n.caffeineCut}</b>` : ''}</p>
-    <ul class="tips">${tips}</ul>
-    <details><summary>Warum diese Werte?</summary><p>${esc(n.basis)}</p><button class="linkbtn" data-act="profile">Ziel & Gewicht ändern</button></details>`,
+    `<div class="nhero"><div class="nk"><b>${int(n.kcal)}</b><small>kcal</small></div><span class="ntag">${esc(n.goal === 'gesund' ? n.strainWord : n.goalLabel)}</span></div>
+    <div class="nbar">${bar}</div>
+    <div class="nmacros">${macros}</div>
+    <div class="nmini">${mini.map(([ic, v, u, l]) => `<div class="nmi"><span class="dt-ic">${ic}</span><span><b>${v}${u ? `<small>${u}</small>` : ''}</b><em>${l}</em></span></div>`).join('')}</div>
+    ${tips.length ? `<ul class="ntips">${tips.map((t) => `<li>${esc(t.text)}</li>`).join('')}</ul>` : ''}
+    <details class="disclose"><summary>Warum diese Werte</summary><p>${esc(n.basis)}</p><button class="linkbtn" data-act="profile">Ziel & Gewicht ändern</button></details>`,
     'nutrition',
     'nutrition',
   );
@@ -878,14 +897,14 @@ function healthTrendsCard(m, i) {
   const rows = h.items.map((x) => `<div class="trow"><span class="tl">${x.label}</span><span class="tv">${fmt(x)}</span><span class="td muted">${delta(x)}</span><span class="ts" style="color:${col[x.status]}">${word[x.status]}</span></div>`).join('');
   const lv = { arzt: ['var(--red)', 'Arzt'], beobachten: ['var(--yellow)', 'Beobachten'], info: ['var(--muted)', 'Info'] };
   const flags = h.flags.map((f) => `<div class="rp-note"><i style="background:${lv[f.level][0]}"></i><div><b>${f.title}</b> ${esc(f.text)}</div></div>`).join('');
-  const head = h.verdict === 'gut' ? `<p class="small" style="margin-bottom:8px">✅ Keine auffälligen Trends – deine Werte sind stabil.</p>` : `<div class="rp-notes" style="margin-bottom:10px">${flags}</div>`;
+  const head = h.verdict === 'gut' ? `<div class="okline"><span class="dt-ic" style="color:var(--green)">${I.check}</span>Keine auffälligen Trends – deine Werte sind stabil.</div>` : `<div class="rp-notes" style="margin-bottom:10px">${flags}</div>`;
   return card('Gesundheits-Check', `${head}<div class="trows">${rows}</div><p class="note">Letzte 7 Tage im Vergleich zu deinen eigenen Werten der ${h.ready ? '2 Monate' : 'Tage'} davor. Keine Diagnose.</p>`, '', 'health');
 }
 
 function driversLine(d) {
   const dr = E.recoveryDrivers(d);
   if (!dr.length) return '';
-  const chip = (x) => `<span class="dchip ${x.neutral ? '' : x.good ? 'good' : 'bad'}">${x.neutral ? '•' : x.good ? '▲' : '▼'} ${esc(x.label)}</span>`;
+  const chip = (x) => `<span class="dchip ${x.neutral ? '' : x.good ? 'good' : 'bad'}"><i>${x.neutral ? '•' : x.good ? '▲' : '▼'}</i>${esc(x.label)}</span>`;
   return `<div class="drivers">${dr.map(chip).join('')}</div>`;
 }
 

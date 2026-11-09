@@ -1021,16 +1021,16 @@ export function nutritionPlan(model, i, profile = {}, journal = {}, { partial = 
   const tips = [];
   const add = (key, text) => tips.push({ key, text });
   if (trainMin >= 30) {
-    add('training', `Rund ums Training: 1–3 Std. vorher Kohlenhydrate (z. B. Haferflocken, Banane, Reis), danach innerhalb von 2 Std. ${perMeal}–${perMeal + 10} g Eiweiß plus Kohlenhydrate.`);
+    add('training', `Vor dem Training Kohlenhydrate, danach ${perMeal}–${perMeal + 10} g Eiweiß.`);
   }
-  add('protein', `Eiweiß auf 4 Mahlzeiten verteilen: je ca. ${perMeal} g (z. B. Skyr, Eier, Hülsenfrüchte, Fisch, Tofu).`);
-  if (red) add('red', 'Erholungstag: viel Gemüse, Obst und Wasser, kein Alkohol – das unterstützt Immunsystem und HRV.');
+  add('protein', `Eiweiß auf 4 Mahlzeiten à ${perMeal} g verteilen.`);
+  if (red) add('red', 'Erholungstag: viel Gemüse, Obst und Wasser, kein Alkohol.');
   const y = journal?.[addDays(d.date, -1)];
-  if (y?._done && y.alkohol) add('alkohol', 'Gestern Alkohol: heute 0,5 L extra trinken (gern mit etwas Salz/Elektrolyten) und früh essen.');
-  if (caffeineCut) add('koffein', `Letzter Kaffee bis ${caffeineCut} (8 Std. vor dem Schlafen), letzte größere Mahlzeit bis ${lastMeal}.`);
-  if (profile.diet === 'vegan') add('vegan', 'Vegan: Eiweiß aus Soja, Linsen, Seitan kombinieren; an Vitamin B12 denken.');
-  if (profile.diet === 'vegetarisch') add('vegetarisch', 'Vegetarisch: Eier, Milchprodukte und Hülsenfrüchte decken das Eiweiß gut.');
-  if (goal === 'abnehmen') add('abnehmen', `Defizit von ca. ${Math.round(burn - kcal)} kcal – genug Eiweiß schützt die Muskeln, an harten Tagen das Defizit nicht vergrößern.`);
+  if (y?._done && y.alkohol) add('alkohol', 'Nach Alkohol gestern: 0,5 L extra trinken, mit etwas Salz.');
+  if (caffeineCut) add('koffein', `Letzter Kaffee bis ${caffeineCut}, letzte große Mahlzeit bis ${lastMeal}.`);
+  if (profile.diet === 'vegan') add('vegan', 'Vegan: Soja, Linsen und Seitan kombinieren, an B12 denken.');
+  if (profile.diet === 'vegetarisch') add('vegetarisch', 'Eier, Milchprodukte und Hülsenfrüchte decken das Eiweiß.');
+  if (goal === 'abnehmen') add('abnehmen', `Defizit ca. ${Math.round(burn - kcal)} kcal – viel Eiweiß schützt die Muskeln.`);
 
   const strainWord = strainBasis >= 17 ? 'sehr harter Tag' : strainBasis >= 14 ? 'harter Tag' : strainBasis >= 10 ? 'Trainingstag' : 'ruhiger Tag';
   const basis = `Verbrauch ca. ${Math.round(burn / 10) * 10} kcal (dein Garmin-Schnitt ${Math.round(base / 10) * 10} kcal, angepasst an Strain ${strainBasis.toFixed(1).replace('.', ',')} = ${strainWord}). Ziel „${GOALS[goal]}“: ${adjust ? `${adjust > 0 ? '+' : '−'}${Math.round(Math.abs(adjust) * 100)} %` : 'ausgeglichen'}. Eiweiß ${(protein / refKg).toFixed(1).replace('.', ',')} g/kg, Kohlenhydrate ${(carbs / refKg).toFixed(1).replace('.', ',')} g/kg${refKg !== kg ? ` (bezogen auf ${refKg} kg Normalgewicht)` : ''}.`;
