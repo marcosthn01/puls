@@ -1,11 +1,11 @@
 // Puls – Oberfläche. Lädt data.enc.json, entschlüsselt sie auf dem Gerät und zeigt die Auswertung.
 
 import * as E from './engine.js';
-import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, strainGauge, orb, startOrbs } from './charts.js';
+import { arcGauge, bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, strainGauge, orb, startOrbs } from './charts.js';
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '4.2.0';
+const VERSION = '4.3.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -22,6 +22,8 @@ const LS = {
   setupHidden: 'puls.setupHidden',
   pushPrefs: 'puls.pushPrefs',
   profile: 'puls.profile',
+  customQ: 'puls.customQ',
+  goals: 'puls.goals',
   reportAuto: 'puls.reportAuto',
 };
 
@@ -211,6 +213,7 @@ function toast(text) {
 // ------------------------------------------------------------------ Journal (Morgen-Check)
 
 const profile = () => ls.get(LS.profile, {});
+const questions = () => E.journalQuestions(ls.get(LS.customQ, []));
 const journal = () => (state.demo ? state.demoJournal : ls.get(LS.journal, {}));
 function saveJournal(date, answers) {
   if (state.demo) state.demoJournal = { ...state.demoJournal, [date]: answers };
@@ -714,7 +717,7 @@ function viewToday(anim) {
   if (i > 0) {
     const date = E.addDays(d.date, -1);
     const a = journal()[date];
-    const yes = a?._done ? E.JOURNAL_QUESTIONS.filter((q) => a[q.id]).map((q) => q.label) : null;
+    const yes = a?._done ? questions().filter((q) => a[q.id]).map((q) => q.label) : null;
     journalRow = yes
       ? `<section class="card slim">${rowLink(I.check, 'var(--green)', 'Morgen-Check erledigt', esc(yes.join(' · ') || 'Nichts Besonderes'), `data-act="journal" data-date="${date}"`)}</section>`
       : `<section class="card slim journal-cta">${rowLink(I.journal, 'var(--sleep)', 'Morgen-Check', `Was war ${dayTitle(date) === 'Gestern' ? 'gestern' : 'am Vortag'}? · 10 Sek.`, `data-act="journal" data-date="${date}"`)}</section>`;
@@ -746,8 +749,31 @@ function viewToday(anim) {
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
   return `${setupCard()}${dials(d, anim)}${dashTiles(m, i)}
-    <h2 class="bighead">Mein Tag</h2>${planCard}${report}${journalRow}${healthRow}${acts}${nutri}${insightsCard}
+    <h2 class="bighead">Mein Tag</h2>${planCard}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
     <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
+}
+
+// ------------------------------------------------------------------ Tagesrückblick, Wochenziele
+
+function reviewCard(m, i) {
+  const d = m.days[i];
+  const isToday = d.date === todayIso();
+  if (isToday && new Date().getHours() < 18) return '';
+  const r = E.dayReview(m, i);
+  if (!r) return '';
+  return card(isToday ? 'Dein Tag im Rückblick' : 'Rückblick', `<h3 class="rv-title">${esc(r.title)}</h3><ul class="ntips">${r.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>${r.tonight ? `<p class="small" style="margin-top:10px">${esc(r.tonight)}</p>` : ''}`);
+}
+
+function goalsCard(m, i) {
+  if (m.days[i].date !== todayIso() && i !== m.days.length - 1) return '';
+  const g = E.weekGoals(m, i, ls.get(LS.goals, {}));
+  const mini = (done, goal, color, label, sub) => `<div class="goal">${ring({ value: Math.min(done, goal), max: goal, color, size: 64, stroke: 6, label: `${done}/${goal}`, labelSize: 17 })}<b>${label}</b><span>${sub}</span></div>`;
+  return `<section class="card"><h2>Wochenziele<button class="infobtn editbtn" data-act="goals" aria-label="Ziele ändern">${I.gear}</button></h2>
+    <div class="goals">
+      ${mini(g.train.done, g.train.goal, 'var(--strain)', 'Training', 'Tage diese Woche')}
+      ${mini(g.sleep.done, g.sleep.goal, 'var(--sleep)', 'Schlaf', `Nächte ≥ ${String(g.goals.sleepH).replace('.', ',')} Std.`)}
+      ${mini(g.steps.done, g.steps.goal, 'var(--green)', 'Schritte', `Tage ≥ ${int(g.goals.steps)}`)}
+    </div></section>`;
 }
 
 // ------------------------------------------------------------------ Dashboard-Kacheln (Heute)
@@ -926,7 +952,7 @@ function dayCard(d) {
   for (const a of d.acts) {
     const start = E.parseClock(a.start);
     const end = start != null && a.dur ? clock(start + a.dur / 60) : '';
-    rows.push(pillRow('strain', actIcon(a.type), de1(a.strain), esc(a.name || a.type || 'Aktivität'), end, a.start || '', 'data-tab="belastung"'));
+    rows.push(pillRow('strain', actIcon(a.type), de1(a.strain), esc(a.name || a.type || 'Aktivität'), end, a.start || '', `data-act="act" data-idx="${d.acts.indexOf(a)}"`));
   }
   if (d.pad) rows.push(pillRow('pad', I.walk, int(d.pad.total), 'Walking-Pad', d.pad.units.length ? clock(d.pad.units[d.pad.units.length - 1][1]) : '', d.pad.units.length ? clock(d.pad.units[0][0]) : '', 'data-info="pad"'));
   if (!rows.length) return '';
@@ -1089,8 +1115,14 @@ const fmtVital = (x) => (x.delta ? `${sign(x.value, 1)} ${x.unit}` : `${x.digits
 const fmtRange = (x) => (x.delta ? `${sign(x.lo, 1)} bis ${sign(x.hi, 1)}` : x.digits ? `${de1(x.lo)}–${de1(x.hi)}` : `${Math.round(x.lo)}–${Math.round(x.hi)}`);
 
 function stressCard(d) {
+  const m = state.model;
   const s = E.stressSummary(d);
   if (!s.series?.length && !s.minutes && s.avg == null) return '';
+  const now = E.stressNow(d);
+  const isToday = d.date === todayIso();
+  const gauge = now
+    ? arcGauge({ value: now.value, max: 100, label: String(now.value), sub: isToday && now.at != null ? `${now.level} · ${clockDE(now.at)}` : `${now.level} · zuletzt` })
+    : '';
   let chart = '';
   if (s.series?.length || s.battery?.length) {
     const slots = (series) => {
@@ -1106,16 +1138,21 @@ function stressCard(d) {
   if (s.minutes) {
     const total = s.minutes.rest + s.minutes.low + s.minutes.med + s.minutes.high || 1;
     const seg = (v, c) => `<i style="width:${(100 * v) / total}%;background:${c}"></i>`;
-    split = `<div class="stressbar">${seg(s.minutes.rest, 'var(--strain)')}${seg(s.minutes.low, '#f6c54488')}${seg(s.minutes.med, 'var(--awake)')}${seg(s.minutes.high, 'var(--red)')}</div>
+    split = `<div class="stressbar">${seg(s.minutes.rest, 'var(--strain)')}${seg(s.minutes.low, '#1ee08e')}${seg(s.minutes.med, 'var(--yellow)')}${seg(s.minutes.high, 'var(--red)')}</div>
       <div class="legend"><span>Ruhe ${E.fmtDur(s.minutes.rest)}</span><span>Niedrig ${E.fmtDur(s.minutes.low)}</span><span>Mittel ${E.fmtDur(s.minutes.med)}</span><span>Hoch ${E.fmtDur(s.minutes.high)}</span></div>`;
   }
+  const week = E.stressDays(m, d.i, 7);
+  const weekChart = week.some((x) => x.v != null)
+    ? `<h3 class="subhead">Letzte 7 Tage</h3>${bars({ values: week.map((x) => ({ v: x.v, color: x.v == null ? 'var(--track)' : x.v >= 50 ? 'var(--red)' : x.v >= 26 ? 'var(--yellow)' : 'var(--green)' })), labels: week.map((x) => wdShort(x.date)), max: 70, height: 96 })}`
+    : '';
   const peak = E.stressPeak(s.series);
-  const bbVals = (s.battery || []).map((p) => p[1]);
-  const notes = [
-    peak && peak.avg >= 35 ? `Am meisten Stress zwischen ${clockDE(peak.from)} und ${clockDE(peak.to)} Uhr (Ø ${Math.round(peak.avg)}).` : '',
-    bbVals.length ? `Body Battery: höchstens ${Math.max(...bbVals)}, zuletzt ${bbVals[bbVals.length - 1]}. Unter 25 = Reserven leer, früh schlafen.` : '',
-  ].filter(Boolean).join(' ');
-  return card('Stress & Energie', `${s.avg != null ? `<div class="row between" style="margin-bottom:6px"><span class="muted small">Stress Ø</span><b>${s.avg} ${s.avg >= 50 ? '· hoch' : s.avg >= 26 ? '· mittel' : '· niedrig'}</b></div>` : ''}${chart}${split}${note(notes)}`, '', 'stress');
+  const notes = [peak && peak.avg >= 35 ? `Am meisten Stress zwischen ${clockDE(peak.from)} und ${clockDE(peak.to)} Uhr (Ø ${Math.round(peak.avg)}).` : ''].filter(Boolean).join(' ');
+  return card(
+    'Stress-Monitor',
+    `${gauge}${chart}${split}${weekChart}${note(notes)}<button class="btn ghost breathe-btn" data-act="breathe">${I.lungs}Atemübung starten</button>`,
+    'stressmon',
+    'stress',
+  );
 }
 
 function ageCard(m) {
@@ -1130,13 +1167,15 @@ function ageCard(m) {
     })
     .join('');
   const worst = a.items.find((x) => x.years > 0.3);
+  const pace = E.paceOfAging(m);
   return card(
     'Puls-Alter',
     `<div class="agehero">
       <div class="ah-side"><b class="${younger ? 'up' : 'down'}">${de1(Math.abs(a.diff))}</b><span>Jahre ${younger ? 'jünger' : 'älter'}</span></div>
       ${orb({ size: 156, color, label: de1(a.pulsAge), sub: 'Puls-Alter' })}
-      <div class="ah-side"><b>${a.age}</b><span>Echtes Alter</span></div>
+      ${pace ? `<div class="ah-side"><b class="${pace.pace <= 1 ? 'up' : 'down'}">${pace.pace > 0 ? '' : '−'}${de1(Math.abs(pace.pace))}x</b><span>Tempo des Alterns</span></div>` : `<div class="ah-side"><b>${a.age}</b><span>Echtes Alter</span></div>`}
     </div>
+    ${pace ? `<p class="ah-note">Echtes Alter ${a.age} · Tempo: ${pace.pace <= 1 ? 'du alterst langsamer als die Zeit' : 'du alterst gerade schneller als die Zeit'} (letzte ${pace.days} Tage)</p>` : ''}
     <div class="ar-legend"><span>älter</span><span>jünger</span></div>
     ${rows}${worst ? `<p class="small" style="margin-top:10px">Größter Hebel: <b>${worst.label}</b> – ${esc(worst.better)}</p>` : ''}`,
     'agecard',
@@ -1145,7 +1184,7 @@ function ageCard(m) {
 }
 
 function influencesCard(m, limit = Infinity) {
-  const imp = E.journalImpacts(m, journal());
+  const imp = E.journalImpacts(m, journal(), questions());
   const solid = imp.filter((x) => !x.pending);
   const pending = imp.filter((x) => x.pending);
   const inf = m.influences;
@@ -1338,6 +1377,42 @@ function viewStrain(anim) {
 
 // ------------------------------------------------------------------ Trends (Unterseite)
 
+function monthCard(m) {
+  const r = E.monthlyAssessment(m);
+  if (!r) return '';
+  const c = r.current;
+  const p = r.previous;
+  const cell = (label, cur, prev, fmt, better) => {
+    if (cur == null) return '';
+    const delta = prev == null ? null : cur - prev;
+    const cls = delta == null || Math.abs(delta) < 1e-6 ? 'muted' : (delta > 0) === better ? 'up' : 'down';
+    return `<div class="mcell"><span>${label}</span><b>${fmt(cur)}</b><em class="${cls}">${delta == null ? '–' : `${delta > 0 ? '▲' : '▼'} ${fmt(Math.abs(delta))}`}</em></div>`;
+  };
+  return `<section class="card"><h2>Monatsbericht</h2>
+    <div class="verdict ${r.verdict.tone}">${esc(r.verdict.label)}</div>
+    <p style="margin:10px 0 12px">${esc(r.verdict.text)}</p>
+    <div class="mgrid">
+      ${cell('Recovery', c.recovery, p.recovery, (v) => `${Math.round(v)} %`, true)}
+      ${cell('HRV', c.hrv, p.hrv, (v) => `${Math.round(v)} ms`, true)}
+      ${cell('Ruhepuls', c.rhr, p.rhr, (v) => `${de1(v)}`, false)}
+      ${cell('Schlaf', c.sleep, p.sleep, (v) => E.fmtDur(v), true)}
+      ${cell('Strain', c.strain, p.strain, (v) => de1(v), true)}
+      ${cell('Schritte', c.steps, p.steps, (v) => int(v), true)}
+    </div>
+    <p class="note">Letzte 30 Tage gegen die 30 davor · ${c.green} grüne Tage · ${c.training} Trainingstage${r.best ? ` · beste Recovery ${r.best.recovery} % am ${shortDate(r.best.date)}` : ''}</p>
+  </section>`;
+}
+
+function habitsCard(m) {
+  const t = E.journalTrends(journal(), questions(), m.days[m.days.length - 1].date, 30);
+  if (!t.answered) return '';
+  const max = Math.max(1, ...t.items.map((x) => x.count));
+  const rows = t.items
+    .map((x) => `<div class="hrow"><span>${esc(x.label)}</span><div class="hbar"><i style="width:${(100 * x.count) / max}%"></i></div><b>${x.count}×</b></div>`)
+    .join('');
+  return card('Gewohnheiten · 30 Tage', `${rows || '<p class="muted small">Noch nichts angekreuzt.</p>'}<p class="note">An ${t.answered} von 30 Tagen beantwortet.</p>`);
+}
+
 function viewTrends() {
   const m = state.model;
   const last = m.days.length - 1;
@@ -1362,8 +1437,10 @@ function viewTrends() {
       ${row('Schlaf', c.sleep, p.sleep, (v) => `${E.fmtDur(v)}`, true, (v) => `${v >= 0 ? '+' : ''}${E.fmtDur(v)}`)}
       ${row('Strain', c.strain, p.strain, (v) => de1(v), true)}
     </table></section>`);
+  parts.push(monthCard(m));
   parts.push(calendarCard(m));
   parts.push(influencesCard(m));
+  parts.push(habitsCard(m));
   parts.push(journalListCard(m));
   const span = m.days.slice(Math.max(0, last - 89));
   parts.push(card('HRV · 3 Monate', `${lines({ series: [{ values: span.map((x) => x.hrv7), color: 'var(--sleep)', width: 2.5 }], band: { lo: span.map((x) => x.hrvNormal?.[0] ?? null), hi: span.map((x) => x.hrvNormal?.[1] ?? null) }, labels: span.map((x) => shortDate(x.date)), every: 21, unit: 'ms' })}`));
@@ -1410,7 +1487,7 @@ function journalListCard(m) {
   for (let k = last - 1; k >= Math.max(0, last - 7); k--) {
     const date = m.days[k].date;
     const a = j[date];
-    const yes = a?._done ? E.JOURNAL_QUESTIONS.filter((q) => a[q.id]).map((q) => q.label) : null;
+    const yes = a?._done ? questions().filter((q) => a[q.id]).map((q) => q.label) : null;
     rows.push(`<button class="jrow" data-act="journal" data-date="${date}"><span class="jd">${wdShort(date)} ${shortDate(date)}</span><span class="jt ${yes ? '' : 'muted'}">${yes ? esc(yes.join(' · ') || 'Nichts Besonderes') : 'offen – antippen'}</span><span class="go">›</span></button>`);
   }
   return card('Morgen-Check · letzte Tage', rows.join(''));
@@ -1530,7 +1607,7 @@ function renderSheet() {
     const answers = journal()[sh.date] || {};
     const dayName = dayTitle(sh.date) === 'Gestern' ? 'gestern' : `am ${longDate(sh.date)}`;
     body = `<h3>Morgen-Check</h3><p class="muted">Was war ${dayName}? Antippen, was passt.</p>
-      <div class="qchips">${E.JOURNAL_QUESTIONS.map((q) => `<button class="qchip ${answers[q.id] ? 'on' : ''}" data-q="${q.id}">${esc(q.label)}</button>`).join('')}</div>
+      <div class="qchips">${questions().map((q) => `<button class="qchip ${answers[q.id] ? 'on' : ''}" data-q="${q.id}">${esc(q.label)}</button>`).join('')}<button class="qchip add" data-act="q-add">${I.plus}Eigene Frage</button></div>
       <button class="btn" data-act="sheet-save">Speichern</button>
       <button class="btn ghost" data-act="sheet-none">Nichts davon</button>`;
   } else if (sh.type === 'info') {
@@ -1563,6 +1640,34 @@ function renderSheet() {
       <a class="btn ghost" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Schlüssel erstellen ↗</a>
       <input id="coach-key" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(cfg.apiKey)}" style="margin-top:10px">
       <button class="btn" data-act="save-coach">Speichern & testen</button>`;
+  } else if (sh.type === 'breathe') {
+    body = `<h3>Atemübung</h3><p class="muted small">4 Sekunden ein, 6 Sekunden aus – senkt Puls und Stress spürbar. 2 Minuten.</p>
+      <div class="breath"><div class="breath-orb"></div><div class="breath-txt" id="breath-txt">Bereit</div></div>
+      <div class="breath-time" id="breath-time">2:00</div>
+      <button class="btn" data-act="breath-start" id="breath-btn">Start</button>
+      <button class="btn ghost" data-act="sheet-close">Schließen</button>`;
+  } else if (sh.type === 'goals') {
+    const g = { train: 4, sleepH: 7.5, steps: 8000, ...ls.get(LS.goals, {}) };
+    body = `<h3>Wochenziele</h3>
+      <div class="fields2" style="margin-top:12px">
+        <label class="field"><span>Trainingstage pro Woche</span><input data-goal="train" type="number" inputmode="numeric" min="1" max="7" value="${g.train}"></label>
+        <label class="field"><span>Schlaf pro Nacht (Std.)</span><input data-goal="sleepH" type="number" inputmode="decimal" step="0.25" min="5" max="10" value="${g.sleepH}"></label>
+      </div>
+      <label class="field"><span>Schritte pro Tag</span><input data-goal="steps" type="number" inputmode="numeric" step="500" min="1000" max="40000" value="${g.steps}"></label>
+      <button class="btn" data-act="goals-save">Speichern</button>`;
+  } else if (sh.type === 'act') {
+    const d = state.model.days[state.sel];
+    const a = d.acts[sh.idx];
+    if (a) {
+      const t = (k, v, u = '') => (v == null || v === '' ? '' : tile(k, v, u));
+      const ml = E.muscleLoad(a);
+      const zt = Array.isArray(a.zones) ? a.zones.reduce((x, y) => x + (y || 0), 0) : 0;
+      const zc = ['var(--z1)', 'var(--z2)', 'var(--z3)', 'var(--z4)', 'var(--z5)'];
+      const zones = zt ? `<h3 class="subhead">Zeit in Pulszonen</h3>${a.zones.map((z, k) => `<div class="zonebar"><span>Z${k + 1}</span><div class="bar"><i style="width:${(100 * (z || 0)) / zt}%;background:${zc[k]}"></i></div><span class="m">${Math.round((z || 0) / 60)} Min.</span></div>`).join('')}` : '';
+      body = `<h3>${esc(a.name || a.type || 'Aktivität')}</h3><p class="muted small">${esc(longDate(d.date))} · ${esc(a.start || '')}</p>
+        <div class="grid" style="margin-top:12px">${t('Strain', de1(a.strain))}${t('Dauer', E.fmtDur(a.dur / 60), 'Std.')}${t('Ø Puls', a.avgHr, 'bpm')}${t('Max. Puls', a.maxHr, 'bpm')}${t('Kalorien', a.kcal != null ? int(a.kcal) : null, 'kcal')}${t('Distanz', a.dist ? (a.dist / 1000).toFixed(1).replace('.', ',') : null, 'km')}${t('Aerob', a.te != null ? de1(a.te) : null)}${t('Anaerob', a.ate != null ? de1(a.ate) : null)}${ml ? t('Muskeln', `${de1(ml.score)}`, ml.level) : ''}</div>
+        ${zones}<button class="btn ghost" data-act="sheet-close" style="margin-top:14px">Schließen</button>`;
+    }
   } else if (sh.type === 'profile') {
     const p = profile();
     const gp = state.store?.profile || {};
@@ -1616,6 +1721,37 @@ function renderSheet() {
   sheetEl.innerHTML = `<div class="backdrop" data-act="sheet-close"></div><div class="sheet" role="dialog"><div class="grab"></div>${body}</div>`;
 }
 
+let breathTimer = null;
+function startBreath() {
+  const box = sheetEl.querySelector('.breath');
+  const txt = document.getElementById('breath-txt');
+  const time = document.getElementById('breath-time');
+  const btn = document.getElementById('breath-btn');
+  if (!box || !txt) return;
+  clearInterval(breathTimer);
+  box.classList.add('run');
+  btn.hidden = true;
+  const t0 = Date.now();
+  const total = 120;
+  const tick = () => {
+    if (!document.body.contains(box)) return clearInterval(breathTimer);
+    const sec = (Date.now() - t0) / 1000;
+    const phase = sec % 10;
+    txt.textContent = phase < 4 ? 'Einatmen' : 'Ausatmen';
+    const left = Math.max(0, Math.ceil(total - sec));
+    time.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    if (sec >= total) {
+      clearInterval(breathTimer);
+      box.classList.remove('run');
+      txt.textContent = 'Geschafft';
+      btn.hidden = false;
+      btn.textContent = 'Nochmal';
+    }
+  };
+  tick();
+  breathTimer = setInterval(tick, 250);
+}
+
 function saveProfileFields() {
   const p = { ...profile() };
   sheetEl.querySelectorAll('[data-profile]').forEach((el) => {
@@ -1648,6 +1784,27 @@ sheetEl.addEventListener('click', async (e) => {
   if (!t) return;
   const act = t.dataset.act;
   if (act === 'sheet-close') closeSheet();
+  if (act === 'breath-start') startBreath();
+  if (act === 'goals-save') {
+    const g = {};
+    sheetEl.querySelectorAll('[data-goal]').forEach((el) => {
+      const v = Number(el.value.replace(',', '.'));
+      if (Number.isFinite(v) && v > 0) g[el.dataset.goal] = v;
+    });
+    ls.set(LS.goals, { ...ls.get(LS.goals, {}), ...g });
+    closeSheet();
+    render();
+    toast('Wochenziele gespeichert.');
+  }
+  if (act === 'q-add') {
+    const label = (prompt('Eigene Frage für den Morgen-Check, z. B. „Ashwagandha“ oder „Lesen vor dem Schlafen“:') || '').trim().slice(0, 40);
+    if (label) {
+      const list = ls.get(LS.customQ, []);
+      list.push({ id: `c_${Date.now().toString(36)}`, label });
+      ls.set(LS.customQ, list);
+      renderSheet();
+    }
+  }
   if (act === 'profile-done') {
     saveProfileFields();
     closeSheet();
@@ -1899,6 +2056,13 @@ app.addEventListener('click', async (e) => {
       break;
     case 'report-refresh':
       makeReport();
+      break;
+    case 'breathe':
+    case 'goals':
+      openSheet({ type: t.dataset.act });
+      break;
+    case 'act':
+      openSheet({ type: 'act', idx: Number(t.dataset.idx) });
       break;
     case 'day-prev':
       selectDay(state.sel - 1);

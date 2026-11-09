@@ -71,6 +71,32 @@ function axisLabels(labels, x, y, every) {
 /** Säulen. values: [{v, color}], refs: [{v, color, dash, label}] */
 let gradId = 0;
 
+/** Halbkreis-Anzeige (z. B. Stress jetzt): farbiger Verlauf, Zeiger als Punkt. */
+export function arcGauge({ value, max = 100, label = '', sub = '', size = 220 }) {
+  const w = size;
+  const h = size * 0.62;
+  const r = size * 0.4;
+  const cx = w / 2;
+  const cy = size * 0.5;
+  const start = Math.PI;
+  const frac = value == null ? 0 : Math.max(0, Math.min(1, value / max));
+  const pt = (f) => [cx + r * Math.cos(start + f * Math.PI), cy + r * Math.sin(start + f * Math.PI)];
+  const [x0, y0] = pt(0);
+  const [x1, y1] = pt(1);
+  const [px, py] = pt(frac);
+  const id = `ag${++gradId}`;
+  return `<svg class="arcgauge" viewBox="0 0 ${w} ${f1(h)}" width="100%" style="max-width:${w}px" role="img" aria-label="${esc(label)} ${esc(sub)}">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3d9cff"/><stop offset=".45" stop-color="#1ee08e"/><stop offset=".72" stop-color="#ffc23d"/><stop offset="1" stop-color="#ff5148"/></linearGradient></defs>
+    <path d="M${f1(x0)},${f1(y0)} A${f1(r)},${f1(r)} 0 0 1 ${f1(x1)},${f1(y1)}" fill="none" stroke="var(--track)" stroke-width="${f1(size * 0.06)}" stroke-linecap="round"/>
+    <path class="draw" pathLength="1" d="M${f1(x0)},${f1(y0)} A${f1(r)},${f1(r)} 0 0 1 ${f1(x1)},${f1(y1)}" fill="none" stroke="url(#${id})" stroke-width="${f1(size * 0.06)}" stroke-linecap="round" opacity=".9"/>
+    ${value == null ? '' : `<circle class="agdot" cx="${f1(px)}" cy="${f1(py)}" r="${f1(size * 0.045)}" fill="#fff" stroke="#000" stroke-width="3"/>`}
+    <text x="${cx}" y="${f1(cy - size * 0.06)}" text-anchor="middle" class="ag-val">${esc(label)}</text>
+    <text x="${cx}" y="${f1(cy + size * 0.07)}" text-anchor="middle" class="ag-sub">${esc(sub)}</text>
+  </svg>`;
+}
+
+
+
 /** Schwebende Kugel (Puls-Alter): Platzhalter, die Animation startet startOrbs(). */
 export function orb({ size = 168, color = '#1ee08e', label = '', sub = '' }) {
   return `<div class="orbwrap" style="--orb:${color};width:${size}px;height:${size}px"><canvas class="orb" data-orb="${color}" width="${size * 2}" height="${size * 2}" style="width:${size}px;height:${size}px"></canvas><div class="orb-txt"><b>${esc(label)}</b><span>${esc(sub)}</span></div></div>`;

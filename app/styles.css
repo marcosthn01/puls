@@ -892,3 +892,50 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) {
   .screen.anim > *, .chart .bar, .chart .draw, .chart .area, .hero::before, .orbwrap { animation: none !important; }
 }
+
+/* ================= v4.3: neue Funktionen ================= */
+.subhead { font-family: var(--display); font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; }
+.arcgauge { display: block; margin: 0 auto 6px; overflow: visible; }
+.arcgauge .ag-val { font-family: var(--display); font-size: 46px; font-weight: 700; fill: var(--text); }
+.arcgauge .ag-sub { font-family: var(--display); font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; fill: var(--muted); }
+.arcgauge .agdot { filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.5)); animation: dotin 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both 0.6s; transform-box: fill-box; transform-origin: center; }
+@keyframes dotin { from { opacity: 0; transform: scale(0.3); } }
+.breathe-btn { margin-top: 14px; }
+.breathe-btn svg { width: 18px; height: 18px; }
+
+.ah-note { text-align: center; font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
+
+.goals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.goal { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; }
+.goal .ring { width: 64px; height: 64px; margin-bottom: 4px; }
+.goal b { font-size: 14px; }
+.goal span { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+.card h2 .editbtn { float: right; width: 28px; height: 28px; margin-top: -6px; border: 0; background: var(--card2); }
+.card h2 .editbtn svg { width: 15px; height: 15px; }
+
+.rv-title { font-size: 18px; margin-bottom: 6px; }
+
+.mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mcell { background: var(--card2); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; }
+.mcell span { font-family: var(--display); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.mcell b { font-family: var(--display); font-size: 22px; font-weight: 700; }
+.mcell em { font-style: normal; font-size: 12px; }
+
+.hrow { display: grid; grid-template-columns: minmax(0, 1.2fr) 1fr 36px; align-items: center; gap: 10px; padding: 7px 0; font-size: 14px; }
+.hrow > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbar { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.hbar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6f63ff, #8d84ff); animation: growx 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: left; }
+@keyframes growx { from { transform: scaleX(0); } }
+.hrow b { font-family: var(--display); font-size: 17px; text-align: right; }
+
+.qchip.add { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); border: 1.5px dashed var(--grid); background: none; }
+.qchip.add svg { width: 14px; height: 14px; }
+
+/* Atemübung: Kugel wächst 4 s, schrumpft 6 s */
+.breath { position: relative; height: 240px; display: grid; place-items: center; margin: 10px 0 4px; }
+.breath-orb { width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #8ff5c8, #1ee08e 45%, #0b5a3c 100%); box-shadow: 0 0 60px rgba(30, 224, 142, 0.45), inset 0 0 30px rgba(255, 255, 255, 0.15); transform: scale(0.7); }
+.breath.run .breath-orb { animation: breath 10s ease-in-out infinite; }
+@keyframes breath { 0% { transform: scale(0.7); } 40% { transform: scale(1.45); } 100% { transform: scale(0.7); } }
+.breath-txt { position: absolute; font-family: var(--display); font-size: 22px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); }
+.breath-time { text-align: center; font-family: var(--display); font-size: 28px; font-weight: 700; margin-bottom: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .breath.run .breath-orb { animation-duration: 10s; } }

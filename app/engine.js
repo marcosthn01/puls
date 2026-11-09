@@ -827,9 +827,9 @@ export const JOURNAL_QUESTIONS = [
 ];
 
 /** Verhalten an Tag D wirkt auf die Recovery am Morgen von D+1. */
-export function journalImpacts(model, journal) {
+export function journalImpacts(model, journal, questions = JOURNAL_QUESTIONS) {
   const out = [];
-  for (const q of JOURNAL_QUESTIONS) {
+  for (const q of questions) {
     const yes = [];
     const no = [];
     for (const [date, answers] of Object.entries(journal || {})) {
@@ -846,6 +846,26 @@ export function journalImpacts(model, journal) {
     }
   }
   return out.sort((a, b) => (a.pending ? 1 : 0) - (b.pending ? 1 : 0) || Math.abs(b.diff || 0) - Math.abs(a.diff || 0));
+}
+
+/** Eigene Fragen des Nutzers ergänzen die festen (ids beginnen mit „c_“). */
+export function journalQuestions(custom = []) {
+  const extra = (Array.isArray(custom) ? custom : []).filter((q) => q && typeof q.id === 'string' && q.id.startsWith('c_') && typeof q.label === 'string');
+  return [...JOURNAL_QUESTIONS, ...extra];
+}
+
+/** Wie oft jedes Verhalten in den letzten ``days`` Tagen vorkam (nur beantwortete Tage zählen). */
+export function journalTrends(journal, questions, endDate, days = 30) {
+  const dates = [];
+  for (let k = 1; k <= days; k++) dates.push(addDays(endDate, -k));
+  const answered = dates.filter((d) => journal?.[d]?._done);
+  return {
+    answered: answered.length,
+    items: questions
+      .map((q) => ({ id: q.id, label: q.label, count: answered.filter((d) => journal[d][q.id]).length }))
+      .filter((x) => x.count > 0)
+      .sort((a, b) => b.count - a.count),
+  };
 }
 
 // ---------------------------------------------------------------- Wochenbericht
@@ -926,16 +946,141 @@ export function healthAge(model, i = model.days.length - 1) {
   }
   const cons = avg(all, (d) => d.consistency);
   if (cons != null) add('consistency', 'Schlafrhythmus', `${Math.round(cons)} %`, clamp(-(cons - 70) / 20, -1.5, 1.5), 'Jeden Tag ähnliche Schlafzeiten, auch am Wochenende.');
-  const moderate = avg(full, (d) => (d.zoneMin ? d.zoneMin.reduce((a, b) => a + b, 0) : null));
-  if (moderate != null) add('active', 'Aktive Minuten', `${Math.round(moderate * 7)} Min./Woche`, clamp(1.5 - (moderate * 7) / 100, -2.5, 1.5), 'Mindestens 150 Min. pro Woche mit erhöhtem Puls.');
-  const vigorous = avg(full, (d) => (d.zoneMin ? d.zoneMin[2] + d.zoneMin[3] + d.zoneMin[4] : null));
-  if (vigorous != null) add('vigorous', 'Intensive Minuten', `${Math.round(vigorous * 7)} Min./Woche`, clamp(0.5 - (vigorous * 7) / 50, -1, 0.5), '75 Min. pro Woche ab Zone 3 bringen viel.');
+  const z13 = avg(full, (d) => (d.zoneMin ? d.zoneMin[0] + d.zoneMin[1] + d.zoneMin[2] : null));
+  if (z13 != null) add('z13', 'Zonen 1–3 (Woche)', `${fmtDur(z13 * 7)} Std.`, clamp(1.2 - ((z13 * 7) / 150) * 1.4, -1.5, 1.2), 'Mindestens 2,5 Std. pro Woche mit leicht erhöhtem Puls (zügiges Gehen, lockeres Radeln).');
+  const z45 = avg(full, (d) => (d.zoneMin ? d.zoneMin[3] + d.zoneMin[4] : null));
+  if (z45 != null) add('z45', 'Zonen 4–5 (Woche)', `${fmtDur(z45 * 7)} Std.`, clamp(0.6 - (z45 * 7) / 40, -1.2, 0.6), 'Ein bis zwei kurze, harte Einheiten (Intervalle) pro Woche halten das Herz jung.');
+  if (full.length >= 14) {
+    const strengthMin = full.reduce((t, d) => t + d.acts.filter((a) => isStrength(a.type)).reduce((u, a) => u + (a.dur || 0) / 60, 0), 0);
+    const week = (strengthMin * 7) / full.length;
+    add('strength', 'Krafttraining (Woche)', `${fmtDur(week)} Std.`, clamp(0.6 - week / 90, -1.2, 0.6), 'Zwei Kraft-Einheiten pro Woche schützen Muskeln, Knochen und Stoffwechsel.');
+  }
   const steps = avg(full, (d) => d.stats?.steps);
   if (steps != null) add('steps', 'Schritte', `${Math.round(steps / 100) * 100}/Tag`, clamp(((7000 - steps) / 2000) * 0.7, -1.2, 1.5), 'Ab 7.000–8.000 Schritten am Tag sinkt das Risiko deutlich.');
 
   if (items.length < 3) return null;
   const diff = items.reduce((t, x) => t + x.years, 0);
   return { age: S.age, pulsAge: Math.round((S.age + diff) * 10) / 10, diff: Math.round(diff * 10) / 10, items: items.sort((a, b) => b.years - a.years) };
+}
+
+export const isStrength = (type) => /strength|weight|krafttraining|hiit|functional/i.test(type || '');
+
+/**
+ * Tempo des Alterns: wie schnell sich dein Puls-Alter verändert – 1,0 = ein Jahr pro Jahr.
+ * Geglättet aus 4 Wochenwerten jetzt gegen 4 Wochenwerte 60 Tage früher.
+ */
+export function paceOfAging(model, i = model.days.length - 1, back = 60) {
+  const at = (k) => {
+    const v = [0, 7, 14, 21].map((o) => healthAge(model, k - o)?.pulsAge).filter(isNum);
+    return v.length >= 3 ? mean(v) : null;
+  };
+  if (i - back < 27) return null;
+  const now = at(i);
+  const then = at(i - back);
+  if (now == null || then == null) return null;
+  const pace = clamp(1 + ((now - then) * 365) / back / 4, -1, 3);
+  return { pace: Math.round(pace * 10) / 10, now: Math.round(now * 10) / 10, then: Math.round(then * 10) / 10, days: back };
+}
+
+/** Muskel-Belastung einer Kraft- oder HIIT-Einheit (0–10), geschätzt aus Dauer und anaerobem Effekt. */
+export function muscleLoad(a) {
+  if (!isStrength(a?.type)) return null;
+  const min = (a.dur || 0) / 60;
+  const score = clamp((min / 60) * 4 + (isNum(a.ate) ? a.ate : 1.5) * 1.4, 0, 10);
+  return { score: Math.round(score * 10) / 10, level: score >= 7 ? 'hoch' : score >= 4 ? 'mittel' : 'niedrig' };
+}
+
+// ---------------------------------------------------------------- Monatsbericht, Tagesrückblick, Ziele
+
+function windowStats(days) {
+  const avg = (f) => {
+    const v = days.map(f).filter(isNum);
+    return v.length ? mean(v) : null;
+  };
+  return {
+    n: days.length,
+    recovery: avg((d) => d.recovery),
+    green: days.filter((d) => d.zone === 'green').length,
+    hrv: avg((d) => d.hrv),
+    rhr: avg((d) => d.rhr),
+    sleep: avg((d) => d.sleepMin),
+    strain: avg((d) => d.strain),
+    steps: avg((d) => d.stats?.steps),
+    training: days.filter((d) => d.acts.length).length,
+  };
+}
+
+/** Monatsbericht: letzte 30 Tage gegen die 30 davor. */
+export function monthlyAssessment(model, i = model.days.length - 1) {
+  const cur = model.days.slice(Math.max(0, i - 29), i + 1);
+  const prev = model.days.slice(Math.max(0, i - 59), Math.max(0, i - 29));
+  const c = windowStats(cur);
+  const p = windowStats(prev);
+  if (c.recovery == null) return null;
+  const dRec = p.recovery != null ? c.recovery - p.recovery : null;
+  const dHrv = p.hrv != null && c.hrv != null ? (100 * (c.hrv - p.hrv)) / p.hrv : null;
+  let verdict;
+  if (dRec == null) verdict = { label: 'Erster Monat', tone: 'info', text: 'Ab nächstem Monat siehst du hier den Vergleich zum Vormonat.' };
+  else if (dRec >= 4 && (dHrv ?? 0) >= 0) verdict = { label: 'Aufwärtstrend', tone: 'good', text: 'Recovery und HRV steigen – dein Körper verkraftet die Belastung besser als im Vormonat.' };
+  else if (dRec <= -4 || (dHrv ?? 0) <= -8) verdict = { label: 'Abwärtstrend', tone: 'warn', text: 'Deine Erholung war schlechter als im Vormonat. Prüfe Schlafdauer, Stress und ob die Belastung zu schnell gestiegen ist.' };
+  else verdict = { label: 'Stabil', tone: 'info', text: 'Ähnlich wie im Vormonat – eine gute Basis, um gezielt an einer Stellschraube zu drehen.' };
+  const withRec = cur.filter((d) => d.recovery != null);
+  const best = withRec.reduce((a, b) => (b.recovery > a.recovery ? b : a), withRec[0]);
+  const hard = cur.filter((d) => d.strain != null).reduce((a, b) => (!a || b.strain > a.strain ? b : a), null);
+  return { current: c, previous: p, verdict, best: best ? { date: best.date, recovery: best.recovery } : null, hardest: hard ? { date: hard.date, strain: hard.strain } : null };
+}
+
+/** Tagesrückblick (abends): Belastung gegen Ziel, Bewegung, Stress und was heute Nacht wichtig ist. */
+export function dayReview(model, i = model.days.length - 1) {
+  const d = model.days[i];
+  if (d.strain == null) return null;
+  const st = d.stats || {};
+  const items = [];
+  let title;
+  if (d.target) {
+    if (d.strain < d.target.low) title = `Strain ${d.strain.toFixed(1).replace('.', ',')} – unter deinem Ziel`;
+    else if (d.strain > d.target.high) title = `Strain ${d.strain.toFixed(1).replace('.', ',')} – über deinem Ziel`;
+    else title = `Strain ${d.strain.toFixed(1).replace('.', ',')} – genau im Ziel`;
+  } else title = `Strain ${d.strain.toFixed(1).replace('.', ',')}`;
+  if (d.acts.length) items.push(`${d.acts.length} ${d.acts.length === 1 ? 'Aktivität' : 'Aktivitäten'}, zusammen ${fmtDurLong(d.acts.reduce((t, a) => t + (a.dur || 0) / 60, 0))}`);
+  if (isNum(st.steps)) items.push(`${Math.round(st.steps).toLocaleString('de-DE')} Schritte${isNum(st.stepGoal) ? (st.steps >= st.stepGoal ? ' – Ziel geschafft' : ` – ${Math.round(st.stepGoal - st.steps).toLocaleString('de-DE')} unter Ziel`) : ''}`);
+  if (isNum(st.stress)) items.push(`Stress Ø ${st.stress} (${st.stress >= 50 ? 'hoch' : st.stress >= 26 ? 'mittel' : 'niedrig'})`);
+  if (isNum(st.bbNow)) items.push(`Body Battery jetzt ${st.bbNow}`);
+  let tonight = null;
+  if (i === model.days.length - 1) {
+    const plan = bedtimePlan(model, i);
+    tonight = `Heute Nacht brauchst du ${fmtDur(plan.need.total)} Std. Schlaf – ins Bett um ${fmtClock(plan.options[0].bed)}.`;
+  }
+  return { title, items, tonight };
+}
+
+/** Wochenziele (Mo–heute): Trainingstage, Schlafnächte, Schrittziel-Tage. */
+export function weekGoals(model, i, goals = {}) {
+  const g = { train: 4, sleepH: 7.5, steps: 8000, ...goals };
+  const last = model.days[i];
+  const back = (weekday(last.date) + 6) % 7;
+  const week = model.days.slice(Math.max(0, i - back), i + 1);
+  return {
+    goals: g,
+    days: week.length,
+    train: { done: week.filter((d) => d.acts.length || (d.strain ?? 0) >= 12).length, goal: g.train },
+    sleep: { done: week.filter((d) => d.sleepMin != null && d.sleepMin >= g.sleepH * 60).length, goal: 7 },
+    steps: { done: week.filter((d) => (d.stats?.steps ?? 0) >= g.steps).length, goal: 7 },
+  };
+}
+
+/** Stress der letzten Tage als Tageswerte (für Woche/Monat). */
+export function stressDays(model, i, n = 7) {
+  return model.days.slice(Math.max(0, i - n + 1), i + 1).map((d) => ({ date: d.date, v: isNum(d.stats?.stress) ? d.stats.stress : null }));
+}
+
+/** Aktueller Stress: letzter Messwert der Tageskurve, sonst Tagesschnitt. */
+export function stressNow(d) {
+  const s = d.stressSeries;
+  const v = s?.length ? s[s.length - 1][1] : isNum(d.stats?.stress) ? d.stats.stress : null;
+  if (v == null) return null;
+  const level = v >= 76 ? 'Hoch' : v >= 51 ? 'Mittel' : v >= 26 ? 'Niedrig' : 'Ruhe';
+  return { value: Math.round(v), level, at: s?.length ? s[s.length - 1][0] : null };
 }
 
 // ---------------------------------------------------------------- Stress des Tages
@@ -1224,6 +1369,10 @@ export function coachContext(model, journal = {}, i = model.days.length - 1, pro
   L(`## Woche: ${w.verdict.label}. ${w.bullets.join(' ')}`);
   const ha = healthAge(model, model.days.length - 1);
   if (ha) L(`Puls-Alter ${fmtN(ha.pulsAge, 1)} (echtes Alter ${ha.age}): ${ha.items.map((x) => `${x.label} ${x.value} ${signed(x.years, 1)} Jahre`).join(', ')}.`);
+  const pace = paceOfAging(model);
+  if (pace) L(`Tempo des Alterns ${fmtN(pace.pace, 1)}x (Puls-Alter vor ${pace.days} Tagen ${fmtN(pace.then, 1)}, jetzt ${fmtN(pace.now, 1)}).`);
+  const mon = monthlyAssessment(model);
+  if (mon) L(`Monat: ${mon.verdict.label} – Recovery Ø ${fmtN(mon.current.recovery)} % (Vormonat ${fmtN(mon.previous.recovery)} %), HRV Ø ${fmtN(mon.current.hrv)} ms (Vormonat ${fmtN(mon.previous.hrv)}), ${mon.current.training} Trainingstage.`);
   const imp = journalImpacts(model, journal).filter((x) => !x.pending);
   const inf = model.influences.ready ? model.influences.items : [];
   if (imp.length || inf.length) {

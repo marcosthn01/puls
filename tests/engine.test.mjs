@@ -275,3 +275,29 @@ test('Coach-Kontext enthält Profil, Ernährung und Gesundheits-Check', () => {
   assert.ok(ctx.length < 12000);
   assert.match(E.coachContext(model, store.journal), /Gewicht fehlt/);
 });
+
+test('Neue Funktionen: Tempo des Alterns, Monatsbericht, Rückblick, Ziele, Stress, Gewohnheiten', () => {
+  const pace = E.paceOfAging(model);
+  assert.ok(pace && pace.pace >= -1 && pace.pace <= 3, JSON.stringify(pace));
+  const keys = E.healthAge(model).items.map((x) => x.key);
+  for (const k of ['z13', 'z45', 'strength']) assert.ok(keys.includes(k), k);
+  const mon = E.monthlyAssessment(model);
+  assert.ok(['Aufwärtstrend', 'Abwärtstrend', 'Stabil'].includes(mon.verdict.label));
+  assert.equal(mon.current.n, 30);
+  const rv = E.dayReview(model, last);
+  assert.match(rv.title, /^Strain \d+,\d/);
+  assert.match(rv.tonight, /ins Bett um \d\d:\d\d/);
+  const g = E.weekGoals(model, last, { train: 5 });
+  assert.equal(g.train.goal, 5);
+  assert.ok(g.days >= 1 && g.days <= 7);
+  const sn = E.stressNow(model.days[last - 1]);
+  assert.ok(sn && sn.value >= 0 && sn.value <= 100 && sn.level);
+  assert.equal(E.stressDays(model, last, 7).length, 7);
+  const qs = E.journalQuestions([{ id: 'c_x', label: 'Lesen' }, { id: 'boese', label: 'X' }]);
+  assert.equal(qs.length, E.JOURNAL_QUESTIONS.length + 1);
+  const tr = E.journalTrends(store.journal, qs, model.days[last].date);
+  assert.ok(tr.answered > 10 && tr.items[0].count >= tr.items[tr.items.length - 1].count);
+  const strength = model.days.flatMap((d) => d.acts).find((a) => E.isStrength(a.type));
+  if (strength) assert.ok(E.muscleLoad(strength).score > 0);
+  assert.equal(E.muscleLoad({ type: 'running', dur: 3600 }), null);
+});
