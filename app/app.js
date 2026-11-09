@@ -5,7 +5,7 @@ import { arcGauge, bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWi
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '4.3.0';
+const VERSION = '4.3.1';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -2262,16 +2262,35 @@ setInterval(() => {
 }, 5 * 60e3);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Neue Version: sobald der neue Service Worker übernimmt, einmal neu laden.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
+  navigator.serviceWorker
+    .register('sw.js', { updateViaCache: 'none' })
+    .then((reg) => {
+      const check = () => reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') check();
+      });
+      setInterval(check, 30 * 60e3);
+    })
+    .catch(() => {});
 }
 
 // Für den Selbsttest (tests/live_check.mjs): nur Anzahlen, keine Werte
 window.__puls = {
+  version: VERSION,
   summary() {
     const m = state.model;
-    if (!m || m.empty) return { view: state.view, status: state.store?.status || null, days: 0 };
+    if (!m || m.empty) return { version: VERSION, view: state.view, status: state.store?.status || null, days: 0 };
     const count = (f) => m.days.filter(f).length;
     return {
+      version: VERSION,
       view: state.view,
       status: state.store?.status || null,
       days: m.days.length,

@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: App-Dateien aus dem Cache, Daten immer zuerst frisch aus dem Netz.
-const VERSION = 'puls-v4.3.0';
+const VERSION = 'puls-v4.3.1';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'engine.js', 'charts.js', 'crypto.js', 'demo.js', 'coach.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
@@ -8,7 +8,8 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' – nie eine alte Kopie aus dem Browser-Zwischenspeicher übernehmen
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -39,9 +40,9 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // App-Dateien: Netz zuerst (damit Updates sofort ankommen), offline aus dem Cache
+  // App-Dateien: Netz zuerst und immer beim Server nachfragen (no-cache), offline aus dem Cache
   e.respondWith(
-    fetch(e.request)
+    fetch(url.href, { cache: 'no-cache', credentials: 'same-origin' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();
