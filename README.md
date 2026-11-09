@@ -202,6 +202,17 @@ node --test tests/*.test.mjs
 
 ## Design
 
-Eigenes dunkles Premium-Design (v4): tiefschwarzer Hintergrund, drei Ringe, Kacheln und Listen mit
-Vergleich zum 30-Tage-Schnitt, schwebende Leiste unten. Schrift für Zahlen und Überschriften:
-Barlow Condensed (SIL Open Font License, siehe [`app/fonts/OFL-Barlow.txt`](app/fonts/OFL-Barlow.txt)).
+Zwei Darstellungen, umschaltbar unter **Einstellungen → Darstellung**:
+
+- **Zukunft** (Standard, v5): Sci-Fi-HUD. Kurzer Systemstart beim Öffnen (einmal pro Sitzung,
+  Antippen überspringt), Lichtstaub mit Netz und Scan-Linie im Hintergrund, Ringe mit sich
+  drehenden Skalen, Klammern und Scanner, Hologramm-Kugeln mit Drahtgitter, beim Puls-Alter über
+  einem Projektor. Auf den Detailseiten stehen Messwerte mit Hinweislinien neben dem großen Ring.
+  Dazu eine EKG-Linie im Takt deines Ruhepulses, Überschriften, die sich „entschlüsseln“,
+  Lichtimpulse in den Diagrammen und ein Lichtring beim Antippen. Alles pausiert im Hintergrund
+  und außerhalb des Bildschirms. Bei „Bewegung reduzieren“ bleibt es still.
+- **Klassisch** (v4): ruhiges, tiefschwarzes Premium-Design ohne Sci-Fi-Effekte.
+
+Schrift für Zahlen und Überschriften: Barlow Condensed (SIL Open Font License, siehe
+[`app/fonts/OFL-Barlow.txt`](app/fonts/OFL-Barlow.txt)). Datenschilder in der Systemschrift
+`ui-monospace`. Code der Effekte: [`app/hud.js`](app/hud.js).

@@ -4,8 +4,9 @@ import * as E from './engine.js';
 import { arcGauge, bars, esc, hrCurve, hypnogram, innerOrb, lines, rangeBar, ring, sleepWindows, strainGauge, orb, startOrbs } from './charts.js';
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
+import * as Hud from './hud.js';
 
-const VERSION = '4.4.0';
+const VERSION = '5.0.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -25,6 +26,7 @@ const LS = {
   customQ: 'puls.customQ',
   goals: 'puls.goals',
   reportAuto: 'puls.reportAuto',
+  theme: Hud.THEME_KEY,
 };
 
 const PUSH_KINDS = [
@@ -61,6 +63,9 @@ const ls = {
     }
   },
 };
+
+// Darstellung: „Zukunft“ (HUD, Standard) oder „Klassisch“
+document.documentElement.dataset.theme = ls.get(LS.theme, 'hud') === 'classic' ? 'classic' : 'hud';
 
 const state = {
   view: 'loading',
@@ -168,7 +173,12 @@ const zoneColor = (z) => ({ green: 'var(--green)', yellow: 'var(--yellow)', red:
 const zoneHex = (z) => ({ green: '#1ee08e', yellow: '#ffd03d', red: '#ff5148' })[z] || '#8b9198';
 const HEX = { sleep: '#8d84ff', strain: '#2f8eff' };
 /** Ring mit schwebender Kugel im Inneren. */
-const orbRing = (ringSvg, hex, px = 120) => `<div class="ringorb">${innerOrb(hex, px)}${ringSvg}</div>`;
+const orbRing = (ringSvg, hex, px = 120, co = null) => {
+  const core = `<div class="ringorb">${Hud.hudDeco(hex)}${innerOrb(hex, px)}${ringSvg}</div>`;
+  if (!co) return core;
+  const { left, right } = Hud.callouts(co);
+  return `<div class="ringstage"><div class="hco l">${left}</div>${core}<div class="hco r">${right}</div></div>`;
+};
 const zoneName = (z) => ({ green: 'Grün', yellow: 'Gelb', red: 'Rot' })[z] || '';
 const scoreColor = (s) => (s >= 67 ? 'var(--green)' : s >= 34 ? 'var(--yellow)' : 'var(--red)');
 const sign = (v, digits = 0) => {
@@ -572,6 +582,7 @@ function render() {
   if (draft && document.getElementById('askbox')) document.getElementById('askbox').value = draft;
   if (anim) animateCounts();
   startOrbs(app);
+  Hud.afterRender(app, anim);
   queueMicrotask(maybeReport);
 }
 
@@ -669,6 +680,18 @@ function dials(d, anim) {
 
 // ------------------------------------------------------------------ Heute
 
+/** HUD-Leiste: EKG-Linie im Takt des Ruhepulses der letzten Nacht (nur Zukunfts-Darstellung). */
+function telemetry(d) {
+  const gen = state.store?.generated;
+  const fresh = state.demo || (gen && Date.now() - new Date(gen).getTime() < 3 * 3600e3);
+  const bpm = d.rhr ?? d.rhrRef ?? 60;
+  return `<div class="telemetry" aria-hidden="true">
+    <span class="tl-l"><i class="${fresh ? 'on' : ''}"></i><span class="tl-tag">Bio-Link</span></span>
+    <canvas class="ecg" data-bpm="${Math.round(bpm)}" data-color="${zoneHex(d.zone)}"></canvas>
+    <span class="tl-r"><b>${d.rhr ?? '–'}</b> bpm</span>
+  </div>`;
+}
+
 function setupState() {
   return {
     sync: !!ghConfig().token,
@@ -754,7 +777,7 @@ function viewToday(anim) {
     ? `<section class="card slim">${rowLink(I.alert, ht.verdict === 'arzt' ? 'var(--red)' : 'var(--yellow)', esc(ht.flags[0].title), ht.flags.length > 1 ? `+ ${ht.flags.length - 1} weitere${ht.flags.length > 2 ? '' : 'r'} Hinweis${ht.flags.length > 2 ? 'e' : ''} · Gesundheits-Check` : 'Gesundheits-Check · 7 Tage vs. deine Basis', 'data-tab="recovery"')}</section>`
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
-  return `${setupCard()}${dials(d, anim)}${dashTiles(m, i)}
+  return `${setupCard()}${telemetry(d)}${dials(d, anim)}${dashTiles(m, i)}
     <h2 class="bighead">Mein Tag</h2>${planCard}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
     <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
 }
@@ -1030,7 +1053,12 @@ function viewRecovery(anim) {
   const { span, labels, every } = trendSpan();
   const parts = [];
   parts.push(`<section class="hero" style="--glow:${zoneColor(d.zone)}">
-    ${orbRing(ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 200, stroke: 16, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : `Recovery · ${zoneName(d.zone)}`, labelSize: 54, count: d.recovery, suffix: '%', anim, glow: true }), zoneHex(d.zone), 156)}
+    ${orbRing(ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 200, stroke: 16, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : `Recovery · ${zoneName(d.zone)}`, labelSize: 54, count: d.recovery, suffix: '%', anim, glow: true }), zoneHex(d.zone), 156, [
+      { k: 'HRV', v: isNum(d.hrv) ? Math.round(d.hrv) : null, u: 'ms' },
+      { k: 'Ruhepuls', v: d.rhr, u: 'bpm' },
+      { k: 'Atmung', v: isNum(d.resp) ? de1(d.resp) : null, u: '/min' },
+      { k: isNum(d.sleep?.spo2) ? 'SpO₂' : 'Schlaf', v: isNum(d.sleep?.spo2) ? Math.round(d.sleep.spo2) : isNum(d.perf) ? Math.round(d.perf) : null, u: '%' },
+    ])}
     <p class="hero-text">${d.recovery == null ? 'Für diesen Tag fehlen die Schlafdaten.' : esc(d.alarm ? 'Mehrere Werte auffällig – vielleicht ein Infekt. Heute ist Ruhe das beste Training.' : ZONE_TEXT[d.zone])} ${infoBtn('recovery')}</p>
     ${d.recovery != null ? recoveryCompare(m, i) : ''}
     ${driversLine(d)}
@@ -1230,7 +1258,12 @@ function viewSleep(anim) {
 
   if (s) {
     parts.push(`<section class="hero" style="--glow:var(--sleep)">
-      ${orbRing(ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 184, stroke: 15, label: `${Math.round(d.perf)}%`, sub: 'Performance', labelSize: 48, count: Math.round(d.perf), suffix: '%', anim, glow: true }), HEX.sleep, 142)}
+      ${orbRing(ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 184, stroke: 15, label: `${Math.round(d.perf)}%`, sub: 'Performance', labelSize: 48, count: Math.round(d.perf), suffix: '%', anim, glow: true }), HEX.sleep, 142, [
+        { k: 'Effizienz', v: isNum(d.eff) ? Math.round(d.eff * 100) : null, u: '%' },
+        { k: 'Tief', v: isNum(d.stages?.deep) ? Math.round(d.stages.deep) : null, u: '%' },
+        { k: 'REM', v: isNum(d.stages?.rem) ? Math.round(d.stages.rem) : null, u: '%' },
+        { k: 'Erholsam', v: isNum(d.restorative) ? E.fmtDur(d.restorative * 60) : null, u: 'h' },
+      ])}
       <div class="hero-stats">
         <div><span>${E.fmtDur(d.sleepMin)}</span><small>geschlafen</small></div>
         <div><span>${E.fmtDur(d.need.total)}</span><small>Bedarf</small></div>
@@ -1332,7 +1365,12 @@ function viewStrain(anim) {
   const parts = [];
 
   parts.push(`<section class="hero" style="--glow:var(--strain)">
-    ${orbRing(ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 184, stroke: 15, label: de1(d.strain), sub: 'Strain von 21', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 48, count: d.strain, digits: 1, anim, glow: true }), HEX.strain, 142)}
+    ${orbRing(ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 184, stroke: 15, label: de1(d.strain), sub: 'Strain von 21', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 48, count: d.strain, digits: 1, anim, glow: true }), HEX.strain, 142, [
+      { k: 'Ziel', v: d.target ? `${de1(d.target.low)}–${de1(d.target.high)}` : null },
+      { k: 'Zone 4–5', v: d.zoneMin ? Math.round(d.zoneMin[3] + d.zoneMin[4]) : null, u: 'min' },
+      { k: 'Training', v: d.acts.length, u: d.acts.length === 1 ? 'Einheit' : 'Einh.' },
+      { k: 'Stress', v: isNum(d.stats?.stress) ? Math.round(d.stats.stress) : null },
+    ])}
     <div class="hero-stats three">
       <div><span>${d.stats?.kcal != null ? int(d.stats.kcal) : '–'}</span><small>kcal</small></div>
       <div><span>${d.stats?.steps != null ? int(d.stats.steps) : '–'}</span><small>Schritte</small></div>
@@ -1937,7 +1975,13 @@ function viewSettings() {
   const opt = (v, label, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
   const status = (ok) => `<span class="${ok ? 'up' : 'muted'}">${ok ? 'aktiv' : 'aus'}</span>`;
 
+  const look = Hud.isHud() ? 'hud' : 'classic';
   return `
+  <section class="card"><h2>Darstellung</h2>
+    <div class="seg look">${[['hud', 'Zukunft'], ['classic', 'Klassisch']].map(([k, l]) => `<button data-look="${k}" class="${look === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <p class="muted small">${look === 'hud' ? 'Hologramm-Ringe, lebendiger Hintergrund, Systemstart beim Öffnen.' : 'Ruhiges, dunkles Design ohne Sci-Fi-Effekte.'}</p>
+  </section>
+
   <section class="card"><h2>Einrichtung</h2>
     <button class="setrow" data-act="setup-sync"><span>Automatisch aktualisieren</span>${status(setup.sync)}</button>
     <button class="setrow" data-act="setup-coach"><span>KI-Coach</span>${status(setup.coach)}</button>
@@ -2018,8 +2062,14 @@ function saveSetting(el) {
 // ------------------------------------------------------------------ Ereignisse
 
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-act],[data-tab],[data-range],[data-day],[data-goto],[data-info],[data-ask]');
+  const t = e.target.closest('[data-act],[data-tab],[data-range],[data-day],[data-goto],[data-info],[data-ask],[data-look]');
   if (!t) return;
+  if (t.dataset.look) {
+    Hud.setTheme(t.dataset.look);
+    state.animate = true;
+    render();
+    return;
+  }
   if (t.dataset.info) return openSheet({ type: 'info', key: t.dataset.info });
   if (t.dataset.tab) return setTab(t.dataset.tab);
   if (t.dataset.day) return selectDay(Number(t.dataset.day));
@@ -2327,6 +2377,8 @@ window.__puls = {
 };
 
 (async () => {
+  Hud.enablePings();
+  Hud.boot();
   render();
   await loadData();
   autoSync();

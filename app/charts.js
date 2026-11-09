@@ -23,11 +23,11 @@ export function ring({ value, max, color, size = 132, stroke = 11, label = '', s
     bandArc = `<circle cx="${mid}" cy="${mid}" r="${f1(rb)}" fill="none" stroke="${color}" stroke-opacity=".55" stroke-width="3"
       stroke-dasharray="${f1((b - a) * cb)} ${f1(cb)}" stroke-dashoffset="${f1(-a * cb)}" transform="rotate(-90 ${mid} ${mid})" stroke-linecap="round"/>`;
   }
-  const valArc =
-    frac > 0
-      ? `<circle class="ringval${anim ? ' anim' : ''}" style="--c:${f1(c)}" cx="${mid}" cy="${mid}" r="${f1(r)}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
-      stroke-dasharray="${f1(c)} ${f1(c)}" stroke-dashoffset="${f1(c * (1 - frac))}" transform="rotate(-90 ${mid} ${mid})"/>`
-      : '';
+  const arcEl = (cls, width, extra = '') =>
+    `<circle class="${cls}${anim ? ' anim' : ''}" style="--c:${f1(c)}" cx="${mid}" cy="${mid}" r="${f1(r)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round"
+      stroke-dasharray="${f1(c)} ${f1(c)}" stroke-dashoffset="${f1(c * (1 - frac))}" transform="rotate(-90 ${mid} ${mid})"${extra}/>`;
+  // Leuchtunterlage (nur in der Zukunfts-Darstellung sichtbar) + Wertbogen
+  const valArc = frac > 0 ? arcEl('ringval ringglow', f1(stroke * 2.3), ' stroke-opacity=".16"') + arcEl('ringval', stroke) : '';
   const countAttr = count != null && anim ? ` data-count="${count}" data-digits="${digits}" data-suffix="${esc(suffix)}"` : '';
   let tip = '';
   if (frac > 0.02 && frac < 0.995) {
@@ -36,7 +36,7 @@ export function ring({ value, max, color, size = 132, stroke = 11, label = '', s
   }
   const style = glow && frac > 0 ? ` style="filter:drop-shadow(0 0 ${Math.round(size / 16)}px ${color})"` : '';
   return `<svg class="ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(label)} ${esc(sub)}"${style}>
-    <circle cx="${mid}" cy="${mid}" r="${f1(r)}" fill="none" stroke="var(--track)" stroke-width="${stroke}"/>
+    <circle class="rtrack" cx="${mid}" cy="${mid}" r="${f1(r)}" fill="none" stroke="var(--track)" stroke-width="${stroke}" pathLength="100"/>
     ${valArc}
     ${tip}
     ${bandArc}
@@ -113,21 +113,18 @@ export function innerOrb(color, px = 120) {
   return `<canvas class="orb inner" data-orb="${color}" data-soft="1" data-plain="1" width="${px * 2}" height="${px * 2}" aria-hidden="true"></canvas>`;
 }
 
-/** Zeichnet alle Kugeln auf der Seite: weiches Licht im Inneren, kreisende Lichtpunkte. */
+/** Zeichnet alle Kugeln auf der Seite. Klassisch: weiches Licht mit kreisenden Lichtpunkten.
+ *  Zukunft: Hologramm – Drahtgitter-Kugel mit Scan-Linie, beim Puls-Alter mit Umlaufbahnen und Projektor. */
 export function startOrbs(root = document) {
   const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   root.querySelectorAll('canvas[data-orb]:not([data-run])').forEach((cv) => {
     cv.dataset.run = '1';
     const ctx = cv.getContext('2d');
     if (!ctx) return;
-    const W2 = cv.width;
-    const c = W2 / 2;
-    const R = W2 * 0.4;
     const color = cv.dataset.orb;
-    const rgb = hexRgb(color);
-    const soft = cv.dataset.soft === '1';
-    const plain = cv.dataset.plain === '1';
-    const k = soft ? 0.5 : 1;
+    const o = { W2: cv.width, rgb: hexRgb(color), color, soft: cv.dataset.soft === '1', plain: cv.dataset.plain === '1' };
+    const nDots = o.plain ? 40 : 90;
+    o.dots = Array.from({ length: nDots }, (_, j) => ({ th: Math.acos(1 - (2 * (j + 0.5)) / nDots), ph: j * 2.39996, s: 0.6 + ((j * 37) % 10) / 10 }));
     // Nur zeichnen, solange die Kugel zu sehen ist (spart Akku)
     let visible = true;
     let running = false;
@@ -142,92 +139,261 @@ export function startOrbs(root = document) {
       });
       io.observe(cv);
     }
-    const nDots = cv.dataset.plain === '1' ? 40 : 90;
-    const dots = Array.from({ length: nDots }, (_, j) => ({ th: Math.acos(1 - (2 * (j + 0.5)) / nDots), ph: j * 2.39996, s: 0.6 + ((j * 37) % 10) / 10 }));
     const t0 = performance.now();
+    let last = -1e9;
     const frame = (now) => {
       if (!cv.isConnected || (!visible && !still)) {
         running = false;
         return;
       }
-      const t = (now - t0) / 1000;
-      ctx.clearRect(0, 0, W2, W2);
-      // Außenleuchten
-      const glow = ctx.createRadialGradient(c, c, R * 0.7, c, c, R * (plain ? 1.05 : 1.25));
-      glow.addColorStop(0, `rgba(${rgb},${0.35 * k})`);
-      glow.addColorStop(1, `rgba(${rgb},0)`);
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, W2, W2);
-      // Kugel
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(c, c, R, 0, Math.PI * 2);
-      ctx.clip();
-      const body = ctx.createRadialGradient(c - R * 0.35, c - R * 0.4, R * 0.1, c, c, R);
-      body.addColorStop(0, `rgba(${rgb},${0.55 * k})`);
-      body.addColorStop(0.55, `rgba(${rgb},${0.18 * k})`);
-      body.addColorStop(1, plain ? `rgba(${rgb},0)` : 'rgba(4,8,8,0.95)');
-      ctx.fillStyle = body;
-      ctx.fillRect(c - R, c - R, 2 * R, 2 * R);
-      // wandernde Lichtschleier
-      ctx.globalCompositeOperation = 'screen';
-      for (let k = 0; k < 3; k++) {
-        const a = t * (0.25 + k * 0.11) + k * 2.1;
-        const bx = c + Math.cos(a) * R * 0.38;
-        const by = c + Math.sin(a * 1.3) * R * 0.32;
-        const g = ctx.createRadialGradient(bx, by, 0, bx, by, R * (0.55 - k * 0.08));
-        g.addColorStop(0, `rgba(${rgb},${(0.32 - k * 0.07) * (soft ? 0.7 : 1)})`);
-        g.addColorStop(1, `rgba(${rgb},0)`);
-        ctx.fillStyle = g;
-        ctx.fillRect(c - R, c - R, 2 * R, 2 * R);
+      if (now - last >= 32 || still) {
+        last = now;
+        const hud = document.documentElement.dataset.theme !== 'classic';
+        ctx.clearRect(0, 0, o.W2, o.W2);
+        (hud ? drawHolo : drawSoft)(ctx, o, (now - t0) / 1000);
       }
-      // Lichtpunkte auf einer sich drehenden Kugelschale
-      const rot = t * 0.22;
-      for (const d of dots) {
-        const ph = d.ph + rot;
-        const x3 = Math.sin(d.th) * Math.cos(ph);
-        const y3 = Math.cos(d.th);
-        const z3 = Math.sin(d.th) * Math.sin(ph);
-        const depth = (z3 + 1) / 2;
-        const tw = 0.55 + 0.45 * Math.sin(t * 2 * d.s + d.ph);
-        ctx.fillStyle = `rgba(255,255,255,${(0.08 + depth * 0.6) * tw * k})`;
-        ctx.beginPath();
-        ctx.arc(c + x3 * R * 0.86, c + y3 * R * 0.86, (0.8 + depth * 1.8) * (W2 / 336) * d.s, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-      ctx.globalCompositeOperation = 'source-over';
-      if (plain) {
-        if (!still) requestAnimationFrame(frame);
-        return;
-      }
-      // Rand und Umlaufbahn
-      ctx.strokeStyle = `rgba(${rgb},0.55)`;
-      ctx.lineWidth = W2 / 160;
-      ctx.beginPath();
-      ctx.arc(c, c, R, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.save();
-      ctx.translate(c, c);
-      ctx.rotate(-0.35);
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = W2 / 320;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, R * 1.18, R * 0.34, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      const oa = t * 0.9;
-      ctx.fillStyle = '#fff';
-      ctx.shadowColor = color;
-      ctx.shadowBlur = W2 / 30;
-      ctx.beginPath();
-      ctx.arc(Math.cos(oa) * R * 1.18, Math.sin(oa) * R * 0.34, W2 / 110, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
       if (!still) requestAnimationFrame(frame);
     };
     running = true;
     requestAnimationFrame(frame);
   });
+}
+
+function drawSoft(ctx, o, t) {
+  const { W2, rgb, color, soft, plain } = o;
+  const c = W2 / 2;
+  const R = W2 * 0.4;
+  const k = soft ? 0.5 : 1;
+  // Außenleuchten
+  const glow = ctx.createRadialGradient(c, c, R * 0.7, c, c, R * (plain ? 1.05 : 1.25));
+  glow.addColorStop(0, `rgba(${rgb},${0.35 * k})`);
+  glow.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W2, W2);
+  // Kugel
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(c, c, R, 0, Math.PI * 2);
+  ctx.clip();
+  const body = ctx.createRadialGradient(c - R * 0.35, c - R * 0.4, R * 0.1, c, c, R);
+  body.addColorStop(0, `rgba(${rgb},${0.55 * k})`);
+  body.addColorStop(0.55, `rgba(${rgb},${0.18 * k})`);
+  body.addColorStop(1, plain ? `rgba(${rgb},0)` : 'rgba(4,8,8,0.95)');
+  ctx.fillStyle = body;
+  ctx.fillRect(c - R, c - R, 2 * R, 2 * R);
+  // wandernde Lichtschleier
+  ctx.globalCompositeOperation = 'screen';
+  for (let j = 0; j < 3; j++) {
+    const a = t * (0.25 + j * 0.11) + j * 2.1;
+    const bx = c + Math.cos(a) * R * 0.38;
+    const by = c + Math.sin(a * 1.3) * R * 0.32;
+    const g = ctx.createRadialGradient(bx, by, 0, bx, by, R * (0.55 - j * 0.08));
+    g.addColorStop(0, `rgba(${rgb},${(0.32 - j * 0.07) * (soft ? 0.7 : 1)})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(c - R, c - R, 2 * R, 2 * R);
+  }
+  // Lichtpunkte auf einer sich drehenden Kugelschale
+  const rot = t * 0.22;
+  for (const d of o.dots) {
+    const ph = d.ph + rot;
+    const x3 = Math.sin(d.th) * Math.cos(ph);
+    const y3 = Math.cos(d.th);
+    const z3 = Math.sin(d.th) * Math.sin(ph);
+    const depth = (z3 + 1) / 2;
+    const tw = 0.55 + 0.45 * Math.sin(t * 2 * d.s + d.ph);
+    ctx.fillStyle = `rgba(255,255,255,${(0.08 + depth * 0.6) * tw * k})`;
+    ctx.beginPath();
+    ctx.arc(c + x3 * R * 0.86, c + y3 * R * 0.86, (0.8 + depth * 1.8) * (W2 / 336) * d.s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalCompositeOperation = 'source-over';
+  if (plain) return;
+  // Rand und Umlaufbahn
+  ctx.strokeStyle = `rgba(${rgb},0.55)`;
+  ctx.lineWidth = W2 / 160;
+  ctx.beginPath();
+  ctx.arc(c, c, R, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(c, c);
+  ctx.rotate(-0.35);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = W2 / 320;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, R * 1.18, R * 0.34, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  const oa = t * 0.9;
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = W2 / 30;
+  ctx.beginPath();
+  ctx.arc(Math.cos(oa) * R * 1.18, Math.sin(oa) * R * 0.34, W2 / 110, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Hologramm-Kugel: Drahtgitter (vorne hell, hinten schwach), Lichtpunkte, wandernde Scan-Linie. */
+function drawHolo(ctx, o, t) {
+  const { W2, rgb, color, plain } = o;
+  const big = !plain;
+  const c = W2 / 2;
+  const R = W2 * (big ? 0.31 : 0.4);
+  const cy = big ? c - W2 * 0.05 : c;
+  const k = big ? 1 : 0.85;
+  const lw = W2 / (big ? 260 : 210);
+  const spin = t * 0.32;
+  const tilt = -0.42;
+  const cs = Math.cos(spin);
+  const sn = Math.sin(spin);
+  const ct = Math.cos(tilt);
+  const st = Math.sin(tilt);
+  const proj = (x, y, z) => {
+    const x1 = x * cs + z * sn;
+    const z1 = -x * sn + z * cs;
+    const y2 = y * ct - z1 * st;
+    const z2 = y * st + z1 * ct;
+    return [c + x1 * R, cy - y2 * R, z2];
+  };
+
+  // Licht im Kern
+  const core = ctx.createRadialGradient(c, cy, 0, c, cy, R * 1.25);
+  core.addColorStop(0, `rgba(${rgb},${0.3 * k})`);
+  core.addColorStop(0.55, `rgba(${rgb},${0.1 * k})`);
+  core.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = core;
+  ctx.fillRect(0, 0, W2, W2);
+
+  if (big) {
+    // Projektor: Lichtkegel von unten, Sockel-Ellipse
+    const by = cy + R * 1.42;
+    const cone = ctx.createLinearGradient(0, by, 0, cy);
+    cone.addColorStop(0, `rgba(${rgb},0.22)`);
+    cone.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = cone;
+    ctx.beginPath();
+    ctx.moveTo(c - R * 0.42, by);
+    ctx.lineTo(c - R * 0.95, cy + R * 0.2);
+    ctx.lineTo(c + R * 0.95, cy + R * 0.2);
+    ctx.lineTo(c + R * 0.42, by);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = lw * 1.2;
+    ctx.strokeStyle = `rgba(${rgb},0.75)`;
+    ctx.beginPath();
+    ctx.ellipse(c, by, R * 0.46, R * 0.1, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(${rgb},0.3)`;
+    ctx.beginPath();
+    ctx.ellipse(c, by, R * 0.66, R * 0.15, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // umlaufende Markierungen auf dem Sockel
+    ctx.fillStyle = '#fff';
+    for (let j = 0; j < 3; j++) {
+      const a = t * 1.2 + (j * Math.PI * 2) / 3;
+      ctx.globalAlpha = 0.45 + 0.45 * Math.sin(a);
+      ctx.beginPath();
+      ctx.arc(c + Math.cos(a) * R * 0.66, by + Math.sin(a) * R * 0.15, lw * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Drahtgitter: Längen- und Breitenkreise, vorne/hinten getrennt
+  const back = new Path2D();
+  const front = new Path2D();
+  const seg = (pts) => {
+    for (let j = 1; j < pts.length; j++) {
+      const a = pts[j - 1];
+      const b = pts[j];
+      const p = a[2] + b[2] > 0 ? front : back;
+      p.moveTo(a[0], a[1]);
+      p.lineTo(b[0], b[1]);
+    }
+  };
+  const N = 30;
+  for (let m = 0; m < 6; m++) {
+    const ph = (m * Math.PI) / 6;
+    const pts = [];
+    for (let j = 0; j <= N; j++) {
+      const th = (j / N) * Math.PI * 2;
+      pts.push(proj(Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph)));
+    }
+    seg(pts);
+  }
+  for (const y of [-0.7, -0.38, 0, 0.38, 0.7]) {
+    const rr = Math.sqrt(1 - y * y);
+    const pts = [];
+    for (let j = 0; j <= N; j++) {
+      const a = (j / N) * Math.PI * 2;
+      pts.push(proj(rr * Math.cos(a), y, rr * Math.sin(a)));
+    }
+    seg(pts);
+  }
+  ctx.lineWidth = lw;
+  ctx.strokeStyle = `rgba(${rgb},${0.13 * k})`;
+  ctx.stroke(back);
+  ctx.strokeStyle = `rgba(${rgb},${0.55 * k})`;
+  ctx.stroke(front);
+
+  // Lichtpunkte auf der Oberfläche
+  for (const d of o.dots) {
+    const [x, y, z] = proj(Math.sin(d.th) * Math.cos(d.ph), Math.cos(d.th), Math.sin(d.th) * Math.sin(d.ph));
+    if (z < -0.1) continue;
+    const tw = 0.5 + 0.5 * Math.sin(t * 2.2 * d.s + d.ph);
+    ctx.fillStyle = `rgba(230,255,255,${((0.15 + z * 0.75) * tw * k).toFixed(3)})`;
+    const s = (0.6 + z * 1.3) * (W2 / 300) * d.s;
+    ctx.fillRect(x - s, y - s, s * 2, s * 2);
+  }
+
+  // Scan-Linie wandert auf und ab
+  const sy = Math.sin(t * 0.85) * 0.86;
+  const hw = Math.sqrt(1 - sy * sy) * R;
+  const Y = cy - sy * R;
+  const band = ctx.createLinearGradient(0, Y - R * 0.22, 0, Y);
+  band.addColorStop(0, `rgba(${rgb},0)`);
+  band.addColorStop(1, `rgba(${rgb},${0.22 * k})`);
+  ctx.fillStyle = band;
+  ctx.fillRect(c - hw, Y - R * 0.22, hw * 2, R * 0.22);
+  ctx.strokeStyle = `rgba(255,255,255,${0.7 * k})`;
+  ctx.lineWidth = lw * 1.1;
+  ctx.beginPath();
+  ctx.moveTo(c - hw, Y);
+  ctx.lineTo(c + hw, Y);
+  ctx.stroke();
+
+  // Rand
+  ctx.strokeStyle = `rgba(${rgb},${0.6 * k})`;
+  ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.arc(c, cy, R, 0, Math.PI * 2);
+  ctx.stroke();
+  if (!big) return;
+
+  // Zwei geneigte Umlaufbahnen mit Lichtpunkten
+  ctx.save();
+  ctx.translate(c, cy);
+  for (const [rot, speed, rx, ry] of [[-0.32, 0.8, 1.32, 0.3], [0.5, -0.55, 1.18, 0.22]]) {
+    ctx.save();
+    ctx.rotate(rot);
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = lw * 0.8;
+    ctx.setLineDash([lw * 3, lw * 4]);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, R * rx, R * ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const a = t * speed;
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = W2 / 28;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * R * rx, Math.sin(a) * R * ry, lw * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 function hexRgb(hex) {
@@ -316,6 +482,8 @@ export function lines({ series, labels = [], height = 140, band = null, every = 
         <path class="area" d="M${f1(pts[0][0])},${f1(bottom)}L${pts.map((p) => p.map(f1).join(',')).join('L')}L${f1(pts[pts.length - 1][0])},${f1(bottom)}Z" fill="url(#${id})"/>`;
     }
   }
+  // Lichtimpuls, der die Hauptlinie entlangläuft (nur Zukunfts-Darstellung)
+  const pulse = main && main.values.filter((v) => v != null).length > 2 ? `<path class="pulse" pathLength="1" d="${pathOf(main.values)}" fill="none" stroke="${main.color}" stroke-width="${(main.width || 2) + 1.5}" stroke-linecap="round"/>` : '';
   const paths = series
     .map(
       (s) => `<path ${s.dash ? '' : 'class="draw" pathLength="1"'} d="${pathOf(s.values)}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" stroke-linecap="round" stroke-linejoin="round" ${s.dash ? 'stroke-dasharray="3 4"' : ''} ${s.opacity ? `stroke-opacity="${s.opacity}"` : ''}/>
@@ -326,7 +494,7 @@ export function lines({ series, labels = [], height = 140, band = null, every = 
     .map((v) => `<text x="2" y="${f1(y(v) + (v === hi - pad ? 10 : -3))}" class="axis" text-anchor="start">${Math.round(v)}${unit ? ' ' + esc(unit) : ''}</text>`)
     .join('');
   return `<svg class="chart" viewBox="0 0 ${W} ${height}" preserveAspectRatio="xMidYMid meet" role="img">
-    ${bandPath}${area}${paths}${ticks}${axisLabels(labels, x, height - 4, every)}
+    ${bandPath}${area}${paths}${pulse}${ticks}${axisLabels(labels, x, height - 4, every)}
   </svg>`;
 }
 
