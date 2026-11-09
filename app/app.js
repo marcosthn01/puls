@@ -5,7 +5,7 @@ import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, str
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '3.0.0';
+const VERSION = '3.1.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -601,10 +601,22 @@ function trendSpan() {
 }
 
 function dials(d, anim) {
+  const y = state.model.days[d.i - 1];
+  const cmp = (cur, prev, fmt, betterUp = true) => {
+    if (cur == null || prev == null) return '<span class="capsub">&nbsp;</span>';
+    const diff = cur - prev;
+    const cls = Math.abs(diff) < 0.05 ? 'muted' : (diff > 0) === betterUp ? 'up' : 'down';
+    return `<span class="capsub ${cls}">${diff > 0 ? '▲' : diff < 0 ? '▼' : '•'} ${fmt(Math.abs(diff))} ggü. gestern</span>`;
+  };
+  const caps = [
+    cmp(d.perf, y?.perf, (v) => `${Math.round(v)}`),
+    cmp(d.recovery, y?.recovery, (v) => `${Math.round(v)}`),
+    d.target ? `<span class="capsub muted">${esc(E.buildCoach(state.model, d.i).remaining?.short || '')}</span>` : '<span class="capsub">&nbsp;</span>',
+  ];
   return `<section class="rings">
-    <button class="ringbox" data-tab="schlaf">${ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 104, stroke: 9, label: d.perf == null ? '–' : `${Math.round(d.perf)}%`, sub: d.sleepMin ? `${E.fmtDur(d.sleepMin)} Std.` : '', labelSize: 24, count: d.perf == null ? null : Math.round(d.perf), suffix: '%', anim, glow: true })}<span class="cap">Schlaf</span></button>
-    <button class="ringbox" data-tab="recovery">${ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 140, stroke: 12, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : zoneName(d.zone), labelSize: 38, count: d.recovery, suffix: '%', anim, glow: true })}<span class="cap">Recovery</span></button>
-    <button class="ringbox" data-tab="belastung">${ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 104, stroke: 9, label: de1(d.strain), sub: d.target ? `Ziel ${Math.round(d.target.low)}–${Math.round(d.target.high)}` : '', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 24, count: d.strain, digits: 1, anim, glow: true })}<span class="cap">Strain</span></button>
+    <button class="ringbox" data-tab="schlaf">${ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 104, stroke: 9, label: d.perf == null ? '–' : `${Math.round(d.perf)}%`, sub: d.sleepMin ? `${E.fmtDur(d.sleepMin)} Std.` : '', labelSize: 24, count: d.perf == null ? null : Math.round(d.perf), suffix: '%', anim, glow: true })}<span class="cap">Schlaf</span>${caps[0]}</button>
+    <button class="ringbox" data-tab="recovery">${ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 140, stroke: 12, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : zoneName(d.zone), labelSize: 38, count: d.recovery, suffix: '%', anim, glow: true })}<span class="cap">Recovery</span>${caps[1]}</button>
+    <button class="ringbox" data-tab="belastung">${ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 104, stroke: 9, label: de1(d.strain), sub: d.target ? `Ziel ${Math.round(d.target.low)}–${Math.round(d.target.high)}` : '', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 24, count: d.strain, digits: 1, anim, glow: true })}<span class="cap">Strain</span>${caps[2]}</button>
   </section>`;
 }
 
@@ -622,13 +634,14 @@ function setupCard() {
   if (state.demo) return '';
   const s = setupState();
   if (ls.get(LS.setupHidden) && s.sync) return '';
-  const done = [s.sync, s.coach].filter(Boolean).length;
-  if (done === 2) return '';
+  const done = [s.sync, s.coach, s.push].filter(Boolean).length;
+  if (done === 3) return '';
   const item = (ok, icon, title, sub, act) =>
     `<button class="setup-item ${ok ? 'ok' : ''}" ${ok ? 'disabled' : act}><span class="ic">${ok ? I.check : icon}</span><span class="rl"><b>${title}</b><span>${ok ? 'Erledigt' : sub}</span></span>${ok ? '' : `<span class="chev">${I.chevron}</span>`}</button>`;
-  return `<section class="card setup"><h2>Puls fertig einrichten · ${done} von 2<button class="infobtn" data-act="setup-hide" aria-label="Ausblenden">×</button></h2>
+  return `<section class="card setup"><h2>Puls fertig einrichten · ${done} von 3<button class="infobtn" data-act="setup-hide" aria-label="Ausblenden">×</button></h2>
     ${item(s.sync, I.sync, 'Automatisch aktualisieren', 'Frische Daten bei jedem Öffnen · 2 Min.', 'data-act="setup-sync"')}
     ${item(s.coach, I.coach, 'KI-Coach aktivieren', 'Frag alles zu Training & Schlaf · 3 Min.', 'data-act="setup-coach"')}
+    ${item(s.push, I.bell, 'Benachrichtigungen', 'Morgens Recovery, nachmittags Ziel, abends Schlaf', 'data-act="setup-push"')}
   </section>`;
 }
 
@@ -649,7 +662,8 @@ function viewToday(anim) {
   } else {
     planCard = `<section class="card plan">
       <h3 class="headline zone-${coach.state}">${esc(coach.headline)}</h3>
-      ${coach.notes.length ? `<p class="small muted" style="margin:-4px 0 8px">${esc(coach.notes[0])}</p>` : ''}
+      ${driversLine(d)}
+      ${coach.notes.length ? `<p class="small muted" style="margin:2px 0 8px">${esc(coach.notes[0])}</p>` : ''}
       ${rowLink(I.strain, 'var(--strain)', `Ziel-Strain ${de1(d.target.low)}–${de1(d.target.high)}`, esc(coach.remaining.short || coach.remaining.text), 'data-tab="belastung"')}
       ${plan ? rowLink(I.bed, 'var(--sleep)', `Ins Bett um ${clockDE(plan.options[0].bed)}`, `${E.fmtDur(plan.need.total)} Std. Schlaf · spätestens ${clockDE(plan.options[1].bed)}`, 'data-tab="schlaf"') : ''}
       ${rowLink(I.coach, 'var(--green)', 'Coach fragen', 'z. B. „Was soll ich heute trainieren?“', 'data-tab="coach"')}
@@ -672,12 +686,12 @@ function viewToday(anim) {
     ? `<section class="card slim">${rowLink(v.outside ? I.alert : I.check, v.outside ? 'var(--red)' : 'var(--green)', v.outside ? `${v.outside} Körperwert${v.outside > 1 ? 'e' : ''} auffällig` : 'Körperwerte normal', v.items.map((x) => x.label).join(' · '), 'data-tab="recovery"')}</section>`
     : '';
 
-  const shown = state.showAllInsights ? insights : insights.slice(0, 2);
+  const shown = state.showAllInsights ? insights : insights.slice(0, 3);
   const insightsCard = insights.length
-    ? card('Hinweise', `${shown.map(insightHtml).join('')}${insights.length > 2 ? `<button class="linkbtn" data-act="more-insights">${state.showAllInsights ? 'Weniger' : `Alle ${insights.length} Hinweise`}</button>` : ''}`)
+    ? card('Hinweise', `${shown.map(insightHtml).join('')}${insights.length > 3 ? `<button class="linkbtn" data-act="more-insights">${state.showAllInsights ? 'Weniger' : `Alle ${insights.length} Hinweise`}</button>` : ''}`)
     : '';
 
-  const acts = d.acts.length ? card('Aktivitäten', d.acts.map(actRow).join('')) : '';
+  const acts = dayCard(d);
 
   let weekRow = '';
   if (isLatest) {
@@ -686,7 +700,52 @@ function viewToday(anim) {
     weekRow = `<section class="card slim">${rowLink(I.trends, 'var(--text)', `Deine Woche: ${esc(w.verdict.label)}`, 'Bericht, Kalender & Einflüsse', 'data-tab="trends"', `<span class="weekdots">${dots}</span>`)}</section>`;
   }
 
-  return `${setupCard()}${dials(d, anim)}${planCard}${journalRow}${bodyRow}${insightsCard}${acts}${weekRow}`;
+  return `${setupCard()}${dials(d, anim)}${planCard}${journalRow}${bodyRow}${acts}${insightsCard}${statsCard(m, i)}${weekRow}`;
+}
+
+function driversLine(d) {
+  const dr = E.recoveryDrivers(d);
+  if (!dr.length) return '';
+  const chip = (x) => `<span class="dchip ${x.neutral ? '' : x.good ? 'good' : 'bad'}">${x.neutral ? '•' : x.good ? '▲' : '▼'} ${esc(x.label)}</span>`;
+  return `<div class="drivers">${dr.map(chip).join('')}</div>`;
+}
+
+const note = (text) => (text ? `<p class="note">${text}</p>` : '');
+const trendWord = (t, upGood = true) => {
+  if (!t) return '';
+  if (t.dir === 'flat') return 'stabil';
+  const good = (t.dir === 'up') === upGood;
+  return `<span class="${good ? 'up' : 'down'}">${t.dir === 'up' ? 'steigend' : 'fallend'}</span>`;
+};
+
+function dayCard(d) {
+  const st = d.stats || {};
+  const facts = [];
+  if (st.steps != null) facts.push(tile('Schritte', int(st.steps), '', st.stepGoal ? `Ziel ${int(st.stepGoal)}` : ''));
+  if (st.kcal != null) facts.push(tile('Kalorien', int(st.kcal), 'kcal', st.activeKcal != null ? `aktiv ${int(st.activeKcal)}` : ''));
+  if (st.bbHigh != null) facts.push(tile('Body Battery', st.bbNow ?? st.bbHigh, '', st.bbNow != null ? `max. heute ${st.bbHigh}` : `tiefster ${st.bbLow ?? '–'}`));
+  if (st.stress != null) facts.push(tile('Stress Ø', st.stress, '', st.stress >= 50 ? 'hoch' : st.stress >= 26 ? 'mittel' : 'niedrig'));
+  if (d.zoneMin) facts.push(tile('Aktive Min.', d.zoneMin.reduce((a, b) => a + b, 0), '', 'ab Zone 1'));
+  if (st.floors != null) facts.push(tile('Etagen', st.floors));
+  if (!facts.length && !d.acts.length) return '';
+  return card('Dein Tag', `${d.acts.length ? d.acts.map(actRow).join('') + '<div class="sep"></div>' : ''}${facts.length ? `<div class="grid">${facts.join('')}</div>` : ''}`);
+}
+
+function statsCard(m, i) {
+  const partial = m.days[i].date === todayIso();
+  const rows = E.keyStats(m, i, { partial });
+  if (!rows.length) return '';
+  const arrow = (r) => {
+    if (!r.trend) return '<span class="arr muted">läuft</span>';
+    const cls = r.good == null ? 'muted' : r.good ? 'up' : 'down';
+    return `<span class="arr ${cls}">${r.trend === 'up' ? '▲' : r.trend === 'down' ? '▼' : '•'}</span>`;
+  };
+  return card(
+    'Im Vergleich zu deinem Schnitt',
+    `<div class="stats">${rows
+      .map((r) => `<div class="stat"><span class="sl">${r.label}</span><span class="sv">${fmtVal(r.value, r.digits)}${r.unit ? `<small>${r.unit}</small>` : ''}</span>${arrow(r)}<span class="sb">${r.base == null ? '' : `Ø ${fmtVal(r.base, r.digits)}`}</span></div>`)
+      .join('')}</div>${note('Ø = dein Schnitt der letzten 30 Tage · grün = besser als sonst, rot = schlechter')}`,
+  );
 }
 
 function actRow(a) {
@@ -707,13 +766,21 @@ function viewRecovery(anim) {
   parts.push(`<section class="hero" style="--glow:${zoneColor(d.zone)}">
     ${ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 200, stroke: 16, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : `Recovery · ${zoneName(d.zone)}`, labelSize: 54, count: d.recovery, suffix: '%', anim, glow: true })}
     <p class="hero-text">${d.recovery == null ? 'Für diesen Tag fehlen die Schlafdaten.' : esc(d.alarm ? 'Mehrere Werte auffällig – vielleicht ein Infekt. Heute ist Ruhe das beste Training.' : ZONE_TEXT[d.zone])} ${infoBtn('recovery')}</p>
+    ${d.recovery != null ? recoveryCompare(m, i) : ''}
+    ${driversLine(d)}
   </section>`);
   parts.push(factorsCard(d));
   parts.push(bodyCheckCard(E.vitals(m, i)));
   parts.push(stressCard(d));
   if (i === m.days.length - 1) parts.push(ageCard(m));
   parts.push(`<h2 class="section">Verlauf</h2>${rangeSeg()}`);
-  parts.push(card('Recovery', bars({ values: span.map((x) => ({ v: x.recovery, color: zoneColor(x.zone) })), labels, every, max: 100, refs: [{ v: 67, color: 'var(--grid)', dash: true }, { v: 34, color: 'var(--grid)', dash: true }] })));
+  const recs = span.map((x) => x.recovery).filter(isNum);
+  parts.push(card('Recovery', `${bars({ values: span.map((x) => ({ v: x.recovery, color: zoneColor(x.zone) })), labels, every, max: 100, refs: [{ v: 67, color: 'var(--grid)', dash: true }, { v: 34, color: 'var(--grid)', dash: true }] })}
+    ${recs.length ? note(`Ø ${Math.round(E.mean(recs))} % · <span class="up">${span.filter((x) => x.zone === 'green').length} grün</span>, <span style="color:var(--yellow)">${span.filter((x) => x.zone === 'yellow').length} gelb</span>, <span class="down">${span.filter((x) => x.zone === 'red').length} rot</span>`) : ''}`));
+  const hrvNote = d.hrv7 && d.hrvNormal
+    ? `Heute ${Math.round(d.hrv ?? 0)} ms · 7-Tage-Schnitt ${Math.round(d.hrv7)} ms – ${d.hrvTrend === 'low' ? '<span class="down">unter</span>' : d.hrvTrend === 'high' ? '<span class="up">über</span>' : 'in'} deinem Normalbereich (${Math.round(d.hrvNormal[0])}–${Math.round(d.hrvNormal[1])}). Trend: ${trendWord(E.trend(span.map((x) => x.hrv))) || '–'}. Höher ist besser.`
+    : 'Höher ist besser. Der Normalbereich erscheint nach 3 Wochen Daten.';
+  const rhrs = span.map((x) => x.rhr).filter(isNum);
   parts.push(
     card(
       'HRV',
@@ -726,15 +793,26 @@ function viewRecovery(anim) {
         labels,
         every,
         unit: 'ms',
-      })}<div class="legend"><span>● Nacht</span><span>— 7-Tage-Schnitt</span><span><i style="background:var(--band)"></i>dein Normalbereich</span></div>`,
+      })}<div class="legend"><span>● Nacht</span><span>— 7-Tage-Schnitt</span><span><i style="background:var(--band)"></i>dein Normalbereich</span></div>${note(hrvNote)}`,
       '',
       'hrv',
     ),
   );
-  parts.push(card('Ruhepuls', lines({ series: [{ values: span.map((x) => x.rhr), color: 'var(--red)', width: 1.2, opacity: 0.55, dots: state.range <= 30 }, { values: span.map((x) => x.rhr3), color: 'var(--red)', width: 2.5 }], labels, every, unit: 'bpm' })));
+  parts.push(card('Ruhepuls', `${lines({ series: [{ values: span.map((x) => x.rhr), color: 'var(--red)', width: 1.2, opacity: 0.55, dots: state.range <= 30 }, { values: span.map((x) => x.rhr3), color: 'var(--red)', width: 2.5 }], labels, every, unit: 'bpm' })}
+    ${rhrs.length ? note(`Heute ${d.rhr ?? '–'} bpm · Schnitt ${de1(E.mean(rhrs))} bpm · niedrigster ${Math.min(...rhrs)}, höchster ${Math.max(...rhrs)}. Trend: ${trendWord(E.trend(span.map((x) => x.rhr)), false) || '–'}. Niedriger ist besser – ein Anstieg um 3+ bpm deutet auf Stress, Alkohol oder einen Infekt.`) : ''}`));
   parts.push(influencesCard(m, 5));
   parts.push(`<section class="card slim">${rowLink(I.trends, 'var(--text)', 'Trends & Wochenbericht', 'Kalender, Einflüsse, lange Verläufe', 'data-tab="trends"')}</section>`);
   return parts.join('');
+}
+
+function recoveryCompare(m, i) {
+  const d = m.days[i];
+  const y = m.days[i - 1]?.recovery;
+  const last30 = m.days.slice(Math.max(0, i - 29), i + 1).map((x) => x.recovery).filter(isNum);
+  const avg = last30.length ? Math.round(E.mean(last30)) : null;
+  const rank = last30.length >= 7 ? last30.filter((v) => v < d.recovery).length / last30.length : null;
+  const bits = [y != null ? `gestern ${y} %` : '', avg != null ? `Ø 30 Tage ${avg} %` : '', rank != null ? (rank >= 0.8 ? 'einer deiner besten Tage' : rank <= 0.2 ? 'einer deiner schwächeren Tage' : '') : ''].filter(Boolean);
+  return bits.length ? `<p class="hero-sub">${bits.join(' · ')}</p>` : '';
 }
 
 function factorsCard(d) {
@@ -800,7 +878,13 @@ function stressCard(d) {
     split = `<div class="stressbar">${seg(s.minutes.rest, 'var(--strain)')}${seg(s.minutes.low, '#f6c54488')}${seg(s.minutes.med, 'var(--awake)')}${seg(s.minutes.high, 'var(--red)')}</div>
       <div class="legend"><span>Ruhe ${E.fmtDur(s.minutes.rest)}</span><span>Niedrig ${E.fmtDur(s.minutes.low)}</span><span>Mittel ${E.fmtDur(s.minutes.med)}</span><span>Hoch ${E.fmtDur(s.minutes.high)}</span></div>`;
   }
-  return card('Stress & Energie', `${s.avg != null ? `<div class="row between" style="margin-bottom:6px"><span class="muted small">Stress Ø</span><b>${s.avg} ${s.avg >= 50 ? '· hoch' : s.avg >= 26 ? '· mittel' : '· niedrig'}</b></div>` : ''}${chart}${split}`, '', 'stress');
+  const peak = E.stressPeak(s.series);
+  const bbVals = (s.battery || []).map((p) => p[1]);
+  const notes = [
+    peak && peak.avg >= 35 ? `Am meisten Stress zwischen ${clockDE(peak.from)} und ${clockDE(peak.to)} Uhr (Ø ${Math.round(peak.avg)}).` : '',
+    bbVals.length ? `Body Battery: höchstens ${Math.max(...bbVals)}, zuletzt ${bbVals[bbVals.length - 1]}. Unter 25 = Reserven leer, früh schlafen.` : '',
+  ].filter(Boolean).join(' ');
+  return card('Stress & Energie', `${s.avg != null ? `<div class="row between" style="margin-bottom:6px"><span class="muted small">Stress Ø</span><b>${s.avg} ${s.avg >= 50 ? '· hoch' : s.avg >= 26 ? '· mittel' : '· niedrig'}</b></div>` : ''}${chart}${split}${note(notes)}`, '', 'stress');
 }
 
 function ageCard(m) {
@@ -894,12 +978,24 @@ function viewSleep(anim) {
         every,
         min: 0,
         unit: 'Std.',
-      })}<div class="legend"><span><i style="background:var(--sleep)"></i>≥ 85 %</span><span><i style="background:var(--yellow)"></i>70–84 %</span><span><i style="background:var(--red)"></i>&lt; 70 %</span><span>— Bedarf</span></div>`,
+      })}<div class="legend"><span><i style="background:var(--sleep)"></i>≥ 85 %</span><span><i style="background:var(--yellow)"></i>70–84 %</span><span><i style="background:var(--red)"></i>&lt; 70 %</span><span>— Bedarf</span></div>${sleepNote(span)}`,
     ),
   );
   const win = span.slice(-14);
-  parts.push(card('Schlafenszeiten', sleepWindows(win.map((n) => ({ bed: n.sleep?.bed ?? null, wake: n.sleep?.wake ?? null, label: state.range === 7 ? wdShort(n.date) : shortDate(n.date) })), clockDE)));
+  const beds = win.map((n) => n.sleep?.bed).filter(isNum);
+  const wakes = win.map((n) => n.sleep?.wake).filter(isNum);
+  parts.push(card('Schlafenszeiten', `${sleepWindows(win.map((n) => ({ bed: n.sleep?.bed ?? null, wake: n.sleep?.wake ?? null, label: state.range === 7 ? wdShort(n.date) : shortDate(n.date) })), clockDE)}
+    ${beds.length >= 3 ? note(`Im Schnitt eingeschlafen um ${clockDE(E.mean(beds))} (±${Math.round(E.sd(beds) || 0)} Min.), aufgewacht um ${clockDE(E.mean(wakes))} (±${Math.round(E.sd(wakes) || 0)} Min.). Je gleichmäßiger, desto besser deine Recovery.`) : ''}`));
   return parts.join('');
+}
+
+function sleepNote(span) {
+  const nights = span.filter((n) => n.sleepMin != null);
+  if (nights.length < 2) return '';
+  const avg = E.mean(nights.map((n) => n.sleepMin));
+  const need = E.mean(nights.map((n) => n.need.total));
+  const ok = nights.filter((n) => n.perf >= 85).length;
+  return note(`Ø ${E.fmtDur(avg)} Std. Schlaf bei Ø ${E.fmtDur(need)} Std. Bedarf · ${ok} von ${nights.length} Nächten über 85 %.`);
 }
 
 function needRows(need) {
@@ -958,6 +1054,7 @@ function viewStrain(anim) {
     card(
       'Strain-Coach',
       `${d.target ? `<div class="row between"><span class="muted small">Dein Ziel heute</span><span class="target-pill">${de1(d.target.low)}–${de1(d.target.high)}</span></div>${strainGauge(d.strain, d.target)}` : '<p class="muted small">Ohne Recovery kein Ziel.</p>'}
+      ${d.target && d.strain != null ? `<p class="small" style="margin-bottom:4px">Bisher <b>${de1(d.strain)}</b> von deinem Ziel <b>${de1(d.target.low)}–${de1(d.target.high)}</b> (passend zu Recovery ${d.recovery ?? '–'} %).</p>` : ''}
       ${coach.remaining ? `<p class="small"><b>${esc(coach.remaining.text)}</b></p>` : ''}
       ${coach.plan ? `<p class="small muted" style="margin-top:6px">${esc(coach.plan)}</p>` : ''}`,
       '',
@@ -967,7 +1064,11 @@ function viewStrain(anim) {
 
   if (d.acts.length) parts.push(card('Aktivitäten', d.acts.map(actRow).join('')));
   const series = d.raw.hr?.series;
-  if (series?.length > 5) parts.push(card('Puls im Tagesverlauf', `${hrCurve(series, zones, colors)}<div class="legend">${zones.map((z, k) => `<span><i style="background:${colors[k]}"></i>Z${z.zone}</span>`).join('')}</div>`));
+  if (series?.length > 5) {
+    const top = series.reduce((a, b) => (b[1] > a[1] ? b : a));
+    parts.push(card('Puls im Tagesverlauf', `${hrCurve(series, zones, colors)}<div class="legend">${zones.map((z, k) => `<span><i style="background:${colors[k]}"></i>Z${z.zone}</span>`).join('')}</div>
+      ${note(`Höchster Puls ${top[1]} bpm gegen ${clockDE(top[0])} Uhr · Ruhepuls ${d.rhrRef} bpm. Belastung zählt ab Zone 1 (${zones[0].lo} bpm) – je höher die Zone, desto mehr.`)}`));
+  }
   if (d.zoneMin && d.zoneMin.some((v) => v > 0)) {
     const max = Math.max(1, ...d.zoneMin);
     parts.push(card('Zeit in Pulszonen', `${zones.map((z, k) => `<div class="zonebar"><span>Z${z.zone}</span><div class="bar"><i style="width:${(100 * d.zoneMin[k]) / max}%;background:${colors[k]}"></i></div><span class="m">${d.zoneMin[k]} Min.</span></div>`).join('')}
@@ -979,7 +1080,8 @@ function viewStrain(anim) {
     const pos = Math.max(0, Math.min(100, ((r - 0.4) / 1.4) * 100));
     parts.push(card('Trainingslast', `<div class="row between"><div class="bignum">${r.toFixed(2).replace('.', ',')}</div><div style="color:${color};font-weight:750">${label}</div></div>
       <div class="acwr"><i></i><i></i><i></i><i></i><b style="left:${pos}%"></b></div>
-      <div class="acwr-l"><span>0,4</span><span>0,8</span><span>1,3</span><span>1,5</span><span>1,8</span></div>`, '', 'load'));
+      <div class="acwr-l"><span>0,4</span><span>0,8</span><span>1,3</span><span>1,5</span><span>1,8</span></div>
+      ${note(`Deine letzten 7 Tage im Vergleich zu den 4 Wochen davor. ${r > 1.5 ? 'Du hast deutlich mehr gemacht als gewohnt – jetzt nicht weiter steigern.' : r > 1.3 ? 'Du steigerst gerade schnell – gut beobachten.' : r >= 0.8 ? 'Genau richtig: Du baust Fitness auf, ohne dich zu überlasten.' : 'Weniger als sonst – gut zur Erholung, auf Dauer verlierst du aber Fitness.'}`)}`, '', 'load'));
   }
   const { span, labels, every } = trendSpan();
   const avg7 = span.map((x) => {
@@ -987,7 +1089,10 @@ function viewStrain(anim) {
     return w.length >= 3 ? E.mean(w) : null;
   });
   parts.push(`<h2 class="section">Verlauf</h2>${rangeSeg()}`);
-  parts.push(card('Strain', `${bars({ values: span.map((x) => ({ v: x.strain, color: 'var(--strain)' })), line: avg7, labels, every, max: 21 })}<div class="legend"><span><i style="background:var(--strain)"></i>pro Tag</span><span>— 7-Tage-Schnitt</span></div>`));
+  const strains = span.filter((x) => x.strain != null);
+  const peak = strains.length ? strains.reduce((a, b) => (b.strain > a.strain ? b : a)) : null;
+  parts.push(card('Strain', `${bars({ values: span.map((x) => ({ v: x.strain, color: 'var(--strain)' })), line: avg7, labels, every, max: 21 })}<div class="legend"><span><i style="background:var(--strain)"></i>pro Tag</span><span>— 7-Tage-Schnitt</span></div>
+    ${peak ? note(`Ø ${de1(E.mean(strains.map((x) => x.strain)))} pro Tag · höchster ${de1(peak.strain)} am ${shortDate(peak.date)} · ${strains.filter((x) => x.strain >= 14).length} harte Tage (ab 14).`) : ''}`));
   return parts.join('');
 }
 
@@ -1216,7 +1321,8 @@ function renderSheet() {
       <button class="btn" data-act="save-coach">Speichern & testen</button>`;
   } else if (sh.type === 'setup-push') {
     body = `<h3>Benachrichtigungen</h3>
-      <p class="muted">Puls meldet sich morgens mit deiner Recovery und abends, wenn es Zeit fürs Bett ist.</p>
+      <p class="muted">Puls meldet sich höchstens viermal am Tag:</p>
+      <ul class="steps"><li><b>Morgens</b>, sobald deine Nacht da ist: Recovery, Ziel und Schlaf.</li><li><b>Nachmittags</b>: wie viel Training bis zu deinem Ziel fehlt.</li><li><b>Abends</b>: wann du ins Bett solltest.</li><li><b>Sonntags</b>: dein Wochenbericht.</li></ul>
       ${isStandalone() ? '' : '<p class="small" style="margin:8px 0"><b>Wichtig:</b> Das klappt nur, wenn du Puls vom Home-Bildschirm aus öffnest.</p>'}
       <button class="btn" data-act="enable-push" style="margin-top:12px">Benachrichtigungen erlauben</button>`;
   }
@@ -1344,6 +1450,7 @@ function viewSettings() {
   <section class="card"><h2>Einrichtung</h2>
     <button class="setrow" data-act="setup-sync"><span>Automatisch aktualisieren</span>${status(setup.sync)}</button>
     <button class="setrow" data-act="setup-coach"><span>KI-Coach</span>${status(setup.coach)}</button>
+    <button class="setrow" data-act="setup-push"><span>Benachrichtigungen</span>${status(setup.push)}</button>
     ${setup.coach ? `<label class="field" style="margin-top:12px"><span>Coach-Modell</span><select data-coach-model>${Object.entries(Coach.MODELS).map(([id, mm]) => opt(id, `${mm.label} – ${mm.note}`, cfg.model)).join('')}</select></label>` : ''}
   </section>
 

@@ -1078,3 +1078,49 @@ export function daysTable(model, from, to, journal = {}) {
   }
   return out;
 }
+
+// ---------------------------------------------------------------- Kontext für die Oberfläche
+
+/** Was die Recovery heute gehoben bzw. gebremst hat – stärkster Einfluss zuerst. */
+export function recoveryDrivers(d) {
+  const out = [];
+  for (const c of d.comps || []) {
+    if (c.key === 'hrv') {
+      const p = 100 * (c.value / c.ref - 1);
+      out.push({ key: 'hrv', label: `HRV ${signed(p)} %`, good: p >= 0, neutral: Math.abs(p) < 3, impact: c.w * (c.score - 56) });
+    } else if (c.key === 'rhr') {
+      const diff = Math.round(c.value - c.ref);
+      out.push({ key: 'rhr', label: `Ruhepuls ${signed(diff)} bpm`, good: diff <= 0, neutral: Math.abs(diff) <= 1, impact: c.w * (c.score - 56) });
+    } else if (c.key === 'sleep') {
+      out.push({ key: 'sleep', label: `Schlaf ${Math.round(d.perf)} %`, good: d.perf >= 85, neutral: d.perf >= 80 && d.perf < 90, impact: c.w * (c.score - 80) });
+    }
+  }
+  for (const p of d.penalties || []) {
+    out.push({ key: p.key, label: p.key === 'resp' ? `Atmung ${signed(p.delta, 1)}` : `Temperatur ${signed(p.delta, 1)} °C`, good: false, impact: -p.points });
+  }
+  return out.sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact));
+}
+
+/** Trend der letzten 7 Werte gegenüber den 7 davor. */
+export function trend(values, rel = 0.03) {
+  const v = values.filter(isNum);
+  if (v.length < 8) return null;
+  const a = mean(v.slice(-7));
+  const b = mean(v.slice(-14, -7));
+  if (!b) return null;
+  const change = (a - b) / Math.abs(b);
+  return { dir: change > rel ? 'up' : change < -rel ? 'down' : 'flat', change, recent: a, before: b };
+}
+
+/** Zeitraum mit dem höchsten Stress (2-Stunden-Fenster) aus der 10-Minuten-Kurve. */
+export function stressPeak(series) {
+  if (!series || series.length < 12) return null;
+  let best = null;
+  for (let k = 0; k + 12 <= series.length; k++) {
+    const win = series.slice(k, k + 12);
+    if (win[11][0] - win[0][0] > 150) continue;
+    const m = mean(win.map((p) => p[1]));
+    if (!best || m > best.avg) best = { from: win[0][0], to: win[11][0] + 10, avg: m };
+  }
+  return best;
+}

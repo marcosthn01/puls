@@ -1,8 +1,19 @@
 name: Puls Sync
 
 # Holt deine Garmin-Daten, verschlüsselt sie und veröffentlicht die App auf GitHub Pages.
-# Kein Zeitplan: Die App startet den Abruf selbst, sobald du sie öffnest.
+#
+# Wann abgerufen wird:
+# - Wenn du Puls öffnest (die App startet den Lauf selbst).
+# - Morgens: alle 20 Min., bis deine Nacht da ist – dann Benachrichtigung und Schluss für den Morgen.
+# - Nachmittags einmal (Trainingsziel, sonntags Wochenbericht) und abends zur Schlafenszeit –
+#   nur wenn Benachrichtigungen eingerichtet sind.
+# Geplante Läufe ohne Anlass enden nach wenigen Sekunden, ohne Garmin zu fragen.
+# Zeiten im Zeitplan sind UTC (Deutschland = UTC+1 im Winter, UTC+2 im Sommer).
 on:
+  schedule:
+    - cron: "*/20 3-9 * * *"      # Morgen-Fenster
+    - cron: "17 14,15 * * *"      # Nachmittag
+    - cron: "17,47 17-23 * * *"   # Abend (Schlaf-Erinnerung)
   workflow_dispatch:
     inputs:
       mfa_code:
@@ -25,13 +36,47 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
   group: puls-sync
   cancel-in-progress: false
 
 jobs:
+  plan:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sync: ${{ steps.plan.outputs.sync }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Zwischenspeicher laden
+        uses: actions/cache/restore@v6
+        with:
+          path: .puls-cache
+          key: puls-plan-${{ github.run_id }}
+          restore-keys: puls-
+
+      - name: Planen
+        id: plan
+        env:
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          PULS_TIMEZONE: Europe/Berlin
+        run: node sync/notify.mjs plan .puls-cache
+
+      # GitHub pausiert geplante Läufe nach 60 Tagen ohne Repo-Aktivität – das verhindert es.
+      - name: Zeitplan aktiv halten
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/sync.yml/enable"
+
   sync:
+    needs: plan
+    # Von der App gestartet: sofort (ohne Planungsschritt). Geplant: nur wenn es einen Anlass gibt.
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || needs.plan.outputs.sync == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment:
@@ -70,6 +115,16 @@ jobs:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
           PULS_TIMEZONE: Europe/Berlin
         run: python sync/puls_sync.py --cache .puls-cache --site-url "${{ steps.pages.outputs.base_url }}"
+
+      - name: Benachrichtigungen
+        continue-on-error: true
+        env:
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          PULS_TIMEZONE: Europe/Berlin
+          PULS_SITE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          npm install --no-save --no-package-lock --silent web-push@3.6.7
+          node sync/notify.mjs send .puls-cache
 
       - name: Zwischenspeicher sichern
         if: always()
