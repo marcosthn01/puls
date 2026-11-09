@@ -1371,5 +1371,35 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
+// Für den Selbsttest (tests/live_check.mjs): nur Anzahlen, keine Werte
+window.__puls = {
+  summary() {
+    const m = state.model;
+    if (!m || m.empty) return { view: state.view, status: state.store?.status || null, days: 0 };
+    const count = (f) => m.days.filter(f).length;
+    return {
+      view: state.view,
+      status: state.store?.status || null,
+      days: m.days.length,
+      latestIsToday: m.days[m.days.length - 1].date === todayIso(),
+      sleep: count((d) => d.sleep),
+      sleepTimes: count((d) => d.sleep?.bed != null),
+      levels: count((d) => d.sleep?.levels?.length),
+      hrv: count((d) => d.hrv != null),
+      rhr: count((d) => d.rhr != null),
+      resp: count((d) => d.resp != null),
+      hist: count((d) => Array.isArray(d.raw.hr?.hist)),
+      series: count((d) => d.raw.hr?.series?.length),
+      stats: count((d) => d.stats?.steps != null),
+      acts: m.days.reduce((s, d) => s + d.acts.length, 0),
+      recovery: count((d) => d.recovery != null),
+      strain: count((d) => d.strain != null),
+      zones: { green: count((d) => d.zone === 'green'), yellow: count((d) => d.zone === 'yellow'), red: count((d) => d.zone === 'red') },
+      influencesReady: m.influences.ready,
+      profile: Object.keys(m.profile || {}),
+    };
+  },
+};
+
 render();
 loadData();
