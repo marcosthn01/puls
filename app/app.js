@@ -1,11 +1,11 @@
 // Puls – Oberfläche. Lädt data.enc.json, entschlüsselt sie auf dem Gerät und zeigt die Auswertung.
 
 import * as E from './engine.js';
-import { arcGauge, bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, strainGauge, orb, startOrbs } from './charts.js';
+import { arcGauge, bars, esc, hrCurve, hypnogram, innerOrb, lines, rangeBar, ring, sleepWindows, strainGauge, orb, startOrbs } from './charts.js';
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '4.3.1';
+const VERSION = '4.4.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -165,6 +165,10 @@ function ago(ts) {
   return `vor ${Math.round(min / 1440)} Tg.`;
 }
 const zoneColor = (z) => ({ green: 'var(--green)', yellow: 'var(--yellow)', red: 'var(--red)' })[z] || 'var(--muted)';
+const zoneHex = (z) => ({ green: '#1ee08e', yellow: '#ffd03d', red: '#ff5148' })[z] || '#8b9198';
+const HEX = { sleep: '#8d84ff', strain: '#2f8eff' };
+/** Ring mit schwebender Kugel im Inneren. */
+const orbRing = (ringSvg, hex, px = 120) => `<div class="ringorb">${innerOrb(hex, px)}${ringSvg}</div>`;
 const zoneName = (z) => ({ green: 'Grün', yellow: 'Gelb', red: 'Rot' })[z] || '';
 const scoreColor = (s) => (s >= 67 ? 'var(--green)' : s >= 34 ? 'var(--yellow)' : 'var(--red)');
 const sign = (v, digits = 0) => {
@@ -576,11 +580,13 @@ function animateCounts() {
     const target = Number(el.dataset.count);
     const digits = Number(el.dataset.digits || 0);
     const suffix = el.dataset.suffix || '';
+    const sep = el.dataset.sep === '1';
     const t0 = performance.now();
     const step = (t) => {
-      const k = Math.min(1, (t - t0) / 900);
-      const e = 1 - (1 - k) ** 3;
-      el.textContent = (target * e).toFixed(digits).replace('.', ',') + suffix;
+      const k = Math.min(1, (t - t0) / 1100);
+      const e = 1 - (1 - k) ** 4;
+      const v = target * e;
+      el.textContent = (sep ? Math.round(v).toLocaleString('de-DE') : v.toFixed(digits).replace('.', ',')) + suffix;
       if (k < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
@@ -655,9 +661,9 @@ function dials(d, anim) {
   ];
   const R = { size: 104, stroke: 8, labelSize: 30, anim };
   return `<section class="rings v4">
-    <button class="ringbox" data-tab="schlaf">${ring({ ...R, value: d.perf, max: 100, color: 'var(--sleep)', label: d.perf == null ? '–' : `${Math.round(d.perf)}%`, count: d.perf == null ? null : Math.round(d.perf), suffix: '%' })}<span class="cap">Schlaf <i>›</i></span>${caps[0]}</button>
-    <button class="ringbox" data-tab="recovery">${ring({ ...R, value: d.recovery, max: 100, color: zoneColor(d.zone), label: d.recovery == null ? '–' : `${d.recovery}%`, count: d.recovery, suffix: '%' })}<span class="cap">Recovery <i>›</i></span>${caps[1]}</button>
-    <button class="ringbox" data-tab="belastung">${ring({ ...R, value: d.strain, max: 21, color: 'var(--strain)', label: de1(d.strain), count: d.strain, digits: 1 })}<span class="cap">Strain <i>›</i></span>${caps[2]}</button>
+    <button class="ringbox" data-tab="schlaf">${orbRing(ring({ ...R, value: d.perf, max: 100, color: 'var(--sleep)', label: d.perf == null ? '–' : `${Math.round(d.perf)}%`, count: d.perf == null ? null : Math.round(d.perf), suffix: '%' }), HEX.sleep, 64)}<span class="cap">Schlaf <i>›</i></span>${caps[0]}</button>
+    <button class="ringbox" data-tab="recovery">${orbRing(ring({ ...R, value: d.recovery, max: 100, color: zoneColor(d.zone), label: d.recovery == null ? '–' : `${d.recovery}%`, count: d.recovery, suffix: '%' }), zoneHex(d.zone), 64)}<span class="cap">Recovery <i>›</i></span>${caps[1]}</button>
+    <button class="ringbox" data-tab="belastung">${orbRing(ring({ ...R, value: d.strain, max: 21, color: 'var(--strain)', label: de1(d.strain), count: d.strain, digits: 1 }), HEX.strain, 64)}<span class="cap">Strain <i>›</i></span>${caps[2]}</button>
   </section>`;
 }
 
@@ -787,8 +793,9 @@ function dashTiles(m, i) {
     const xs = hist.map(f).filter(isNum);
     return xs.length >= 5 ? E.mean(xs) : null;
   };
-  const tileBtn = (attr, title, sub, icon, label, color = 'var(--text)') =>
-    `<button class="dtile" ${attr}><span class="dt-top"><b>${title}</b><i>${I.chevron}</i></span><span class="dt-sub">${sub}</span><span class="dt-foot"><span class="dt-ic" style="color:${color}">${icon}</span>${label}</span></button>`;
+  const cnt = (v) => ` data-count="${Math.round(v)}" data-sep="1"`;
+  const tileBtn = (attr, title, sub, icon, label, color = 'var(--text)', num = null) =>
+    `<button class="dtile" ${attr}><span class="dt-top"><b${num != null ? cnt(num) : ''}>${title}</b><i>${I.chevron}</i></span><span class="dt-sub">${sub}</span><span class="dt-foot"><span class="dt-ic" style="color:${color}">${icon}</span>${label}</span></button>`;
   const tiles = [];
   if (v.items.length) {
     const measured = v.items.filter((x) => x.status !== 'na').length;
@@ -801,9 +808,9 @@ function dashTiles(m, i) {
   }
   if (isNum(st.steps)) {
     const a = avg((x) => x.stats?.steps);
-    tiles.push(tileBtn('data-tab="belastung"', int(st.steps), a != null ? `Ø ${int(a)}` : st.stepGoal ? `Ziel ${int(st.stepGoal)}` : '&nbsp;', I.steps, st.padSteps ? 'Schritte · inkl. Pad' : 'Schritte'));
+    tiles.push(tileBtn('data-tab="belastung"', int(st.steps), a != null ? `Ø ${int(a)}` : st.stepGoal ? `Ziel ${int(st.stepGoal)}` : '&nbsp;', I.steps, st.padSteps ? 'Schritte · inkl. Pad' : 'Schritte', 'var(--text)', st.steps));
   }
-  if (isNum(d.rhr)) tiles.push(tileBtn('data-tab="recovery"', `${d.rhr}`, `Ø ${d.rhrRef}`, I.heart, 'Ruhepuls'));
+  if (isNum(d.rhr)) tiles.push(tileBtn('data-tab="recovery"', `${d.rhr}`, `Ø ${d.rhrRef}`, I.heart, 'Ruhepuls', 'var(--text)', d.rhr));
   else if (isNum(d.hrv)) tiles.push(tileBtn('data-tab="recovery"', `${d.hrv}`, 'HRV ms', I.heart, 'HRV'));
   return tiles.length ? `<section class="dtiles">${tiles.join('')}</section>` : '';
 }
@@ -834,11 +841,12 @@ function reportCard(m, i) {
   const r = today.report;
   const sec = (key, icon, title) => {
     const x = r[key];
-    return `<details class="rp-sec"><summary><span class="dt-ic">${icon}</span>${title}</summary><p>${rich(x.text)}</p>${x.punkte.length ? `<ul>${x.punkte.map((p) => `<li>${rich(p)}</li>`).join('')}</ul>` : ''}</details>`;
+    const pts = x.punkte.slice(0, 2);
+    return `<details class="rp-sec"><summary><span class="dt-ic">${icon}</span>${title}</summary><p>${rich(x.text)}</p>${pts.length ? `<ul>${pts.map((p) => `<li>${rich(p)}</li>`).join('')}</ul>` : ''}</details>`;
   };
   const level = { arzt: ['var(--red)', 'Ärztlich abklären'], beobachten: ['var(--yellow)', 'Beobachten'], info: ['var(--muted)', 'Info'] };
   const notes = r.hinweise.length
-    ? `<div class="rp-notes">${r.hinweise.map((h) => `<div class="rp-note"><i style="background:${(level[h.stufe] || level.info)[0]}"></i><div><b>${(level[h.stufe] || level.info)[1]}</b> ${rich(h.text)}</div></div>`).join('')}</div>`
+    ? `<div class="rp-notes">${r.hinweise.slice(0, 2).map((h) => `<div class="rp-note"><i style="background:${(level[h.stufe] || level.info)[0]}"></i><div><b>${(level[h.stufe] || level.info)[1]}</b> ${rich(h.text)}</div></div>`).join('')}</div>`
     : '';
   const when = new Date(today.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   const label = Coach.MODELS[today.model]?.label || 'Claude';
@@ -999,7 +1007,9 @@ function statsCard(m, i) {
   return `<section class="dlist">${rows
     .map((r) => {
       const [icon, tab] = STAT_UI[r.key] || [I.act, 'heute'];
-      return `<button class="drow" data-tab="${tab}"><span class="dr-ic">${icon}</span><span class="dr-main"><b>${fmtVal(r.value, r.digits)}${r.unit ? `<small>${r.unit}</small>` : ''}</b><span>${r.label}${r.base == null ? '' : ` · Ø ${fmtVal(r.base, r.digits)}`}</span></span>${arrow(r)}<span class="dr-chev">${I.chevron}</span></button>`;
+      const countable = typeof r.digits === 'number' && isNum(r.value);
+      const ca = countable ? ` data-count="${r.digits ? r.value.toFixed(r.digits) : Math.round(r.value)}" data-digits="${r.digits}"${!r.digits && r.value >= 1000 ? ' data-sep="1"' : ''}` : '';
+      return `<button class="drow" data-tab="${tab}"><span class="dr-ic">${icon}</span><span class="dr-main"><b><span${ca}>${fmtVal(r.value, r.digits)}</span>${r.unit ? `<small>${r.unit}</small>` : ''}</b><span>${r.label}${r.base == null ? '' : ` · Ø ${fmtVal(r.base, r.digits)}`}</span></span>${arrow(r)}<span class="dr-chev">${I.chevron}</span></button>`;
     })
     .join('')}</section>${note('Ø = dein Schnitt der letzten 30 Tage · ▲▼ grün = besser als sonst, rot = schlechter')}`;
 }
@@ -1020,7 +1030,7 @@ function viewRecovery(anim) {
   const { span, labels, every } = trendSpan();
   const parts = [];
   parts.push(`<section class="hero" style="--glow:${zoneColor(d.zone)}">
-    ${ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 200, stroke: 16, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : `Recovery · ${zoneName(d.zone)}`, labelSize: 54, count: d.recovery, suffix: '%', anim, glow: true })}
+    ${orbRing(ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 200, stroke: 16, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : `Recovery · ${zoneName(d.zone)}`, labelSize: 54, count: d.recovery, suffix: '%', anim, glow: true }), zoneHex(d.zone), 156)}
     <p class="hero-text">${d.recovery == null ? 'Für diesen Tag fehlen die Schlafdaten.' : esc(d.alarm ? 'Mehrere Werte auffällig – vielleicht ein Infekt. Heute ist Ruhe das beste Training.' : ZONE_TEXT[d.zone])} ${infoBtn('recovery')}</p>
     ${d.recovery != null ? recoveryCompare(m, i) : ''}
     ${driversLine(d)}
@@ -1220,7 +1230,7 @@ function viewSleep(anim) {
 
   if (s) {
     parts.push(`<section class="hero" style="--glow:var(--sleep)">
-      ${ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 184, stroke: 15, label: `${Math.round(d.perf)}%`, sub: 'Performance', labelSize: 48, count: Math.round(d.perf), suffix: '%', anim, glow: true })}
+      ${orbRing(ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 184, stroke: 15, label: `${Math.round(d.perf)}%`, sub: 'Performance', labelSize: 48, count: Math.round(d.perf), suffix: '%', anim, glow: true }), HEX.sleep, 142)}
       <div class="hero-stats">
         <div><span>${E.fmtDur(d.sleepMin)}</span><small>geschlafen</small></div>
         <div><span>${E.fmtDur(d.need.total)}</span><small>Bedarf</small></div>
@@ -1322,7 +1332,7 @@ function viewStrain(anim) {
   const parts = [];
 
   parts.push(`<section class="hero" style="--glow:var(--strain)">
-    ${ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 184, stroke: 15, label: de1(d.strain), sub: 'Strain von 21', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 48, count: d.strain, digits: 1, anim, glow: true })}
+    ${orbRing(ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 184, stroke: 15, label: de1(d.strain), sub: 'Strain von 21', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 48, count: d.strain, digits: 1, anim, glow: true }), HEX.strain, 142)}
     <div class="hero-stats three">
       <div><span>${d.stats?.kcal != null ? int(d.stats.kcal) : '–'}</span><small>kcal</small></div>
       <div><span>${d.stats?.steps != null ? int(d.stats.steps) : '–'}</span><small>Schritte</small></div>

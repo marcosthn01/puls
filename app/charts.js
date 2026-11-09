@@ -29,10 +29,16 @@ export function ring({ value, max, color, size = 132, stroke = 11, label = '', s
       stroke-dasharray="${f1(c)} ${f1(c)}" stroke-dashoffset="${f1(c * (1 - frac))}" transform="rotate(-90 ${mid} ${mid})"/>`
       : '';
   const countAttr = count != null && anim ? ` data-count="${count}" data-digits="${digits}" data-suffix="${esc(suffix)}"` : '';
+  let tip = '';
+  if (frac > 0.02 && frac < 0.995) {
+    const a = -Math.PI / 2 + frac * 2 * Math.PI;
+    tip = `<circle class="ringtip" cx="${f1(mid + r * Math.cos(a))}" cy="${f1(mid + r * Math.sin(a))}" r="${f1(stroke * 0.3)}" fill="#fff"/>`;
+  }
   const style = glow && frac > 0 ? ` style="filter:drop-shadow(0 0 ${Math.round(size / 16)}px ${color})"` : '';
   return `<svg class="ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(label)} ${esc(sub)}"${style}>
     <circle cx="${mid}" cy="${mid}" r="${f1(r)}" fill="none" stroke="var(--track)" stroke-width="${stroke}"/>
     ${valArc}
+    ${tip}
     ${bandArc}
     <text x="${mid}" y="${mid + (sub ? labelSize * 0.18 : labelSize * 0.35)}" text-anchor="middle" class="ring-label" style="font-size:${labelSize}px"${countAttr}>${esc(label)}</text>
     ${sub ? `<text x="${mid}" y="${mid + labelSize * 0.18 + Math.max(16, labelSize * 0.5)}" text-anchor="middle" class="ring-sub" style="font-size:${Math.max(11, Math.round(labelSize * 0.33))}px">${esc(sub)}</text>` : ''}
@@ -102,6 +108,11 @@ export function orb({ size = 168, color = '#1ee08e', label = '', sub = '' }) {
   return `<div class="orbwrap" style="--orb:${color};width:${size}px;height:${size}px"><canvas class="orb" data-orb="${color}" width="${size * 2}" height="${size * 2}" style="width:${size}px;height:${size}px"></canvas><div class="orb-txt"><b>${esc(label)}</b><span>${esc(sub)}</span></div></div>`;
 }
 
+/** Kleine Kugel, die im Inneren eines Rings schwebt (ohne Rand und Umlaufbahn). */
+export function innerOrb(color, px = 120) {
+  return `<canvas class="orb inner" data-orb="${color}" data-soft="1" data-plain="1" width="${px * 2}" height="${px * 2}" aria-hidden="true"></canvas>`;
+}
+
 /** Zeichnet alle Kugeln auf der Seite: weiches Licht im Inneren, kreisende Lichtpunkte. */
 export function startOrbs(root = document) {
   const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -114,15 +125,36 @@ export function startOrbs(root = document) {
     const R = W2 * 0.4;
     const color = cv.dataset.orb;
     const rgb = hexRgb(color);
-    const dots = Array.from({ length: 90 }, (_, k) => ({ th: Math.acos(1 - (2 * (k + 0.5)) / 90), ph: k * 2.39996, s: 0.6 + ((k * 37) % 10) / 10 }));
+    const soft = cv.dataset.soft === '1';
+    const plain = cv.dataset.plain === '1';
+    const k = soft ? 0.5 : 1;
+    // Nur zeichnen, solange die Kugel zu sehen ist (spart Akku)
+    let visible = true;
+    let running = false;
+    if (typeof IntersectionObserver === 'function') {
+      const io = new IntersectionObserver((entries) => {
+        visible = entries.some((en) => en.isIntersecting);
+        if (visible && !running && !still && cv.isConnected) {
+          running = true;
+          requestAnimationFrame(frame);
+        }
+        if (!cv.isConnected) io.disconnect();
+      });
+      io.observe(cv);
+    }
+    const nDots = cv.dataset.plain === '1' ? 40 : 90;
+    const dots = Array.from({ length: nDots }, (_, j) => ({ th: Math.acos(1 - (2 * (j + 0.5)) / nDots), ph: j * 2.39996, s: 0.6 + ((j * 37) % 10) / 10 }));
     const t0 = performance.now();
     const frame = (now) => {
-      if (!cv.isConnected) return;
+      if (!cv.isConnected || (!visible && !still)) {
+        running = false;
+        return;
+      }
       const t = (now - t0) / 1000;
       ctx.clearRect(0, 0, W2, W2);
       // Außenleuchten
-      const glow = ctx.createRadialGradient(c, c, R * 0.7, c, c, R * 1.25);
-      glow.addColorStop(0, `rgba(${rgb},0.35)`);
+      const glow = ctx.createRadialGradient(c, c, R * 0.7, c, c, R * (plain ? 1.05 : 1.25));
+      glow.addColorStop(0, `rgba(${rgb},${0.35 * k})`);
       glow.addColorStop(1, `rgba(${rgb},0)`);
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, W2, W2);
@@ -132,9 +164,9 @@ export function startOrbs(root = document) {
       ctx.arc(c, c, R, 0, Math.PI * 2);
       ctx.clip();
       const body = ctx.createRadialGradient(c - R * 0.35, c - R * 0.4, R * 0.1, c, c, R);
-      body.addColorStop(0, `rgba(${rgb},0.55)`);
-      body.addColorStop(0.55, `rgba(${rgb},0.18)`);
-      body.addColorStop(1, 'rgba(4,8,8,0.95)');
+      body.addColorStop(0, `rgba(${rgb},${0.55 * k})`);
+      body.addColorStop(0.55, `rgba(${rgb},${0.18 * k})`);
+      body.addColorStop(1, plain ? `rgba(${rgb},0)` : 'rgba(4,8,8,0.95)');
       ctx.fillStyle = body;
       ctx.fillRect(c - R, c - R, 2 * R, 2 * R);
       // wandernde Lichtschleier
@@ -144,7 +176,7 @@ export function startOrbs(root = document) {
         const bx = c + Math.cos(a) * R * 0.38;
         const by = c + Math.sin(a * 1.3) * R * 0.32;
         const g = ctx.createRadialGradient(bx, by, 0, bx, by, R * (0.55 - k * 0.08));
-        g.addColorStop(0, `rgba(${rgb},${0.32 - k * 0.07})`);
+        g.addColorStop(0, `rgba(${rgb},${(0.32 - k * 0.07) * (soft ? 0.7 : 1)})`);
         g.addColorStop(1, `rgba(${rgb},0)`);
         ctx.fillStyle = g;
         ctx.fillRect(c - R, c - R, 2 * R, 2 * R);
@@ -158,13 +190,17 @@ export function startOrbs(root = document) {
         const z3 = Math.sin(d.th) * Math.sin(ph);
         const depth = (z3 + 1) / 2;
         const tw = 0.55 + 0.45 * Math.sin(t * 2 * d.s + d.ph);
-        ctx.fillStyle = `rgba(255,255,255,${(0.08 + depth * 0.6) * tw})`;
+        ctx.fillStyle = `rgba(255,255,255,${(0.08 + depth * 0.6) * tw * k})`;
         ctx.beginPath();
         ctx.arc(c + x3 * R * 0.86, c + y3 * R * 0.86, (0.8 + depth * 1.8) * (W2 / 336) * d.s, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
       ctx.globalCompositeOperation = 'source-over';
+      if (plain) {
+        if (!still) requestAnimationFrame(frame);
+        return;
+      }
       // Rand und Umlaufbahn
       ctx.strokeStyle = `rgba(${rgb},0.55)`;
       ctx.lineWidth = W2 / 160;
@@ -189,6 +225,7 @@ export function startOrbs(root = document) {
       ctx.restore();
       if (!still) requestAnimationFrame(frame);
     };
+    running = true;
     requestAnimationFrame(frame);
   });
 }

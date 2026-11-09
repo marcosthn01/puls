@@ -939,3 +939,39 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 .breath-txt { position: absolute; font-family: var(--display); font-size: 22px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); }
 .breath-time { text-align: center; font-family: var(--display); font-size: 28px; font-weight: 700; margin-bottom: 12px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .breath.run .breath-orb { animation-duration: 10s; } }
+
+/* ================= v4.4: lebendig, aber ruhig ================= */
+
+/* Kugel schwebt im Inneren der Ringe */
+.ringorb { position: relative; display: grid; place-items: center; width: 100%; }
+.ringorb > .orb.inner { position: absolute; left: 50%; top: 50%; width: 64%; height: auto; aspect-ratio: 1; transform: translate(-50%, -50%); pointer-events: none; animation: innerfloat 7s ease-in-out infinite; opacity: 0.9; }
+.rings.v4 .ringorb { max-width: 104px; margin: 0 auto; }
+.rings.v4 .ringbox:nth-child(2) .orb.inner { animation-delay: -2.3s; }
+.rings.v4 .ringbox:nth-child(3) .orb.inner { animation-delay: -4.6s; }
+.ringorb > svg { position: relative; z-index: 1; }
+.hero .ringorb { width: auto; }
+.hero .ringorb > .orb.inner { width: 74%; }
+@keyframes innerfloat { 0%, 100% { transform: translate(-50%, calc(-50% - 2px)); } 50% { transform: translate(-50%, calc(-50% + 3px)); } }
+
+/* Lichtpunkt am Ringende */
+.ringtip { transform-box: fill-box; transform-origin: center; filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.9)); animation: tipin 0.5s ease both 1.15s, tippulse 3.2s ease-in-out infinite 1.7s; }
+@keyframes tipin { from { opacity: 0; transform: scale(0.2); } }
+@keyframes tippulse { 0%, 100% { transform: scale(1); opacity: 0.95; } 50% { transform: scale(1.3); opacity: 0.65; } }
+
+/* Kaum sichtbare Lichtschleier hinter den drei Ringen */
+.rings.v4 { position: relative; isolation: isolate; }
+.rings.v4::before, .rings.v4::after {
+  content: ''; position: absolute; z-index: -1; width: 70%; height: 140%; top: -20%; border-radius: 50%; filter: blur(40px); opacity: 0.13; pointer-events: none;
+}
+.rings.v4::before { left: -10%; background: radial-gradient(closest-side, var(--sleep), transparent); animation: veil1 22s ease-in-out infinite; }
+.rings.v4::after { right: -10%; background: radial-gradient(closest-side, var(--strain), transparent); animation: veil2 26s ease-in-out infinite; }
+@keyframes veil1 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(18%, 6%) scale(1.12); } }
+@keyframes veil2 { 0%, 100% { transform: translate(0, 0) scale(1.05); } 50% { transform: translate(-16%, -6%) scale(0.95); } }
+
+/* Tagesbericht: luftiger, weniger Text */
+.rp-sum { font-size: 15px; color: #d3d8dc; }
+.rp-sec p { font-size: 14.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ringorb > .orb.inner, .ringtip, .rings.v4::before, .rings.v4::after { animation: none !important; }
+}

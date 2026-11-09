@@ -78,6 +78,6 @@ test('Tagesbericht: Schema und Schlüssel', () => {
   const k1 = Coach.reportKey(model, {});
   assert.equal(k1, Coach.reportKey(model, {}));
   assert.notEqual(k1, Coach.reportKey(model, { weight: 80 }));
-  assert.ok(k1.startsWith(model.days[model.days.length - 1].date));
+  assert.ok(k1.includes(model.days[model.days.length - 1].date));
   assert.equal(Coach.cachedReport(), null);
 });

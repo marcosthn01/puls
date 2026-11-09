@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: App-Dateien aus dem Cache, Daten immer zuerst frisch aus dem Netz.
-const VERSION = 'puls-v4.3.1';
+const VERSION = 'puls-v4.4.0';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'engine.js', 'charts.js', 'crypto.js', 'demo.js', 'coach.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
