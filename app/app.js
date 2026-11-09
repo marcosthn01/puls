@@ -5,7 +5,7 @@ import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, str
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '3.4.0';
+const VERSION = '4.0.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -113,6 +113,13 @@ const I = {
   walk: svg('<circle cx="12" cy="4.5" r="1.8"/><path d="M10 21l1.5-6L9 12l1-4 4 1 2 4"/><path d="M14 21l-1-5"/>'),
   swim: svg('<path d="M2 18c2 0 2-1.5 4-1.5S8 18 10 18s2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/><circle cx="16" cy="7" r="1.8"/><path d="M5 13l5-5 4 3 3-1"/>'),
   act: svg('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
+  user: svg('<circle cx="12" cy="8.5" r="3.6"/><path d="M4.5 20c1.4-3.6 4.2-5.4 7.5-5.4s6.1 1.8 7.5 5.4"/>'),
+  watch: svg('<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l.6-3h4.8l.6 3M9 18l.6 3h4.8l.6-3"/>'),
+  heart: svg('<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>'),
+  steps: svg('<path d="M7 16c-1.6 0-2.5-1.3-2.5-3.2S5.6 7 7.4 7 9.6 9.3 9.4 11.4 8.6 16 7 16z"/><path d="M5.3 18.5h3.4"/><path d="M16.6 13c1.6 0 2.5-1.3 2.5-3.2S18 4 16.2 4 14 6.3 14.2 8.4 15 13 16.6 13z"/><path d="M14.9 15.5h3.4"/>'),
+  stress: svg('<path d="M4 15a8 8 0 1 1 16 0"/><path d="M12 15l3.5-4.5"/><path d="M4 19h16"/>'),
+  flame: svg('<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.4-5.2 3.4-8.3.9 1.8 2 2.8 3.1 3.3.4-2.3 1.4-4.4 3.5-6.3.4 3.3 3 5.5 3 10.3 0 4-2.9 7.2-6.5 7.2z"/>'),
+  lungs: svg('<path d="M12 4v8"/><path d="M12 12c-1.5-1-3-1-3 1v5c0 1.7-1.6 2.5-3 1.8C4.7 19.2 4 17.8 4 16v-3.5C4 9 6 7 8 7c1.6 0 2.5 1.6 2.5 3"/><path d="M12 12c1.5-1 3-1 3 1v5c0 1.7 1.6 2.5 3 1.8 1.3-.6 2-2 2-3.8v-3.5C20 9 18 7 16 7c-1.6 0-2.5 1.6-2.5 3"/>'),
 };
 const actIcon = (type = '') => {
   if (/run|trail|treadmill/.test(type)) return I.run;
@@ -466,7 +473,7 @@ function syncChip() {
   const stale = gen && Date.now() - new Date(gen).getTime() > 3 * 3600e3;
   const cls = state.syncing ? 'busy' : st.auth && st.auth !== 'ok' ? 'bad' : stale ? 'warn' : '';
   const text = state.demo ? 'Demo' : state.syncing ? 'Aktualisiere …' : ago(gen);
-  return `<button class="chip" id="syncchip" data-act="refresh" aria-label="Aktualisieren"><span class="dot ${cls}"></span>${esc(text)}</button>`;
+  return `<button class="chip sync" id="syncchip" data-act="refresh" aria-label="Aktualisieren">${esc(text)}<span class="wchip">${I.watch}<span class="dot ${cls}"></span></span></button>`;
 }
 /** Nur den Sync-Status neu zeichnen (ohne die Seite neu aufzubauen, z. B. während des Chats). */
 function renderChrome() {
@@ -491,17 +498,22 @@ function weekStrip() {
 
 function dayHeader() {
   const d = state.model.days[state.sel];
-  return `<header class="top">
-    <button class="iconbtn" data-act="settings" aria-label="Einstellungen">${I.gear}</button>
-    <div class="title center"><div class="day">${dayTitle(d.date)}${state.demo ? '<span class="demo-tag">DEMO</span>' : ''}</div><div class="date">${longDate(d.date)}</div></div>
+  const last = state.model.days.length - 1;
+  return `<header class="top v4">
+    <button class="avatar" data-act="settings" aria-label="Einstellungen">${I.user}</button>
+    <div class="datepill">
+      <button data-act="day-prev" aria-label="Vorheriger Tag" ${state.sel <= 0 ? 'disabled' : ''}>${I.back}</button>
+      <span><b>${dayTitle(d.date)}</b>${state.demo ? '<i class="demo-tag">DEMO</i>' : ''}</span>
+      <button data-act="day-next" aria-label="Nächster Tag" ${state.sel >= last ? 'disabled' : ''}>${I.chevron}</button>
+    </div>
     ${syncChip()}
   </header>${weekStrip()}`;
 }
 
 function simpleHeader(title, back = false, right = null) {
-  return `<header class="top">
-    <button class="iconbtn" data-act="${back ? 'back' : 'settings'}" aria-label="${back ? 'Zurück' : 'Einstellungen'}">${back ? I.back : I.gear}</button>
-    <div class="title center"><div class="day">${title}${state.demo ? '<span class="demo-tag">DEMO</span>' : ''}</div></div>
+  return `<header class="top v4 simple">
+    ${back ? `<button class="avatar plain" data-act="back" aria-label="Zurück">${I.back}</button>` : `<button class="avatar" data-act="settings" aria-label="Einstellungen">${I.user}</button>`}
+    <div class="ptitle">${title}${state.demo ? '<i class="demo-tag">DEMO</i>' : ''}</div>
     ${right ?? syncChip()}
   </header>`;
 }
@@ -632,10 +644,11 @@ function dials(d, anim) {
     cmp(d.recovery, y?.recovery, (v) => `${Math.round(v)}`),
     d.target ? `<span class="capsub muted">${esc(E.buildCoach(state.model, d.i).remaining?.short || '')}</span>` : '<span class="capsub">&nbsp;</span>',
   ];
-  return `<section class="rings">
-    <button class="ringbox" data-tab="schlaf">${ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 104, stroke: 9, label: d.perf == null ? '–' : `${Math.round(d.perf)}%`, sub: d.sleepMin ? `${E.fmtDur(d.sleepMin)} Std.` : '', labelSize: 24, count: d.perf == null ? null : Math.round(d.perf), suffix: '%', anim, glow: true })}<span class="cap">Schlaf</span>${caps[0]}</button>
-    <button class="ringbox" data-tab="recovery">${ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 140, stroke: 12, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : zoneName(d.zone), labelSize: 38, count: d.recovery, suffix: '%', anim, glow: true })}<span class="cap">Recovery</span>${caps[1]}</button>
-    <button class="ringbox" data-tab="belastung">${ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 104, stroke: 9, label: de1(d.strain), sub: d.target ? `Ziel ${Math.round(d.target.low)}–${Math.round(d.target.high)}` : '', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 24, count: d.strain, digits: 1, anim, glow: true })}<span class="cap">Strain</span>${caps[2]}</button>
+  const R = { size: 104, stroke: 8, labelSize: 30, anim };
+  return `<section class="rings v4">
+    <button class="ringbox" data-tab="schlaf">${ring({ ...R, value: d.perf, max: 100, color: 'var(--sleep)', label: d.perf == null ? '–' : `${Math.round(d.perf)}%`, count: d.perf == null ? null : Math.round(d.perf), suffix: '%' })}<span class="cap">Schlaf <i>›</i></span>${caps[0]}</button>
+    <button class="ringbox" data-tab="recovery">${ring({ ...R, value: d.recovery, max: 100, color: zoneColor(d.zone), label: d.recovery == null ? '–' : `${d.recovery}%`, count: d.recovery, suffix: '%' })}<span class="cap">Recovery <i>›</i></span>${caps[1]}</button>
+    <button class="ringbox" data-tab="belastung">${ring({ ...R, value: d.strain, max: 21, color: 'var(--strain)', label: de1(d.strain), count: d.strain, digits: 1 })}<span class="cap">Strain <i>›</i></span>${caps[2]}</button>
   </section>`;
 }
 
@@ -726,7 +739,41 @@ function viewToday(anim) {
     ? `<section class="card slim">${rowLink(I.alert, ht.verdict === 'arzt' ? 'var(--red)' : 'var(--yellow)', esc(ht.flags[0].title), ht.flags.length > 1 ? `+ ${ht.flags.length - 1} weitere${ht.flags.length > 2 ? '' : 'r'} Hinweis${ht.flags.length > 2 ? 'e' : ''} · Gesundheits-Check` : 'Gesundheits-Check · 7 Tage vs. deine Basis', 'data-tab="recovery"')}</section>`
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
-  return `${setupCard()}${dials(d, anim)}${planCard}${report}${journalRow}${bodyRow}${healthRow}${nutri}${acts}${insightsCard}${statsCard(m, i)}${weekRow}`;
+  return `${setupCard()}${dials(d, anim)}${dashTiles(m, i)}
+    <h2 class="bighead">Mein Tag</h2>${planCard}${report}${journalRow}${healthRow}${acts}${nutri}${insightsCard}
+    <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
+}
+
+// ------------------------------------------------------------------ Dashboard-Kacheln (Heute)
+
+function dashTiles(m, i) {
+  const d = m.days[i];
+  const st = d.stats || {};
+  const v = E.vitals(m, i);
+  const hist = m.days.slice(Math.max(0, i - 30), i);
+  const avg = (f) => {
+    const xs = hist.map(f).filter(isNum);
+    return xs.length >= 5 ? E.mean(xs) : null;
+  };
+  const tileBtn = (attr, title, sub, icon, label, color = 'var(--text)') =>
+    `<button class="dtile" ${attr}><span class="dt-top"><b>${title}</b><i>${I.chevron}</i></span><span class="dt-sub">${sub}</span><span class="dt-foot"><span class="dt-ic" style="color:${color}">${icon}</span>${label}</span></button>`;
+  const tiles = [];
+  if (v.items.length) {
+    const measured = v.items.filter((x) => x.status !== 'na').length;
+    tiles.push(tileBtn('data-tab="recovery"', v.outside ? `${v.outside} auffällig` : 'Normal', `${measured - v.outside}/${measured} Werte`, v.outside ? I.alert : I.check, 'Körper-Check', v.outside ? 'var(--red)' : 'var(--green)'));
+  }
+  if (isNum(st.stress)) {
+    const word = st.stress >= 50 ? 'Hoch' : st.stress >= 26 ? 'Mittel' : 'Niedrig';
+    const a = avg((x) => x.stats?.stress);
+    tiles.push(tileBtn('data-tab="recovery"', word, `Ø ${st.stress}${a != null ? ` · sonst ${Math.round(a)}` : ''}`, I.stress, 'Stress', st.stress >= 50 ? 'var(--yellow)' : 'var(--text)'));
+  }
+  if (isNum(st.steps)) {
+    const a = avg((x) => x.stats?.steps);
+    tiles.push(tileBtn('data-tab="belastung"', int(st.steps), a != null ? `Ø ${int(a)}` : st.stepGoal ? `Ziel ${int(st.stepGoal)}` : '&nbsp;', I.steps, st.padSteps ? 'Schritte · inkl. Pad' : 'Schritte'));
+  }
+  if (isNum(d.rhr)) tiles.push(tileBtn('data-tab="recovery"', `${d.rhr}`, `Ø ${d.rhrRef}`, I.heart, 'Ruhepuls'));
+  else if (isNum(d.hrv)) tiles.push(tileBtn('data-tab="recovery"', `${d.hrv}`, 'HRV ms', I.heart, 'HRV'));
+  return tiles.length ? `<section class="dtiles">${tiles.join('')}</section>` : '';
 }
 
 // ------------------------------------------------------------------ Tagesbericht, Ernährung, Gesundheit
@@ -851,17 +898,23 @@ const trendWord = (t, upGood = true) => {
 };
 
 function dayCard(d) {
-  const st = d.stats || {};
-  const facts = [];
-  if (st.steps != null) facts.push(tile('Schritte', int(st.steps), '', st.padSteps ? `inkl. ${int(st.padSteps)} Pad` : st.stepGoal ? `Ziel ${int(st.stepGoal)}` : ''));
-  if (st.kcal != null) facts.push(tile('Kalorien', int(st.kcal), 'kcal', st.activeKcal != null ? `aktiv ${int(st.activeKcal)}` : ''));
-  if (st.bbHigh != null) facts.push(tile('Body Battery', st.bbNow ?? st.bbHigh, '', st.bbNow != null ? `max. heute ${st.bbHigh}` : `tiefster ${st.bbLow ?? '–'}`));
-  if (st.stress != null) facts.push(tile('Stress Ø', st.stress, '', st.stress >= 50 ? 'hoch' : st.stress >= 26 ? 'mittel' : 'niedrig'));
-  if (d.zoneMin) facts.push(tile('Aktive Min.', d.zoneMin.reduce((a, b) => a + b, 0), '', 'ab Zone 1'));
-  if (st.floors != null) facts.push(tile('Etagen', st.floors));
-  const rows = [...d.acts.map(actRow), d.pad ? padRow(d.pad) : ''].join('');
-  if (!facts.length && !rows) return '';
-  return card('Dein Tag', `${rows ? rows + '<div class="sep"></div>' : ''}${facts.length ? `<div class="grid">${facts.join('')}</div>` : ''}`);
+  const rows = [];
+  const clock = (min) => clockDE(((min % 1440) + 1440) % 1440);
+  if (d.sleep && isNum(d.sleep.bed) && isNum(d.sleep.wake)) {
+    rows.push(pillRow('sleep', I.sleep, E.fmtDur(d.sleepMin), 'Schlaf', clock(d.sleep.wake), clock(d.sleep.bed), 'data-tab="schlaf"'));
+  }
+  for (const a of d.acts) {
+    const start = E.parseClock(a.start);
+    const end = start != null && a.dur ? clock(start + a.dur / 60) : '';
+    rows.push(pillRow('strain', actIcon(a.type), de1(a.strain), esc(a.name || a.type || 'Aktivität'), end, a.start || '', 'data-tab="belastung"'));
+  }
+  if (d.pad) rows.push(pillRow('pad', I.walk, int(d.pad.total), 'Walking-Pad', d.pad.units.length ? clock(d.pad.units[d.pad.units.length - 1][1]) : '', d.pad.units.length ? clock(d.pad.units[0][0]) : '', 'data-info="pad"'));
+  if (!rows.length) return '';
+  return `<section class="card acts"><h2>Aktivitäten</h2>${rows.join('')}</section>`;
+}
+
+function pillRow(kind, icon, value, name, top, bottom, attr) {
+  return `<button class="prow" ${attr}><span class="pill ${kind}">${icon}<b>${value}</b></span><span class="pname">${name}</span><span class="ptimes"><span>${top}</span><span>${bottom}</span></span></button>`;
 }
 
 /** Walking-Pad-Einheiten (von PitPat über Apple Health). */
@@ -875,6 +928,19 @@ function padRow(p) {
     <div class="st">${int(p.total)}<small>Schritte</small></div></div>`;
 }
 
+const STAT_UI = {
+  hrv: [I.heart, 'recovery'],
+  rhr: [I.heart, 'recovery'],
+  resp: [I.lungs, 'recovery'],
+  perf: [I.sleep, 'schlaf'],
+  sleep: [I.sleep, 'schlaf'],
+  restorative: [I.sleep, 'schlaf'],
+  strain: [I.strain, 'belastung'],
+  kcal: [I.flame, 'belastung'],
+  steps: [I.steps, 'belastung'],
+  stress: [I.stress, 'recovery'],
+};
+
 function statsCard(m, i) {
   const partial = m.days[i].date === todayIso();
   const rows = E.keyStats(m, i, { partial });
@@ -884,12 +950,12 @@ function statsCard(m, i) {
     const cls = r.good == null ? 'muted' : r.good ? 'up' : 'down';
     return `<span class="arr ${cls}">${r.trend === 'up' ? '▲' : r.trend === 'down' ? '▼' : '•'}</span>`;
   };
-  return card(
-    'Im Vergleich zu deinem Schnitt',
-    `<div class="stats">${rows
-      .map((r) => `<div class="stat"><span class="sl">${r.label}</span><span class="sv">${fmtVal(r.value, r.digits)}${r.unit ? `<small>${r.unit}</small>` : ''}</span>${arrow(r)}<span class="sb">${r.base == null ? '' : `Ø ${fmtVal(r.base, r.digits)}`}</span></div>`)
-      .join('')}</div>${note('Ø = dein Schnitt der letzten 30 Tage · grün = besser als sonst, rot = schlechter')}`,
-  );
+  return `<section class="dlist">${rows
+    .map((r) => {
+      const [icon, tab] = STAT_UI[r.key] || [I.act, 'heute'];
+      return `<button class="drow" data-tab="${tab}"><span class="dr-ic">${icon}</span><span class="dr-main"><b>${fmtVal(r.value, r.digits)}${r.unit ? `<small>${r.unit}</small>` : ''}</b><span>${r.label}${r.base == null ? '' : ` · Ø ${fmtVal(r.base, r.digits)}`}</span></span>${arrow(r)}<span class="dr-chev">${I.chevron}</span></button>`;
+    })
+    .join('')}</section>${note('Ø = dein Schnitt der letzten 30 Tage · ▲▼ grün = besser als sonst, rot = schlechter')}`;
 }
 
 function actRow(a) {
@@ -1804,6 +1870,12 @@ app.addEventListener('click', async (e) => {
       break;
     case 'report-refresh':
       makeReport();
+      break;
+    case 'day-prev':
+      selectDay(state.sel - 1);
+      break;
+    case 'day-next':
+      selectDay(state.sel + 1);
       break;
     case 'setup-hide':
       ls.set(LS.setupHidden, true);

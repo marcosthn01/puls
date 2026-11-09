@@ -199,3 +199,9 @@ cd app && python3 -m http.server 8000   # http://localhost:8000 → „Demo-Date
 pip install -r sync/requirements.txt pytest && python -m pytest tests
 node --test tests/*.test.mjs
 ```
+
+## Design
+
+Eigenes dunkles Premium-Design (v4): tiefschwarzer Hintergrund, drei Ringe, Kacheln und Listen mit
+Vergleich zum 30-Tage-Schnitt, schwebende Leiste unten. Schrift für Zahlen und Überschriften:
+Barlow Condensed (SIL Open Font License, siehe [`app/fonts/OFL-Barlow.txt`](app/fonts/OFL-Barlow.txt)).
