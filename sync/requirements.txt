@@ -1,0 +1,3 @@
+# Garmin ändert den Login öfter – Patch-Releases bringen die Fixes, deshalb kein festes ==
+garminconnect>=0.3.20,<0.4
+cryptography>=42

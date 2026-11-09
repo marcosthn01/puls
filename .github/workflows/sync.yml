@@ -1,0 +1,119 @@
+name: Puls Sync
+
+# Holt deine Garmin-Daten, verschlüsselt sie und veröffentlicht die App auf GitHub Pages.
+# Zeiten sind UTC: Deutschland = UTC+1 (Winter) bzw. UTC+2 (Sommer).
+on:
+  schedule:
+    - cron: "7,27,47 4-9 * * *"   # morgens alle 20 Min. (Winter 5–11 Uhr, Sommer 6–12 Uhr)
+    - cron: "17 10-21 * * *"      # tagsüber stündlich
+  workflow_dispatch:
+    inputs:
+      mfa_code:
+        description: "Garmin-Bestätigungscode (nur eintragen, wenn Garmin einen geschickt hat)"
+        required: false
+        default: ""
+      full_refresh:
+        description: "Alle Tage neu von Garmin laden"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["app/**", "sync/**", ".github/workflows/sync.yml"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
+
+concurrency:
+  group: puls-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: sync/requirements.txt
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r sync/requirements.txt
+
+      - name: Pages vorbereiten
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: Zwischenspeicher laden
+        uses: actions/cache/restore@v6
+        with:
+          path: .puls-cache
+          key: puls-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: puls-
+
+      - name: Garmin-Daten holen
+        id: sync
+        continue-on-error: true
+        env:
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          PULS_TIMEZONE: Europe/Berlin
+        run: python sync/puls_sync.py --cache .puls-cache --site-url "${{ steps.pages.outputs.base_url }}"
+
+      - name: Zwischenspeicher sichern
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: .puls-cache
+          key: puls-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Seite bauen
+        run: |
+          mkdir -p _site
+          cp -r app/. _site/
+          if [ -f .puls-cache/data.enc.json ]; then cp .puls-cache/data.enc.json _site/; fi
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Veröffentlichen
+        id: deploy
+        uses: actions/deploy-pages@v5
+
+      # GitHub pausiert geplante Läufe nach 60 Tagen ohne Repo-Aktivität – das verhindert es.
+      - name: Zeitplan aktiv halten
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/sync.yml/enable"
+
+      - name: Ergebnis prüfen
+        if: steps.sync.outcome == 'failure'
+        run: |
+          echo "::error::Der Garmin-Abruf hat nicht geklappt – Details im Schritt 'Garmin-Daten holen'. Die App zeigt weiter die letzten Daten."
+          exit 1
+
+  tests:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r sync/requirements.txt pytest
+      - run: python -m pytest -q tests
+      - run: node --test tests/*.test.mjs

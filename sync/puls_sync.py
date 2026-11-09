@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""Puls-Sync: holt deine Garmin-Daten, verdichtet sie und legt sie verschlüsselt ab.
+
+Läuft automatisch in GitHub Actions (siehe .github/workflows/sync.yml).
+Im Log stehen nie Gesundheitswerte oder Zugangsdaten – nur Anzahlen.
+
+Lokal testen (Python 3.12+):
+    pip install -r sync/requirements.txt
+    DATA_PASSPHRASE=... GARMIN_EMAIL=... GARMIN_PASSWORD=... python sync/puls_sync.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any, Callable
+from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from crypto_box import CryptoError, box_salt, check_passphrase, decrypt_json, encrypt_json  # noqa: E402
+from garmin_auth import AuthProblem, MfaRequired, connect, save_tokens  # noqa: E402
+from garmin_data import (  # noqa: E402
+    normalize_activity,
+    normalize_heart,
+    normalize_hrv,
+    normalize_profile,
+    normalize_sleep,
+    normalize_stats,
+    strip_details,
+)
+
+STORE_VERSION = 1
+STORE_FILE = "data.enc.json"
+DETAIL_DAYS = 14
+MAX_DAYS = 730
+REFRESH_DAYS = 3
+REPAIR_WINDOW = 30
+REPAIR_MAX = 15
+PAUSE_S = 0.35
+
+FAILED = object()
+
+
+def log(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def event_inputs() -> dict[str, Any]:
+    """Eingaben eines manuellen Starts direkt aus der Event-Datei lesen.
+
+    So taucht der Garmin-Code nirgends in Umgebungsvariablen oder Log-Köpfen auf.
+    """
+    path = os.getenv("GITHUB_EVENT_PATH")
+    if not path or not Path(path).exists():
+        return {}
+    try:
+        return json.loads(Path(path).read_text()).get("inputs") or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def truthy(value: Any) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "ja"}
+
+
+def load_store(cache_dir: Path, site_url: str | None, passphrase: str) -> tuple[dict, bytes | None]:
+    """Bisherige Daten laden: erst Zwischenspeicher, dann die veröffentlichte Datei."""
+    candidates: list[tuple[str, Callable[[], str | None]]] = [
+        ("Zwischenspeicher", lambda: (cache_dir / STORE_FILE).read_text() if (cache_dir / STORE_FILE).exists() else None)
+    ]
+    if site_url:
+        url = site_url.rstrip("/") + "/" + STORE_FILE + f"?t={int(time.time())}"
+
+        def fetch() -> str | None:
+            try:
+                with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310 (eigene Seite)
+                    return resp.read().decode("utf-8")
+            except (urllib.error.URLError, TimeoutError, OSError):
+                return None
+
+        candidates.append(("Webseite", fetch))
+
+    for label, read in candidates:
+        text = read()
+        if not text:
+            continue
+        try:
+            box = json.loads(text)
+            store = decrypt_json(box, passphrase)
+        except (ValueError, CryptoError) as e:
+            log(f"Bisherige Daten ({label}) nicht lesbar: {e}. Lade neu.")
+            continue
+        if isinstance(store, dict) and store.get("v") == STORE_VERSION:
+            log(f"Bisherige Daten aus {label}: {len(store.get('days', {}))} Tage.")
+            return store, box_salt(box)
+    return {"v": STORE_VERSION, "days": {}}, None
+
+
+def dates_to_fetch(store: dict, today: dt.date, backfill: int, full: bool) -> list[dt.date]:
+    if full or not store.get("days"):
+        return [today - dt.timedelta(days=i) for i in range(backfill - 1, -1, -1)]
+    wanted = {today - dt.timedelta(days=i) for i in range(REFRESH_DAYS)}
+    missing = [
+        today - dt.timedelta(days=i)
+        for i in range(REFRESH_DAYS, REPAIR_WINDOW)
+        if (today - dt.timedelta(days=i)).isoformat() not in store["days"]
+    ]
+    wanted.update(missing[:REPAIR_MAX])
+    return sorted(wanted)
+
+
+class Fetcher:
+    def __init__(self, api: Any, errors: Any, pause: float = PAUSE_S):
+        self.api = api
+        self.too_many = errors.GarminConnectTooManyRequestsError
+        self.auth_error = errors.GarminConnectAuthenticationError
+        self.pause = pause
+        self.calls = 0
+        self.failures = 0
+
+    def __call__(self, name: str, *args: Any) -> Any:
+        self.calls += 1
+        try:
+            return getattr(self.api, name)(*args)
+        except (self.too_many, self.auth_error):
+            raise
+        except Exception as e:  # einzelne fehlende Tage sind normal
+            self.failures += 1
+            log(f"  {name}: keine Daten ({type(e).__name__})")
+            return FAILED
+        finally:
+            if self.pause:
+                time.sleep(self.pause)
+
+
+def sync_days(fetch: Fetcher, store: dict, days: list[dt.date], today: dt.date, tz: ZoneInfo) -> int:
+    updated = 0
+    for day in days:
+        key = day.isoformat()
+        detail = (today - day).days < DETAIL_DAYS
+        parts: dict[str, Callable[[Any], Any]] = {
+            "sleep": lambda raw: normalize_sleep(raw, day, tz, keep_levels=detail),
+            "hrv": normalize_hrv,
+            "stats": normalize_stats,
+            "hr": lambda raw: normalize_heart(raw, day, tz, keep_series=detail),
+        }
+        calls = {
+            "sleep": "get_sleep_data",
+            "hrv": "get_hrv_data",
+            "stats": "get_stats",
+            "hr": "get_heart_rates",
+        }
+        record = dict(store["days"].get(key) or {})
+        for part, method in calls.items():
+            raw = fetch(method, key)
+            if raw is FAILED:
+                continue  # alten Stand behalten
+            value = parts[part](raw)
+            if value:
+                record[part] = value
+            else:
+                record.pop(part, None)
+        if record:
+            store["days"][key] = record
+            updated += 1
+    return updated
+
+
+def sync_activities(fetch: Fetcher, store: dict, days: list[dt.date]) -> int:
+    start, end = min(days).isoformat(), max(days).isoformat()
+    raw = fetch("get_activities_by_date", start, end)
+    if raw is FAILED or not isinstance(raw, list):
+        return 0
+    grouped: dict[str, list[dict]] = {}
+    for item in raw:
+        parsed = normalize_activity(item)
+        if parsed:
+            date, act = parsed
+            grouped.setdefault(date, []).append(act)
+    for day in days:
+        key = day.isoformat()
+        acts = sorted(grouped.get(key, []), key=lambda a: a.get("start", ""))
+        if acts:
+            store["days"].setdefault(key, {})["acts"] = acts
+        elif key in store["days"]:
+            store["days"][key].pop("acts", None)
+    return sum(len(v) for v in grouped.values())
+
+
+def prune(store: dict, today: dt.date) -> None:
+    days = store["days"]
+    for key in list(days):
+        age = (today - dt.date.fromisoformat(key)).days
+        if age > MAX_DAYS or not days[key]:
+            del days[key]
+        elif age >= DETAIL_DAYS:
+            days[key] = strip_details(days[key])
+
+
+def write_store(store: dict, cache_dir: Path, passphrase: str, salt: bytes | None, extra_out: Path | None) -> None:
+    box = encrypt_json(store, passphrase, salt=salt)
+    text = json.dumps(box, separators=(",", ":"))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / STORE_FILE).write_text(text)
+    if extra_out:
+        extra_out.mkdir(parents=True, exist_ok=True)
+        (extra_out / STORE_FILE).write_text(text)
+    log(f"Gespeichert: {len(store['days'])} Tage, {len(text) // 1024} KB (verschlüsselt).")
+
+
+def run(
+    *,
+    garmin_module: Any,
+    cache_dir: Path,
+    site_url: str | None,
+    out_dir: Path | None,
+    env: dict[str, str],
+    inputs: dict[str, Any],
+    now: dt.datetime | None = None,
+    pause: float = PAUSE_S,
+) -> int:
+    try:
+        passphrase = check_passphrase(env.get("DATA_PASSPHRASE"))
+    except CryptoError as e:
+        log(f"FEHLER: {e} Lege das Secret DATA_PASSPHRASE an (mind. 10 Zeichen).")
+        return 2
+
+    tz = ZoneInfo(env.get("PULS_TIMEZONE") or "Europe/Berlin")
+    now = now or dt.datetime.now(tz)
+    today = now.date()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    store, salt = load_store(cache_dir, site_url, passphrase)
+
+    try:
+        api = connect(
+            garmin_module.Garmin,
+            cache_dir=cache_dir,
+            passphrase=passphrase,
+            email=env.get("GARMIN_EMAIL") or None,
+            password=env.get("GARMIN_PASSWORD") or None,
+            secret_tokens=env.get("GARMIN_TOKENS") or None,
+            mfa_code=str(inputs.get("mfa_code") or "").strip() or None,
+            manual_run=env.get("GITHUB_EVENT_NAME", "workflow_dispatch") != "schedule",
+            errors=garmin_module,
+        )
+    except MfaRequired as e:
+        log(f"AKTION NÖTIG: {e}")
+        store.setdefault("status", {})["auth"] = "mfa"
+        store["status"]["checked"] = now.isoformat(timespec="seconds")
+        write_store(store, cache_dir, passphrase, salt, out_dir)
+        return 3
+    except AuthProblem as e:
+        log(f"FEHLER: {e}")
+        store.setdefault("status", {})["auth"] = "error"
+        store["status"]["checked"] = now.isoformat(timespec="seconds")
+        write_store(store, cache_dir, passphrase, salt, out_dir)
+        return 1
+
+    backfill = int(env.get("BACKFILL_DAYS") or 90)
+    full = truthy(inputs.get("full_refresh"))
+    days = dates_to_fetch(store, today, backfill, full)
+    log(f"Hole {len(days)} Tag(e): {days[0]} bis {days[-1]}.")
+
+    fetch = Fetcher(api, garmin_module, pause=pause)
+    status = "ok"
+    try:
+        profile = fetch("get_user_profile")
+        if profile is not FAILED:
+            normalized = normalize_profile(profile)
+            if normalized:
+                store["profile"] = normalized
+        updated = sync_days(fetch, store, days, today, tz)
+        n_acts = sync_activities(fetch, store, days)
+        log(f"Aktualisiert: {updated} Tage, {n_acts} Aktivitäten, {fetch.calls} Abfragen.")
+    except garmin_module.GarminConnectTooManyRequestsError:
+        log("WARNUNG: Garmin bremst gerade (zu viele Anfragen). Gespeichert wird, was schon da ist.")
+        status = "partial"
+    except garmin_module.GarminConnectAuthenticationError:
+        log("WARNUNG: Garmin hat die Anmeldung während des Abrufs abgelehnt.")
+        status = "partial"
+
+    save_tokens(api, cache_dir, passphrase)
+    prune(store, today)
+    store["v"] = STORE_VERSION
+    store["tz"] = str(tz)
+    store["generated"] = now.isoformat(timespec="seconds")
+    store["status"] = {"auth": "ok", "sync": status, "checked": store["generated"]}
+    write_store(store, cache_dir, passphrase, salt, out_dir)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cache", default=".puls-cache", help="Ordner für Zwischenspeicher")
+    parser.add_argument("--site-url", default=os.getenv("PULS_SITE_URL"), help="URL der App (Fallback für alte Daten)")
+    parser.add_argument("--out", default=None, help="Zusätzlich hierhin schreiben (z. B. _site)")
+    args = parser.parse_args(argv)
+
+    import garminconnect  # erst hier, damit die Tests ohne Netzwerk laufen
+
+    return run(
+        garmin_module=garminconnect,
+        cache_dir=Path(args.cache),
+        site_url=args.site_url or None,
+        out_dir=Path(args.out) if args.out else None,
+        env=dict(os.environ),
+        inputs=event_inputs(),
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main())
