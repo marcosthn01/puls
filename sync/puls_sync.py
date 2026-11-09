@@ -29,6 +29,7 @@ from crypto_box import CryptoError, box_salt, check_passphrase, decrypt_json, en
 from garmin_auth import AuthProblem, MfaRequired, connect, save_tokens  # noqa: E402
 from garmin_data import (  # noqa: E402
     normalize_activity,
+    normalize_stress,
     normalize_heart,
     normalize_hrv,
     normalize_profile,
@@ -158,6 +159,9 @@ def sync_days(fetch: Fetcher, store: dict, days: list[dt.date], today: dt.date, 
             "stats": "get_stats",
             "hr": "get_heart_rates",
         }
+        if detail:  # Stress- und Body-Battery-Verlauf nur für die letzten 14 Tage
+            parts["stressDay"] = lambda raw: normalize_stress(raw, day, tz)
+            calls["stressDay"] = "get_stress_data"
         record = dict(store["days"].get(key) or {})
         for part, method in calls.items():
             raw = fetch(method, key)

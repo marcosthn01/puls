@@ -222,6 +222,8 @@ function computeDay(i, date, raw, days, S) {
   else d.trimp = null;
   d.strain = d.trimp == null ? null : strainFromTrimp(d.trimp);
   d.zoneMin = hist ? zoneMinutes(hist, hrZones(d.rhrRef, S.maxHr)) : null;
+  d.stressSeries = raw.stressDay?.stress || null;
+  d.bbSeries = raw.stressDay?.bb || null;
 
   // Schlaf
   if (sl) {
@@ -460,9 +462,9 @@ const PLANS = {
 };
 
 const HEADLINES = {
-  green: 'Dein Körper ist gut erholt – heute darfst du Gas geben.',
-  yellow: 'Solide Basis – trainiere moderat und hör auf deinen Körper.',
-  red: 'Dein Körper braucht Erholung – heute nur locker bewegen.',
+  green: 'Bereit für Belastung – gib heute Gas.',
+  yellow: 'Solide – trainiere moderat.',
+  red: 'Erholung hat heute Vorrang.',
 };
 
 export function buildCoach(model, i) {
@@ -473,8 +475,8 @@ export function buildCoach(model, i) {
   if (d.recovery == null) {
     return {
       state: 'nodata',
-      headline: 'Für diesen Tag gibt es noch keine Schlafdaten.',
-      text: 'Öffne kurz die Garmin-Connect-App, damit deine Uhr synchronisiert. Der nächste Abgleich holt die Daten automatisch.',
+      headline: 'Noch keine Schlafdaten.',
+      text: 'Öffne kurz Garmin Connect, damit die Uhr synchronisiert – Puls holt die Daten dann automatisch.',
     };
   }
   const zone = d.alarm ? 'red' : d.zone;
@@ -485,14 +487,14 @@ export function buildCoach(model, i) {
 
   const notes = [];
   if (d.target.notes.includes('alarm')) {
-    notes.push('Mehrere Körperwerte sind auffällig (siehe unten). Schone dich heute, auch wenn du dich fit fühlst.');
+    notes.push('Mehrere Körperwerte auffällig – schone dich heute.');
   }
   if (d.target.notes.includes('spike')) {
-    notes.push('Deine Belastung der letzten 7 Tage liegt über 50 % über deinem 4-Wochen-Schnitt – Ziel deshalb niedriger.');
+    notes.push('Deine Last ist stark gestiegen – Ziel gesenkt.');
   } else if (d.target.notes.includes('high')) {
-    notes.push('Deine Belastung steigt gerade schnell – Ziel um 1 Punkt gesenkt.');
+    notes.push('Last steigt schnell – Ziel leicht gesenkt.');
   } else if (d.target.notes.includes('low')) {
-    notes.push('Du hast zuletzt weniger trainiert als üblich – heute ist Spielraum für mehr.');
+    notes.push('Zuletzt wenig trainiert – heute ist mehr drin.');
   }
 
   let remaining = null;
@@ -502,15 +504,16 @@ export function buildCoach(model, i) {
     remaining = {
       z2: minutesFor(delta, 0.65, S.sex),
       z4: minutesFor(delta, 0.85, S.sex),
-      text: `Bis zum Zielbereich fehlen dir noch etwa ${minutesFor(delta, 0.65, S.sex)} Min. in Zone 2 (${range(2)}) oder ${minutesFor(delta, 0.85, S.sex)} Min. in Zone 4 (${range(4)}).`,
+      short: `noch ${minutesFor(delta, 0.65, S.sex)} Min. Zone 2`,
+      text: `Noch ca. ${minutesFor(delta, 0.65, S.sex)} Min. in Zone 2 (${range(2)}) oder ${minutesFor(delta, 0.85, S.sex)} Min. in Zone 4 (${range(4)}).`,
     };
   } else if (current > d.target.high) {
-    remaining = { done: true, text: 'Du liegst über deinem Zielbereich. Ab jetzt Erholung: Essen, Trinken, früh schlafen.' };
+    remaining = { done: true, short: 'Ziel überschritten', text: 'Über dem Zielbereich – ab jetzt Erholung.' };
   } else {
-    remaining = { done: true, text: 'Du bist im Zielbereich – Training für heute erledigt.' };
+    remaining = { done: true, short: 'Ziel erreicht', text: 'Im Zielbereich – Training für heute erledigt.' };
   }
 
-  return { state: zone, headline: d.alarm ? 'Dein Körper zeigt Warnsignale – heute Pause.' : HEADLINES[zone], plan, notes, remaining, zones };
+  return { state: zone, headline: d.alarm ? 'Warnsignale – heute Pause.' : HEADLINES[zone], plan, notes, remaining, zones };
 }
 
 // ---------------------------------------------------------------- Erkenntnisse des Tages
@@ -526,84 +529,59 @@ export function buildInsights(model, i, journal = null) {
   if (yAnswers?._done && d.recovery != null) {
     const impacts = journalImpacts(model, journal).filter((x) => !x.pending && yAnswers[x.id] && Math.abs(x.diff) >= 3);
     for (const x of impacts.slice(0, 2)) {
-      add(
-        x.diff < 0 ? 'warn' : 'good',
-        `${x.label} gestern`,
-        `Bei dir ${x.diff < 0 ? 'kostet' : 'bringt'} das im Schnitt ${Math.abs(Math.round(x.diff))} Prozentpunkte Recovery (${Math.round(x.yes)} % statt ${Math.round(x.no)} %, aus ${x.ny} vs. ${x.nn} Tagen).`,
-        x.diff < 0 ? 2 : 6,
-      );
+      add(x.diff < 0 ? 'warn' : 'good', `${x.label} gestern`, `Kostet dich im Schnitt ${Math.abs(Math.round(x.diff))} % Recovery.`.replace('Kostet', x.diff < 0 ? 'Kostet' : 'Bringt'), x.diff < 0 ? 2 : 6);
     }
   }
 
   if (d.alarm) {
     const parts = [];
-    if (d.flags.rhrUp) parts.push(`Ruhepuls ${signed(d.rhr - d.base.rhr.mean)} bpm`);
+    if (d.flags.rhrUp) parts.push(`Ruhepuls ${signed(d.rhr - d.base.rhr.mean)}`);
     if (d.flags.hrvDown) parts.push(`HRV ${signed(100 * (d.hrv / Math.exp(d.base.hrv.mean) - 1))} %`);
-    if (d.flags.respUp) parts.push(`Atemfrequenz ${signed(d.respDelta, 1)}/Min.`);
-    if (d.flags.tempUp) parts.push(`Hauttemperatur ${signed(d.skinTemp, 1)} °C`);
-    add(
-      'bad',
-      'Möglicher Infekt oder starke Überlastung',
-      `${parts.join(', ')} gegenüber deinem Normalwert. Dieses Muster tritt oft 1–2 Tage vor einer Erkältung auf, aber auch nach Alkohol oder sehr wenig Schlaf. Heute kein intensives Training, viel trinken, früh ins Bett.`,
-      0,
-    );
+    if (d.flags.respUp) parts.push(`Atmung ${signed(d.respDelta, 1)}`);
+    if (d.flags.tempUp) parts.push(`Temperatur ${signed(d.skinTemp, 1)} °C`);
+    add('bad', 'Warnsignal: Infekt oder Überlastung?', `${parts.join(', ')}. Heute schonen, viel trinken, früh schlafen.`, 0);
   } else if (d.flags.rhrUp) {
-    add('warn', 'Ruhepuls erhöht', `Dein Ruhepuls liegt mit ${d.rhr} bpm ${signed(d.rhr - d.base.rhr.mean)} über deinem Schnitt. Häufige Ursachen: spätes Essen, Alkohol, Stress, Hitze oder ein beginnender Infekt.`, 2);
+    add('warn', 'Ruhepuls erhöht', `${d.rhr} bpm, ${signed(d.rhr - d.base.rhr.mean)} über normal. Oft: spätes Essen, Alkohol, Stress.`, 2);
   }
   if (d.flags.respUp && !d.alarm) {
-    add('warn', 'Atemfrequenz erhöht', `Nachts ${de(d.resp)} Atemzüge/Min., ${signed(d.respDelta, 1)} über deinem Schnitt. Bleibt das 2 Nächte so, ist oft ein Infekt im Anmarsch.`, 2);
+    add('warn', 'Atemfrequenz erhöht', `${signed(d.respDelta, 1)} Atemzüge/Min. über normal – ein Infekt kündigt sich oft so an.`, 2);
   }
 
-  // HRV-Trend
   if (d.hrvTrend === 'low') {
     let streak = 0;
     for (let k = i; k >= 0 && days[k].hrvTrend === 'low'; k--) streak++;
-    add(
-      streak >= 3 ? 'bad' : 'warn',
-      'HRV-Trend unter deinem Normalbereich',
-      `Dein 7-Tage-Schnitt liegt bei ${Math.round(d.hrv7)} ms, dein Normalbereich bei ${Math.round(d.hrvNormal[0])}–${Math.round(d.hrvNormal[1])} ms${streak > 1 ? ` (seit ${streak} Tagen)` : ''}. Das deutet auf angesammelte Ermüdung hin. Plane 1–2 lockere Tage und viel Schlaf ein.`,
-      1,
-    );
+    add(streak >= 3 ? 'bad' : 'warn', 'HRV-Trend zu niedrig', `${streak > 1 ? `Seit ${streak} Tagen` : 'Gerade'} unter deinem Normalbereich – Zeichen für Ermüdung. 1–2 lockere Tage einplanen.`, 1);
   } else if (d.hrvTrend === 'high') {
-    add('good', 'HRV-Trend über deinem Normalbereich', `7-Tage-Schnitt ${Math.round(d.hrv7)} ms (normal: ${Math.round(d.hrvNormal[0])}–${Math.round(d.hrvNormal[1])} ms). Dein Körper verkraftet die aktuelle Belastung sehr gut.`, 6);
+    add('good', 'HRV-Trend stark', 'Über deinem Normalbereich – du verkraftest die Belastung gut.', 6);
   }
 
-  // Trainingslast
   if (d.load) {
     const r = d.load.ratio;
-    if (r > 1.5) add('bad', 'Belastungsspitze', `Deine Trainingslast der letzten 7 Tage liegt ${Math.round((r - 1) * 100)} % über deinem 4-Wochen-Schnitt. Ab etwa +50 % steigt das Verletzungs- und Infektrisiko deutlich.`, 1);
-    else if (r > 1.3) add('warn', 'Belastung steigt schnell', `7-Tage-Last ${Math.round((r - 1) * 100)} % über deinem 4-Wochen-Schnitt. Steigere nicht weiter, bis sich deine HRV stabilisiert.`, 3);
-    else if (r >= 0.8) add('good', 'Trainingslast im optimalen Bereich', `Verhältnis 7 zu 28 Tage: ${de(r, 2)} – ideal sind 0,8 bis 1,3.`, 8);
-    else add('info', 'Weniger Belastung als üblich', `Verhältnis 7 zu 28 Tage: ${de(r, 2)}. Bleibt das länger so, sinkt deine Fitness langsam. Bei guter Recovery darfst du wieder steigern.`, 7);
+    if (r > 1.5) add('bad', 'Belastungsspitze', `${Math.round((r - 1) * 100)} % mehr Last als üblich – Verletzungsrisiko steigt.`, 1);
+    else if (r > 1.3) add('warn', 'Belastung steigt schnell', 'Erst weiter steigern, wenn deine HRV mitzieht.', 3);
+    else if (r >= 0.8) add('good', 'Trainingslast optimal', 'Genau im richtigen Bereich für Fortschritt.', 8);
+    else add('info', 'Weniger Training als üblich', 'Bei guter Recovery darfst du wieder steigern.', 7);
   }
 
-  // Schlaf
   if (d.sleep) {
-    if (d.perf < 85) {
-      add('warn', 'Zu wenig Schlaf', `Du hast ${fmtDurLong(d.sleepMin)} geschlafen, gebraucht hättest du ${fmtDurLong(d.need.total)} (${pct(d.perf)}). Das kostet dich heute Recovery-Punkte.`, 3);
-    }
+    if (d.perf < 85) add('warn', 'Zu wenig Schlaf', `${fmtDur(d.sleepMin)} von ${fmtDur(d.need.total)} Std. geschafft (${pct(d.perf)}).`, 3);
     const beds = days.slice(Math.max(0, i - 28), i).map((x) => x.sleep?.bed).filter(isNum);
     if (beds.length >= 7 && isNum(d.sleep.bed)) {
       const late = d.sleep.bed - median(beds);
-      if (late >= 45) add('info', 'Später eingeschlafen als sonst', `Du bist um ${fmtClock(d.sleep.bed)} eingeschlafen – ${fmtDurLong(late)} später als üblich (${fmtClock(median(beds))}).`, 6);
+      if (late >= 45) add('info', 'Später eingeschlafen', `${fmtDurLong(late)} später als üblich.`, 6);
     }
-    if (d.stages.deep != null && d.stages.deep < 12) {
-      add('info', 'Wenig Tiefschlaf', `Nur ${pct(d.stages.deep)} Tiefschlaf (normal 13–23 %). Hilft oft: kein Alkohol, kein schweres Essen und kein hartes Training in den 3 Stunden vor dem Schlafen, kühles Schlafzimmer.`, 6);
-    }
-    if (d.stages.rem != null && d.stages.rem < 15) {
-      add('info', 'Wenig REM-Schlaf', `Nur ${pct(d.stages.rem)} REM-Schlaf (normal 20–25 %). REM kommt vor allem am Morgen – zu frühes Aufstehen und Alkohol kürzen ihn.`, 7);
-    }
+    if (d.stages.deep != null && d.stages.deep < 12) add('info', 'Wenig Tiefschlaf', `Nur ${pct(d.stages.deep)}. Hilft: kühles Zimmer, kein Alkohol oder Sport spät abends.`, 6);
+    if (d.stages.rem != null && d.stages.rem < 15) add('info', 'Wenig REM-Schlaf', `Nur ${pct(d.stages.rem)}. Kommt vor allem morgens – länger schlafen hilft.`, 7);
   }
   if (d.debt7 != null) {
-    if (d.debt7 >= 180) add('warn', 'Schlafschuld', `In den letzten 7 Nächten fehlen dir ${fmtDurLong(d.debt7)} Schlaf. Hol sie in den nächsten Nächten mit 30–60 Min. früher ins Bett nach.`, 3);
-    else if (d.debt7 < 30) add('good', 'Kaum Schlafschuld', 'Du hast in der letzten Woche fast genau so viel geschlafen, wie du gebraucht hast.', 8);
+    if (d.debt7 >= 180) add('warn', 'Schlafschuld', `${fmtDurLong(d.debt7)} fehlen aus den letzten 7 Nächten. Ein paar Abende früher ins Bett.`, 3);
+    else if (d.debt7 < 30) add('good', 'Kaum Schlafschuld', 'Du hast diese Woche so viel geschlafen, wie du brauchst.', 8);
   }
   if (d.consistency != null) {
-    if (d.consistency < 60) add('warn', 'Unregelmäßige Schlafzeiten', `Deine Einschlafzeit schwankt um ±${Math.round(d.sdBed)} Min., die Aufwachzeit um ±${Math.round(d.sdWake)} Min. Ein fester Rhythmus (auch am Wochenende ±30 Min.) verbessert HRV und Tiefschlaf messbar.`, 4);
-    else if (d.consistency >= 80) add('good', 'Sehr regelmäßiger Schlafrhythmus', `Schlafkonstanz ${pct(d.consistency)} – das ist einer der stärksten Hebel für gute Recovery.`, 8);
+    if (d.consistency < 60) add('warn', 'Unregelmäßiger Schlaf', `Schlafzeiten schwanken um ±${Math.round((d.sdBed + d.sdWake) / 2)} Min. Feste Zeiten verbessern HRV und Tiefschlaf.`, 4);
+    else if (d.consistency >= 80) add('good', 'Sehr regelmäßiger Schlaf', 'Einer der stärksten Hebel für gute Recovery.', 8);
   }
 
-  // Spätes Training am Vortag
   const y = days[i - 1];
   if (y && d.sleep && isNum(d.sleep.bed)) {
     const late = y.acts.filter((a) => {
@@ -611,23 +589,16 @@ export function buildInsights(model, i, journal = null) {
       return start != null && start + a.dur / 60 - 1440 > d.sleep.bed - 180;
     });
     if (late.length && d.comps.find((c) => c.key === 'hrv')?.z < -0.5) {
-      add('info', 'Spätes Training', `Deine Einheit gestern um ${late[0].start} lag weniger als 3 Stunden vor dem Einschlafen. Deine HRV ist heute niedriger – intensives Training lieber früher legen.`, 5);
+      add('info', 'Training zu spät', `Gestern ${late[0].start} Uhr – deine HRV ist heute niedriger. Lieber früher trainieren.`, 5);
     }
   }
+  if (y?.stats?.stress >= 45) add('info', 'Stressiger Tag gestern', 'Heute 10 Min. Atemübung oder ein Spaziergang ohne Handy.', 6);
 
-  // Stress am Vortag
-  if (y?.stats?.stress >= 45) {
-    add('info', 'Stressiger Tag gestern', `Durchschnittlicher Stresswert ${y.stats.stress} (hoch ab 50). Plane heute 10 Min. Atemübung oder einen Spaziergang ohne Handy ein.`, 6);
-  }
-
-  // Grüne Serie
   let greens = 0;
   for (let k = i; k >= 0 && days[k].zone === 'green'; k--) greens++;
-  if (greens >= 3) add('good', `${greens} grüne Tage in Folge`, 'Deine Erholung passt zu deiner Belastung. Gute Phase, um Trainingsreize zu setzen.', 7);
+  if (greens >= 3) add('good', `${greens} grüne Tage in Folge`, 'Gute Phase für harte Trainingsreize.', 7);
 
-  if (d.base.calibrating) {
-    add('info', 'Puls lernt dich noch kennen', `Für genaue Werte braucht es 14 Nächte mit HRV-Messung, aktuell sind es ${d.base.hrvDays}. Bis dahin werden zum Teil Garmins Normalwerte genutzt.`, 9);
-  }
+  if (d.base.calibrating) add('info', 'Puls lernt dich noch kennen', `${d.base.hrvDays} von 14 Nächten – danach werden die Werte genauer.`, 9);
 
   return out.sort((a, b) => a.prio - b.prio);
 }
@@ -906,4 +877,204 @@ export function weeklyAssessment(model, i) {
     bullets.push(`${trained} Trainingstag${trained === 1 ? '' : 'e'}, Ø Strain ${de(c.strain)}${p.strain != null ? ` (Vorwoche ${de(p.strain)})` : ''}.`);
   }
   return { ...w, verdict, bullets };
+}
+
+// ---------------------------------------------------------------- Puls-Alter (wie Whoops Healthspan)
+
+/** Schätzt ein „biologisches“ Alter aus Fitness, Schlaf und Aktivität der letzten 30 Tage.
+ *  Jede Größe verschiebt das Alter um wenige Jahre (gedeckelt), grob nach Studienlage. */
+export function healthAge(model, i = model.days.length - 1) {
+  const S = model.settings;
+  if (!S.birthYear) return null;
+  const all = model.days.slice(Math.max(0, i - 29), i + 1);
+  const full = model.days.slice(Math.max(0, i - 30), i); // ganze Tage (ohne heute)
+  if (all.filter((d) => d.sleep).length < 14) return null;
+  const avg = (arr, f) => {
+    const v = arr.map(f).filter(isNum);
+    return v.length >= 7 ? mean(v) : null;
+  };
+  const items = [];
+  const add = (key, label, value, years, better) => items.push({ key, label, value, years: Math.round(years * 10) / 10, better });
+
+  const vo2 = model.profile?.vo2max;
+  if (isNum(vo2)) {
+    const norm = S.sex === 'female' ? 44 - 0.3 * S.age : 50.5 - 0.33 * S.age;
+    add('vo2', 'VO₂max', `${Math.round(vo2)}`, clamp(-(vo2 - norm) * 0.6, -6, 6), 'Ausdauertraining in Zone 2 und Intervalle heben die VO₂max.');
+  }
+  const rhr = avg(all, (d) => d.rhr);
+  if (rhr != null) add('rhr', 'Ruhepuls', `${Math.round(rhr)} bpm`, clamp((rhr - 60) * 0.15, -2.5, 3), 'Regelmäßiges Ausdauertraining senkt den Ruhepuls.');
+  const sleepH = avg(all, (d) => (d.sleepMin != null ? d.sleepMin / 60 : null));
+  if (sleepH != null) {
+    const y = sleepH < 7 ? clamp((7 - sleepH) * 1.2, 0, 3) : sleepH > 9 ? clamp((sleepH - 9) * 1, 0, 2) : -0.5;
+    add('sleep', 'Schlafdauer', `${fmtDur(sleepH * 60)} Std.`, y, '7–9 Stunden pro Nacht sind ideal.');
+  }
+  const cons = avg(all, (d) => d.consistency);
+  if (cons != null) add('consistency', 'Schlafrhythmus', `${Math.round(cons)} %`, clamp(-(cons - 70) / 20, -1.5, 1.5), 'Jeden Tag ähnliche Schlafzeiten, auch am Wochenende.');
+  const moderate = avg(full, (d) => (d.zoneMin ? d.zoneMin.reduce((a, b) => a + b, 0) : null));
+  if (moderate != null) add('active', 'Aktive Minuten', `${Math.round(moderate * 7)} Min./Woche`, clamp(1.5 - (moderate * 7) / 100, -2.5, 1.5), 'Mindestens 150 Min. pro Woche mit erhöhtem Puls.');
+  const vigorous = avg(full, (d) => (d.zoneMin ? d.zoneMin[2] + d.zoneMin[3] + d.zoneMin[4] : null));
+  if (vigorous != null) add('vigorous', 'Intensive Minuten', `${Math.round(vigorous * 7)} Min./Woche`, clamp(0.5 - (vigorous * 7) / 50, -1, 0.5), '75 Min. pro Woche ab Zone 3 bringen viel.');
+  const steps = avg(full, (d) => d.stats?.steps);
+  if (steps != null) add('steps', 'Schritte', `${Math.round(steps / 100) * 100}/Tag`, clamp(((7000 - steps) / 2000) * 0.7, -1.2, 1.5), 'Ab 7.000–8.000 Schritten am Tag sinkt das Risiko deutlich.');
+
+  if (items.length < 3) return null;
+  const diff = items.reduce((t, x) => t + x.years, 0);
+  return { age: S.age, pulsAge: Math.round((S.age + diff) * 10) / 10, diff: Math.round(diff * 10) / 10, items: items.sort((a, b) => b.years - a.years) };
+}
+
+// ---------------------------------------------------------------- Stress des Tages
+
+export function stressSummary(d) {
+  const st = d.stats || {};
+  const parts = ['stressRest', 'stressLow', 'stressMed', 'stressHigh'].map((k) => (isNum(st[k]) ? st[k] / 60 : null));
+  const known = parts.every(isNum);
+  return {
+    avg: isNum(st.stress) ? st.stress : null,
+    minutes: known ? { rest: Math.round(parts[0]), low: Math.round(parts[1]), med: Math.round(parts[2]), high: Math.round(parts[3]) } : null,
+    series: d.stressSeries,
+    battery: d.bbSeries,
+  };
+}
+
+// ---------------------------------------------------------------- Kontext für den KI-Coach
+
+const fmtN = (v, digits = 0) => (isNum(v) ? (digits ? v.toFixed(digits).replace('.', ',') : String(Math.round(v))) : '–');
+
+/** Kompakte Text-Zusammenfassung aller Daten für den Coach (ohne Rohdaten). */
+export function coachContext(model, journal = {}, i = model.days.length - 1) {
+  const S = model.settings;
+  const d = model.days[i];
+  const lines = [];
+  const L = (t = '') => lines.push(t);
+  const zones = hrZones(d.rhrRef, S.maxHr);
+  const wd = (iso) => ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][weekday(iso)];
+
+  L(`Datenstand: ${model.generated || 'unbekannt'} · Heute ist ${wd(d.date)}, ${d.date}.`);
+  L(`Profil: ${S.sex === 'female' ? 'weiblich' : 'männlich'}, ${S.age} Jahre, Max-Puls ${S.maxHr}, Ruhepuls-Basis ${d.rhrRef} bpm, Hauptsport ${SPORTS[S.sport]}, Schlafbedarf-Basis ${fmtDur(S.sleepNeed)} h${isNum(model.profile?.vo2max) ? `, VO2max ${model.profile.vo2max}` : ''}.`);
+  L(`Pulszonen (Herzfrequenzreserve): ${zones.map((z) => `Z${z.zone} ${z.lo}–${z.hi}`).join(', ')} bpm.`);
+  L();
+
+  L('## Heute');
+  if (d.recovery != null) {
+    L(`Recovery ${d.recovery} % (${{ green: 'grün', yellow: 'gelb', red: 'rot' }[d.zone]})${d.base.calibrating ? ' – noch in Kalibrierung' : ''}.`);
+    for (const c of d.comps) {
+      if (c.key === 'hrv') L(`- HRV ${fmtN(c.value)} ms, normal ${fmtN(c.ref)} ms (${signed(100 * (c.value / c.ref - 1))} %), Teilscore ${fmtN(c.score)}/100.`);
+      if (c.key === 'rhr') L(`- Ruhepuls ${fmtN(c.value)} bpm, normal ${fmtN(c.ref, 1)} bpm, Teilscore ${fmtN(c.score)}/100.`);
+      if (c.key === 'sleep') L(`- Schlaf ${fmtDur(c.value)} von ${fmtDur(c.ref)} Std. Bedarf (${fmtN(d.perf)} %), Qualität ${fmtN(c.quality)}, Teilscore ${fmtN(c.score)}/100.`);
+    }
+    for (const p of d.penalties) L(`- Abzug ${p.key === 'resp' ? 'Atemfrequenz' : 'Hauttemperatur'}: −${fmtN(p.points)} Punkte (${signed(p.delta, 1)}).`);
+    if (d.alarm) L(`- WARNSIGNALE aktiv: ${Object.entries(d.flags).filter(([, v]) => v).map(([k]) => k).join(', ')}.`);
+    L(`Ziel-Strain heute ${fmtN(d.target.low, 1)}–${fmtN(d.target.high, 1)}${d.target.notes.length ? ` (Anpassung: ${d.target.notes.join(', ')})` : ''}.`);
+  } else {
+    L('Recovery: noch keine Schlafdaten für heute.');
+  }
+  L(`Strain bisher ${fmtN(d.strain, 1)} von 21${d.acts.length ? `; Aktivitäten: ${d.acts.map((a) => `${a.name || a.type} ${a.start} ${Math.round(a.dur / 60)} Min. Ø${a.avgHr || '–'} bpm (Strain ${fmtN(a.strain, 1)})`).join('; ')}` : ''}.`);
+  const coach = buildCoach(model, i);
+  if (coach.plan) L(`App-Empfehlung Training: ${coach.plan} ${coach.remaining?.text || ''}`);
+  const st = d.stats || {};
+  L(`Tageswerte: Schritte ${fmtN(st.steps)}, Kalorien ${fmtN(st.kcal)}, Stress Ø ${fmtN(st.stress)}, Body Battery max ${fmtN(st.bbHigh)}${isNum(st.bbNow) ? ` jetzt ${st.bbNow}` : ''}.`);
+  if (i === model.days.length - 1) {
+    const plan = bedtimePlan(model, i);
+    L(`Schlaf heute Nacht: Bedarf ${fmtDur(plan.need.total)} Std. (Basis ${fmtDur(plan.need.base)}, +${Math.round(plan.need.strain)} Belastung, +${Math.round(plan.need.debt)} Schlafschuld, +${plan.need.recovery} Erholung). Aufstehen ${fmtClock(plan.wake)} → ins Bett ${plan.options.map((o) => `${o.label} ${fmtClock(o.bed)}`).join(', ')}.`);
+  }
+  if (d.sleep) {
+    const s = d.sleep;
+    L(`Letzte Nacht: ${isNum(s.bed) ? `${fmtClock(s.bed)}–${fmtClock(s.wake)}` : ''}, Tief ${fmtN(d.stages.deep)} %, REM ${fmtN(d.stages.rem)} %, Leicht ${fmtN(d.stages.light)} %, Wach ${fmtN(s.awake / 60)} Min., Effizienz ${fmtN(d.eff * 100)} %, Konstanz ${fmtN(d.consistency)} %, Schlafschuld 7 Tage ${fmtDur(d.debt7 || 0)} Std., Garmin-Score ${fmtN(s.score)}.`);
+  }
+  const v = vitals(model, i);
+  L(`Körper-Check: ${v.items.map((x) => `${x.label} ${x.digits ? fmtN(x.value, 1) : fmtN(x.value)} ${x.unit} (${x.status})`).join(', ')}.`);
+  if (d.load) L(`Trainingslast: akut/chronisch ${d.load.ratio.toFixed(2)} (optimal 0,8–1,3).`);
+  if (d.hrv7) L(`HRV-Trend: 7-Tage-Schnitt ${fmtN(d.hrv7)} ms${d.hrvNormal ? `, Normalbereich ${fmtN(d.hrvNormal[0])}–${fmtN(d.hrvNormal[1])} ms (${d.hrvTrend})` : ''}.`);
+  const ins = buildInsights(model, i, journal);
+  if (ins.length) L(`Hinweise der App: ${ins.map((x) => `${x.title} (${x.text})`).join(' | ')}`);
+  L();
+
+  const w = weeklyAssessment(model, model.days.length - 1);
+  L(`## Woche: ${w.verdict.label}. ${w.bullets.join(' ')}`);
+  const ha = healthAge(model, model.days.length - 1);
+  if (ha) L(`Puls-Alter ${fmtN(ha.pulsAge, 1)} (echtes Alter ${ha.age}): ${ha.items.map((x) => `${x.label} ${x.value} ${signed(x.years, 1)} Jahre`).join(', ')}.`);
+  const imp = journalImpacts(model, journal).filter((x) => !x.pending);
+  const inf = model.influences.ready ? model.influences.items : [];
+  if (imp.length || inf.length) {
+    L(`Einflüsse auf die Recovery (Prozentpunkte, Tage mit vs. ohne): ${[...imp.map((x) => `${x.label} ${signed(x.diff)} (${x.ny}/${x.nn})`), ...inf.map((x) => `${x.title} ${signed(x.diff)} (${x.na}/${x.nb})`)].join(', ')}.`);
+  }
+  L();
+
+  L('## Letzte 14 Tage (Datum | Recovery | HRV | Ruhepuls | Schlaf Std. | Schlaf-% | Strain | Schritte | Stress | Training | Morgen-Check des Vortags)');
+  for (let k = Math.max(0, i - 13); k <= i; k++) {
+    const x = model.days[k];
+    const j = journal?.[addDays(x.date, -1)];
+    const jtxt = j?._done ? JOURNAL_QUESTIONS.filter((q) => j[q.id]).map((q) => q.label).join('+') || 'nichts' : '';
+    L(`${wd(x.date)} ${x.date} | ${x.recovery ?? '–'} | ${fmtN(x.hrv)} | ${fmtN(x.rhr)} | ${x.sleepMin != null ? fmtDur(x.sleepMin) : '–'} | ${fmtN(x.perf)} | ${fmtN(x.strain, 1)} | ${fmtN(x.stats?.steps)} | ${fmtN(x.stats?.stress)} | ${x.acts.map((a) => `${a.name || a.type} ${Math.round(a.dur / 60)}′`).join(', ') || '–'} | ${jtxt}`);
+  }
+  const last30 = model.days.slice(Math.max(0, i - 29), i + 1);
+  const m30 = (f) => mean(last30.map(f).filter(isNum));
+  L(`30-Tage-Schnitt: Recovery ${fmtN(m30((x) => x.recovery))} %, HRV ${fmtN(m30((x) => x.hrv))} ms, Ruhepuls ${fmtN(m30((x) => x.rhr), 1)}, Schlaf ${fmtDur(m30((x) => x.sleepMin) || 0)} Std., Strain ${fmtN(m30((x) => x.strain), 1)}, Schritte ${fmtN(m30((x) => x.stats?.steps))}.`);
+  L(`Daten vorhanden ab ${model.days[0].date} (${model.days.length} Tage).`);
+  return lines.join('\n');
+}
+
+/** Detailansicht eines Tages für das Coach-Tool get_day_details. */
+export function dayDetails(model, date, journal = {}) {
+  const i = model.index[date];
+  if (i == null) return { error: `Keine Daten für ${date}. Verfügbar: ${model.days[0].date} bis ${model.days[model.days.length - 1].date}.` };
+  const d = model.days[i];
+  const coach = buildCoach(model, i);
+  return {
+    date,
+    recovery: d.recovery,
+    zone: d.zone,
+    components: d.comps.map((c) => ({ key: c.key, value: c.value, normal: c.ref, score: Math.round(c.score) })),
+    penalties: d.penalties,
+    warnings: d.alarm ? d.flags : null,
+    strain: d.strain != null ? Math.round(d.strain * 10) / 10 : null,
+    target: d.target,
+    coach: coach.state === 'nodata' ? coach.text : { headline: coach.headline, plan: coach.plan, remaining: coach.remaining?.text },
+    sleep: d.sleep
+      ? {
+          start: isNum(d.sleep.bed) ? fmtClock(d.sleep.bed) : null,
+          end: isNum(d.sleep.wake) ? fmtClock(d.sleep.wake) : null,
+          hours: fmtDur(d.sleepMin),
+          need: fmtDur(d.need.total),
+          needParts: d.need,
+          performance: Math.round(d.perf),
+          stagesPct: { deep: d.stages.deep && Math.round(d.stages.deep), rem: d.stages.rem && Math.round(d.stages.rem), light: d.stages.light && Math.round(d.stages.light) },
+          awakeMin: d.sleep.awake != null ? Math.round(d.sleep.awake / 60) : null,
+          efficiencyPct: d.eff != null ? Math.round(d.eff * 100) : null,
+          consistencyPct: d.consistency,
+          garminScore: d.sleep.score ?? null,
+          respiration: d.resp,
+          spo2: d.sleep.spo2 ?? null,
+        }
+      : null,
+    activities: d.acts.map((a) => ({ name: a.name, type: a.type, start: a.start, minutes: Math.round(a.dur / 60), km: a.dist ? Math.round(a.dist / 100) / 10 : null, avgHr: a.avgHr, maxHr: a.maxHr, strain: Math.round(a.strain * 10) / 10, trainingEffect: a.te ?? null })),
+    hrZoneMinutes: d.zoneMin,
+    stats: d.stats,
+    stress: stressSummary(d).minutes,
+    insights: buildInsights(model, i, journal).map((x) => `${x.title}: ${x.text}`),
+    morningCheckPreviousDay: journal?.[addDays(date, -1)] || null,
+  };
+}
+
+/** Tabelle mehrerer Tage für das Coach-Tool get_days. */
+export function daysTable(model, from, to, journal = {}) {
+  const out = [];
+  for (const d of model.days) {
+    if (d.date < from || d.date > to) continue;
+    const j = journal?.[d.date];
+    out.push({
+      date: d.date,
+      recovery: d.recovery,
+      hrv: d.hrv,
+      rhr: d.rhr,
+      sleepHours: d.sleepMin != null ? Math.round((d.sleepMin / 60) * 10) / 10 : null,
+      sleepPerf: d.perf != null ? Math.round(d.perf) : null,
+      strain: d.strain != null ? Math.round(d.strain * 10) / 10 : null,
+      steps: d.stats?.steps ?? null,
+      stress: d.stats?.stress ?? null,
+      activities: d.acts.map((a) => `${a.name || a.type} ${Math.round(a.dur / 60)}min`),
+      behaviorsThisDay: j?._done ? JOURNAL_QUESTIONS.filter((q) => j[q.id]).map((q) => q.label) : null,
+    });
+  }
+  return out;
 }

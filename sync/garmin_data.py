@@ -176,6 +176,9 @@ STATS_FIELDS = {
     "stress": ("averageStressLevel", 0),
     "stressMax": ("maxStressLevel", 0),
     "stressHigh": ("highStressDuration", 0),
+    "stressMed": ("mediumStressDuration", 0),
+    "stressLow": ("lowStressDuration", 0),
+    "stressRest": ("restStressDuration", 0),
     "bbHigh": ("bodyBatteryHighestValue", 0),
     "bbLow": ("bodyBatteryLowestValue", 0),
     "bbNow": ("bodyBatteryMostRecentValue", 0),
@@ -252,6 +255,36 @@ def normalize_heart(
             [b * SERIES_STEP_MIN, round(sum(v) / len(v))] for b, v in sorted(buckets.items())
         ]
     return compact(out)
+
+
+def _bucket_series(points: list[tuple[float, float]], day: dt.date, tz: ZoneInfo) -> list[list[int]]:
+    buckets: dict[int, list[float]] = {}
+    for ts, value in points:
+        local = local_dt(ts, tz)
+        if local.date() != day:
+            continue
+        buckets.setdefault((local.hour * 60 + local.minute) // SERIES_STEP_MIN, []).append(value)
+    return [[b * SERIES_STEP_MIN, round(sum(v) / len(v))] for b, v in sorted(buckets.items())]
+
+
+def normalize_stress(raw: dict[str, Any] | None, day: dt.date, tz: ZoneInfo) -> dict[str, Any] | None:
+    """Stress (0–100) und Body Battery (0–100) im Tagesverlauf, als 10-Minuten-Werte."""
+    if not isinstance(raw, dict):
+        return None
+    stress = []
+    for item in raw.get("stressValuesArray") or []:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            ts, val = num(item[0]), num(item[1])
+            if ts and val is not None and 0 <= val <= 100:  # -1/-2 = nicht messbar
+                stress.append((float(ts), float(val)))
+    battery = []
+    for item in raw.get("bodyBatteryValuesArray") or []:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            ts = num(item[0])
+            level = num(item[2]) if len(item) >= 3 and num(item[2]) is not None else num(item[1])
+            if ts and level is not None and 0 <= level <= 100:
+                battery.append((float(ts), float(level)))
+    return compact({"stress": _bucket_series(stress, day, tz), "bb": _bucket_series(battery, day, tz)}) or None
 
 
 def normalize_activity(raw: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
@@ -334,4 +367,5 @@ def strip_details(record: dict[str, Any]) -> dict[str, Any]:
         out["sleep"] = {k: v for k, v in out["sleep"].items() if k != "levels"}
     if isinstance(out.get("hr"), dict) and "series" in out["hr"]:
         out["hr"] = {k: v for k, v in out["hr"].items() if k != "series"}
+    out.pop("stressDay", None)
     return out

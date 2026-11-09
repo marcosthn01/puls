@@ -22,6 +22,7 @@ if (await page.$('#pass')) {
   await page.click('button[type=submit]');
 }
 await page.waitForTimeout(3000);
+await page.evaluate(() => window.__puls?.skipOnboarding?.());
 const summary = await page.evaluate(() => window.__puls?.summary());
 console.log('Zusammenfassung:', JSON.stringify(summary));
 
@@ -48,14 +49,25 @@ if (summary?.view === 'main') {
     const forward = await walk(1);
     console.log(`Bereich ${tab}: ${forward + 1} Tage geöffnet (${back} zurück, ${forward} vor)`);
   }
-  for (const tab of ['trends']) await page.click(`#tabbar [data-tab=${tab}]`);
+  await page.click('#tabbar [data-tab=coach]');
+  console.log('Coach: ' + ((await page.$('#askbox')) ? 'Chat bereit' : 'noch nicht aktiviert'));
+  await page.click('#tabbar [data-tab=recovery]');
+  await page.click('[data-tab=trends] >> nth=0');
+  await page.click('[data-act=back]');
   await page.click('[data-act=settings]');
   await page.click('[data-act=back]');
   await page.click('#tabbar [data-tab=heute]');
   const cta = await page.$('[data-act=journal]');
   if (cta) {
     await cta.click();
-    await page.click('[data-act=sheet-close]');
+    await page.click('.backdrop', { position: { x: 20, y: 20 } });
+  }
+  for (const key of ['recovery', 'strain', 'sleep']) {
+    const b = await page.$(`[data-info=${key}]`);
+    if (b) {
+      await b.click();
+      await page.click('.backdrop', { position: { x: 20, y: 20 } });
+    }
   }
 } else {
   errors.push(`App zeigt keine Daten (Ansicht: ${summary?.view})`);

@@ -5,7 +5,7 @@ name: Puls Sync
 on:
   schedule:
     - cron: "7,27,47 4-9 * * *"   # morgens alle 20 Min. (Winter 5–11 Uhr, Sommer 6–12 Uhr)
-    - cron: "17 10-21 * * *"      # tagsüber stündlich
+    - cron: "17,47 10-23 * * *"   # tagsüber und abends alle 30 Min. (auch für die Schlaf-Erinnerung)
   workflow_dispatch:
     inputs:
       mfa_code:
@@ -16,6 +16,10 @@ on:
         description: "Alle Tage neu von Garmin laden"
         type: boolean
         default: false
+      push_subscription:
+        description: "Nur für die App: Abo für Benachrichtigungen"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths: ["app/**", "sync/**", ".github/workflows/sync.yml"]
@@ -71,6 +75,16 @@ jobs:
           PULS_TIMEZONE: Europe/Berlin
         run: python sync/puls_sync.py --cache .puls-cache --site-url "${{ steps.pages.outputs.base_url }}"
 
+      - name: Benachrichtigungen
+        continue-on-error: true
+        env:
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          PULS_TIMEZONE: Europe/Berlin
+          PULS_SITE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          npm install --no-save --no-package-lock --silent web-push@3.6.7
+          node sync/notify.mjs .puls-cache
+
       - name: Zwischenspeicher sichern
         if: always()
         uses: actions/cache/save@v6
@@ -83,6 +97,7 @@ jobs:
           mkdir -p _site
           cp -r app/. _site/
           if [ -f .puls-cache/data.enc.json ]; then cp .puls-cache/data.enc.json _site/; fi
+          if [ -f .puls-cache/push-public.json ]; then cp .puls-cache/push-public.json _site/push.json; fi
 
       - uses: actions/upload-pages-artifact@v5
         with:
@@ -116,4 +131,5 @@ jobs:
           python-version: "3.12"
       - run: pip install -r sync/requirements.txt pytest
       - run: python -m pytest -q tests
+      - run: npm install --no-save --no-package-lock --silent web-push@3.6.7
       - run: node --test tests/*.test.mjs

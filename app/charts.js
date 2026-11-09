@@ -104,14 +104,14 @@ export function bars({ values, labels = [], height = 130, max = null, min = 0, r
 }
 
 /** Linien mit optionalem Normalbereich (band: {lo: [], hi: []}). */
-export function lines({ series, labels = [], height = 140, band = null, every = 1, unit = '', minPad = 0.08, dots = false }) {
+export function lines({ series, labels = [], height = 140, band = null, every = 1, unit = '', minPad = 0.08, dots = false, fixed = null }) {
   const top = 10;
   const bottom = height - 18;
   const all = series.flatMap((s) => s.values).concat(band ? [...band.lo, ...band.hi] : []).filter((v) => v != null);
   if (!all.length) return '<p class="muted small">Noch keine Daten.</p>';
-  let lo = Math.min(...all);
-  let hi = Math.max(...all);
-  const pad = (hi - lo || 1) * minPad;
+  let lo = fixed ? fixed[0] : Math.min(...all);
+  let hi = fixed ? fixed[1] : Math.max(...all);
+  const pad = fixed ? 0 : (hi - lo || 1) * minPad;
   lo -= pad;
   hi += pad;
   const n = Math.max(...series.map((s) => s.values.length), 1);

@@ -3,9 +3,9 @@
 import * as E from './engine.js';
 import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, strainGauge } from './charts.js';
 import { openBox } from './crypto.js';
+import * as Coach from './coach.js';
 
-const VERSION = '2.0.0';
-
+const VERSION = '3.0.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -16,6 +16,10 @@ const LS = {
   gh: 'puls.gh',
   range: 'puls.range',
   journal: 'puls.journal',
+  onboarded: 'puls.onboarded',
+  lastTrigger: 'puls.lastTrigger',
+  push: 'puls.push',
+  setupHidden: 'puls.setupHidden',
 };
 
 const ls = {
@@ -58,6 +62,9 @@ const state = {
   range: [7, 30, 90].includes(ls.get(LS.range)) ? ls.get(LS.range) : 30,
   animate: true,
   sheet: null,
+  onboarding: null,
+  showAllInsights: false,
+  chat: { busy: false, stream: null, status: '', error: '' },
 };
 
 const app = document.getElementById('app');
@@ -73,14 +80,20 @@ const I = {
   recovery: svg('<path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/><path d="M8 12h2l1.5-2.5L13 14l1.5-2H16"/>'),
   sleep: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
   strain: svg('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'),
+  coach: svg('<path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.4A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/>'),
   trends: svg('<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
   back: svg('<path d="M15 18l-6-6 6-6"/>'),
+  chevron: svg('<path d="M9 18l6-6-6-6"/>'),
   bed: svg('<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 14h18"/><path d="M7 10V7h4v3"/><path d="M3 18v2M21 18v2"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'),
   check: svg('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/>'),
   alert: svg('<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17h.01"/>'),
   journal: svg('<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/><path d="M9 8h6"/>'),
+  sync: svg('<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>'),
+  bell: svg('<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>'),
+  send: svg('<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
   run: svg('<circle cx="14" cy="4.5" r="1.8"/><path d="M8 21l3-6 3 2 1 4"/><path d="M6 12l3-4 5 1 2 4 3 1"/>'),
   bike: svg('<circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-8h5l3 8"/><path d="M9 8h3"/>'),
   lift: svg('<path d="M6 7v10M18 7v10M3 9v6M21 9v6M6 12h12"/>'),
@@ -137,9 +150,22 @@ const isNum = E.isNum;
 const fmtVal = (v, digits) => (digits === 'dur' ? E.fmtDur(v) : digits ? de1(v) : int(v));
 
 const ZONE_TEXT = {
-  green: 'Dein Körper ist gut erholt und bereit für Belastung. Ob hartes Training oder ein langer Arbeitstag – heute verkraftest du mehr.',
-  yellow: 'Dein Körper ist ausreichend, aber nicht voll erholt. Moderate Belastung ist okay – achte auf Warnzeichen wie schwere Beine oder Müdigkeit.',
-  red: 'Dein Körper ist noch mit der Erholung beschäftigt. Heute zahlt sich Ruhe aus: locker bewegen, gut essen, viel trinken, früh schlafen.',
+  green: 'Gut erholt – heute verkraftest du viel.',
+  yellow: 'Halbwegs erholt – moderate Belastung ist okay.',
+  red: 'Noch in der Erholung – heute ruhig angehen.',
+};
+
+/** Kurze Erklärungen für die (i)-Knöpfe. */
+const INFO = {
+  recovery: ['Recovery', 'Wie erholt dein Körper heute ist (0–100 %). Grün = bereit für harte Belastung, Gelb = moderat, Rot = Erholung. Berechnet aus HRV, Ruhepuls und Schlaf – verglichen mit deinen letzten 30 Tagen.'],
+  strain: ['Strain', 'Wie stark du Herz und Kreislauf heute belastest (0–21). Der äußere Bogen ist dein Tagesziel – passend zu deiner Recovery. Ab 14 ist ein harter Tag, ab 18 sehr hart.'],
+  sleep: ['Schlaf', 'Wie viel deines Schlafbedarfs du geschafft hast. Dein Bedarf steigt nach harten Tagen und wenn dir Schlaf fehlt. Der Schlafplaner sagt dir, wann du ins Bett solltest.'],
+  hrv: ['HRV', 'Herzfrequenzvariabilität: wie flexibel dein Herzschlag ist, gemessen im Schlaf. Höher als normal = gut erholt. Niedriger = Stress, Infekt, Alkohol oder Ermüdung.'],
+  body: ['Körper-Check', 'Prüft jede Nacht HRV, Ruhepuls, Atemfrequenz und Blutsauerstoff gegen deinen persönlichen Normalbereich. Mehrere auffällige Werte zugleich deuten oft auf einen Infekt hin.'],
+  stress: ['Stress & Body Battery', 'Garmin schätzt deinen Stress über den Tag aus der HRV (0–100). Body Battery ist deine Energiereserve: Schlaf lädt sie, Belastung und Stress leeren sie.'],
+  age: ['Puls-Alter', 'Eine Schätzung, wie alt dein Körper wirkt – aus Fitness (VO₂max), Ruhepuls, Schlaf und Bewegung der letzten 30 Tage. Jeder Faktor zählt nur ein paar Jahre. Kein medizinischer Wert.'],
+  load: ['Trainingslast', 'Deine Belastung der letzten 7 Tage im Vergleich zu den letzten 28. Zwischen 0,8 und 1,3 machst du Fortschritte, darüber steigt das Verletzungsrisiko.'],
+  journal: ['Morgen-Check', 'Tippe jeden Morgen an, was gestern war (z. B. Alkohol, spätes Essen). Nach ein paar Wochen zeigt Puls, was deine Recovery wirklich hebt oder senkt.'],
 };
 
 let toastTimer = null;
@@ -157,11 +183,8 @@ function toast(text) {
 
 const journal = () => (state.demo ? state.demoJournal : ls.get(LS.journal, {}));
 function saveJournal(date, answers) {
-  if (state.demo) {
-    state.demoJournal = { ...state.demoJournal, [date]: answers };
-  } else {
-    ls.set(LS.journal, { ...ls.get(LS.journal, {}), [date]: answers });
-  }
+  if (state.demo) state.demoJournal = { ...state.demoJournal, [date]: answers };
+  else ls.set(LS.journal, { ...ls.get(LS.journal, {}), [date]: answers });
 }
 
 // ------------------------------------------------------------------ Daten laden
@@ -178,6 +201,7 @@ function setStore(store, { animate = true } = {}) {
     const last = state.model.days.length - 1;
     state.sel = wasLatest || prevDate == null || state.model.index[prevDate] == null ? last : state.model.index[prevDate];
     state.view = 'main';
+    if (!ls.get(LS.onboarded) && state.onboarding == null) state.onboarding = 0;
   }
   state.animate = animate;
   render();
@@ -212,7 +236,6 @@ async function loadData({ silent = false } = {}) {
   const box = await res.json();
   if (state.store && state.box && state.box.iv === box.iv) {
     state.lastFetch = Date.now();
-    if (!silent) render();
     return; // unverändert
   }
   state.box = box;
@@ -225,7 +248,9 @@ async function unlock(box, passphrase, { animate = true } = {}) {
     ls.set(LS.key, cache);
     if (passphrase) ls.set(LS.pass, passphrase);
     state.error = null;
+    const fresh = state.store && data.generated !== state.store.generated;
     setStore(data, { animate });
+    if (fresh && state.syncing) toast('Aktualisiert.');
   } catch (e) {
     if (e.message === 'WRONG_PASSPHRASE') state.error = passphrase && passphrase === ls.get(LS.pass) ? 'changed' : 'wrong';
     state.view = 'lock';
@@ -254,7 +279,7 @@ function stopDemo() {
   loadData();
 }
 
-// ------------------------------------------------------------------ GitHub-Sync per Knopf
+// ------------------------------------------------------------------ GitHub: Sync auslösen
 
 function defaultRepo() {
   const m = /^([^.]+)\.github\.io$/.exec(location.hostname);
@@ -263,65 +288,122 @@ function defaultRepo() {
   return seg ? `${m[1]}/${seg}` : '';
 }
 const ghConfig = () => ({ repo: defaultRepo(), branch: 'main', token: '', ...ls.get(LS.gh, {}) });
+const ghHeaders = (token) => ({ Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' });
 
-async function triggerSync(inputs = {}) {
-  if (state.demo) {
-    toast('Im Demo-Modus gibt es nichts zu synchronisieren.');
-    return;
+async function dispatch(inputs = {}) {
+  const gh = ghConfig();
+  const res = await fetch(`https://api.github.com/repos/${gh.repo}/actions/workflows/${WORKFLOW}/dispatches`, {
+    method: 'POST',
+    headers: ghHeaders(gh.token),
+    body: JSON.stringify({ ref: gh.branch || 'main', inputs }),
+  });
+  if (res.status !== 204) {
+    const msg = {
+      401: 'GitHub-Schlüssel ungültig oder abgelaufen.',
+      403: 'Dem GitHub-Schlüssel fehlt „Actions: Read and write“.',
+      404: 'Repo nicht gefunden – beim Schlüssel „puls“ ausgewählt?',
+      422: 'GitHub lehnt den Start ab.',
+    }[res.status];
+    throw new Error(msg || `GitHub antwortet mit ${res.status}.`);
   }
+}
+
+/** Startet den Garmin-Abruf und lädt nach, sobald neue Daten da sind. */
+async function triggerSync(inputs = {}, { quiet = false } = {}) {
+  if (state.demo || state.syncing) return;
   const gh = ghConfig();
   if (!gh.token || !gh.repo) {
-    toast('Richte zuerst in den Einstellungen den Sync-Knopf ein.');
-    openSettings();
+    if (!quiet) openSheet({ type: 'setup-sync' });
     return;
   }
   state.syncing = true;
-  render();
+  ls.set(LS.lastTrigger, Date.now());
+  renderChrome();
   try {
-    const res = await fetch(`https://api.github.com/repos/${gh.repo}/actions/workflows/${WORKFLOW}/dispatches`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${gh.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
-      body: JSON.stringify({ ref: gh.branch || 'main', inputs }),
-    });
-    if (res.status !== 204) {
-      const msg = {
-        401: 'GitHub-Token ungültig oder abgelaufen.',
-        403: 'Dem Token fehlt die Berechtigung „Actions: Read and write“.',
-        404: 'Repo oder Workflow nicht gefunden – stimmt der Repo-Name?',
-        422: 'GitHub lehnt den Start ab – stimmt der Branch?',
-      }[res.status];
-      throw new Error(msg || `GitHub antwortet mit ${res.status}.`);
-    }
-    toast(inputs.mfa_code ? 'Code gesendet – Anmeldung läuft (1–3 Min.).' : 'Sync gestartet – dauert ca. 1–3 Minuten.');
+    await dispatch(inputs);
+    if (!quiet) toast(inputs.mfa_code ? 'Code gesendet – Anmeldung läuft.' : 'Hole neue Daten von Garmin …');
     const before = state.store?.generated;
-    for (let k = 0; k < 20; k++) {
-      await new Promise((r) => setTimeout(r, 15000));
+    for (let k = 0; k < 24; k++) {
+      await new Promise((r) => setTimeout(r, 10000));
       await loadData({ silent: true });
       if (state.store?.generated && state.store.generated !== before) {
         const auth = state.store.status?.auth;
-        toast(auth === 'ok' ? 'Neue Daten sind da.' : auth === 'mfa' ? 'Garmin will einen Code – siehe Einstellungen.' : 'Sync fertig, aber Garmin meldet ein Problem.');
+        if (auth === 'mfa') toast('Garmin will einen Code – siehe Einstellungen.');
+        else if (auth === 'error') toast('Garmin meldet ein Anmeldeproblem.');
         break;
       }
     }
   } catch (e) {
-    toast(e.message || 'Sync konnte nicht gestartet werden.');
+    if (!quiet) toast(e.message || 'Sync konnte nicht gestartet werden.');
   } finally {
     state.syncing = false;
-    render();
+    renderChrome();
   }
 }
 
+/** Beim Öffnen: automatisch frische Daten anfordern, wenn der Stand älter als 8 Minuten ist. */
+function autoSync() {
+  if (state.demo || state.view !== 'main' || state.syncing || !ghConfig().token) return;
+  const age = Date.now() - new Date(state.store?.generated || 0).getTime();
+  if (age < 8 * 60e3 || Date.now() - ls.get(LS.lastTrigger, 0) < 5 * 60e3) return;
+  triggerSync({}, { quiet: true });
+}
+
 async function refresh() {
-  if (state.demo) {
-    toast('Demo-Daten');
-    return;
-  }
+  if (state.demo) return toast('Demo-Daten');
   if (ghConfig().token) {
-    loadData({ silent: true });
+    ls.del(LS.lastTrigger);
     triggerSync();
   } else {
     await loadData({ silent: true });
     toast('Neu geladen.');
+  }
+}
+
+// ------------------------------------------------------------------ Benachrichtigungen
+
+const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+const pushReady = () => !!ls.get(LS.push) && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+function b64urlToBytes(s) {
+  const pad2 = '='.repeat((4 - (s.length % 4)) % 4);
+  const raw = atob((s + pad2).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+async function enablePush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+    toast(isStandalone() ? 'Dein iPhone unterstützt das noch nicht (ab iOS 16.4).' : 'Öffne Puls dafür vom Home-Bildschirm aus.');
+    return;
+  }
+  if (!ghConfig().token) {
+    openSheet({ type: 'setup-sync' });
+    toast('Zuerst „Automatisch aktualisieren“ einrichten.');
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') {
+    toast('Benachrichtigungen wurden nicht erlaubt.');
+    return;
+  }
+  try {
+    const res = await fetch(`push.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Puls ist dafür noch nicht bereit – nach dem nächsten Abruf erneut versuchen.');
+    const { publicKey } = await res.json();
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && ls.get(LS.push)?.publicKey !== publicKey) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(publicKey) });
+    await dispatch({ push_subscription: JSON.stringify({ subscription: sub, settings: ls.get(LS.settings, {}) }) });
+    ls.set(LS.push, { publicKey, at: Date.now() });
+    closeSheet();
+    render();
+    toast('Fertig – in ca. 1 Minute kommt eine Test-Nachricht.');
+  } catch (e) {
+    toast(e.message || 'Hat nicht geklappt.');
   }
 }
 
@@ -333,22 +415,18 @@ const TAB_LIST = [
   ['schlaf', 'Schlaf', I.sleep],
   ['recovery', 'Recovery', I.recovery],
   ['belastung', 'Belastung', I.strain],
-  ['trends', 'Trends', I.trends],
+  ['coach', 'Coach', I.coach],
 ];
 
 function setTab(tab) {
   if (tab === state.tab) return;
+  if (!['trends', 'settings'].includes(tab)) state.backTab = tab;
+  else if (!['trends', 'settings'].includes(state.tab)) state.backTab = state.tab;
   state.tab = tab;
   state.animate = true;
   render();
   window.scrollTo({ top: 0 });
-}
-function openSettings() {
-  if (state.tab !== 'settings') state.backTab = state.tab;
-  state.tab = 'settings';
-  state.animate = true;
-  render();
-  window.scrollTo({ top: 0 });
+  if (tab === 'coach') scrollChat();
 }
 function selectDay(i) {
   if (!state.model || i === state.sel || i < 0 || i > state.model.days.length - 1) return;
@@ -358,10 +436,8 @@ function selectDay(i) {
 }
 
 function renderTabbar() {
-  tabbar.hidden = state.view !== 'main';
-  tabbar.innerHTML = TAB_LIST.map(
-    ([id, label, icon]) => `<button data-tab="${id}" class="${state.tab === id ? 'on' : ''}" aria-label="${label}">${icon}<span>${label}</span></button>`,
-  ).join('');
+  tabbar.hidden = state.view !== 'main' || state.onboarding != null;
+  tabbar.innerHTML = TAB_LIST.map(([id, label, icon]) => `<button data-tab="${id}" class="${state.tab === id ? 'on' : ''}" aria-label="${label}">${icon}<span>${label}</span></button>`).join('');
 }
 
 // ------------------------------------------------------------------ Rahmen
@@ -371,8 +447,13 @@ function syncChip() {
   const gen = state.store?.generated;
   const stale = gen && Date.now() - new Date(gen).getTime() > 3 * 3600e3;
   const cls = state.syncing ? 'busy' : st.auth && st.auth !== 'ok' ? 'bad' : stale ? 'warn' : '';
-  const text = state.demo ? 'Demo' : state.syncing ? 'Sync …' : ago(gen);
-  return `<button class="chip" data-act="refresh" aria-label="Aktualisieren"><span class="dot ${cls}"></span>${esc(text)}</button>`;
+  const text = state.demo ? 'Demo' : state.syncing ? 'Aktualisiere …' : ago(gen);
+  return `<button class="chip" id="syncchip" data-act="refresh" aria-label="Aktualisieren"><span class="dot ${cls}"></span>${esc(text)}</button>`;
+}
+/** Nur den Sync-Status neu zeichnen (ohne die Seite neu aufzubauen, z. B. während des Chats). */
+function renderChrome() {
+  const chip = document.getElementById('syncchip');
+  if (chip) chip.outerHTML = syncChip();
 }
 
 function weekStrip() {
@@ -384,8 +465,7 @@ function weekStrip() {
   for (let k = start; k <= end; k++) {
     const d = days[k];
     const dot = d.zone ? `class="wdot" style="background:${zoneColor(d.zone)};box-shadow:0 0 8px ${zoneColor(d.zone)}"` : 'class="wdot none"';
-    cells.push(`<button class="wd ${k === state.sel ? 'on' : ''}" data-day="${k}" aria-label="${longDate(d.date)}">
-      <span class="wn">${wdShort(d.date)}</span><i ${dot}></i><span class="wnum">${Number(d.date.slice(8))}</span></button>`);
+    cells.push(`<button class="wd ${k === state.sel ? 'on' : ''}" data-day="${k}" aria-label="${longDate(d.date)}"><span class="wn">${wdShort(d.date)}</span><i ${dot}></i><span class="wnum">${Number(d.date.slice(8))}</span></button>`);
   }
   return `<nav class="week">${cells.join('')}</nav>`;
 }
@@ -399,26 +479,22 @@ function dayHeader() {
   </header>${weekStrip()}`;
 }
 
-function simpleHeader(title, back = false) {
+function simpleHeader(title, back = false, right = null) {
   return `<header class="top">
     <button class="iconbtn" data-act="${back ? 'back' : 'settings'}" aria-label="${back ? 'Zurück' : 'Einstellungen'}">${back ? I.back : I.gear}</button>
     <div class="title center"><div class="day">${title}${state.demo ? '<span class="demo-tag">DEMO</span>' : ''}</div></div>
-    ${syncChip()}
+    ${right ?? syncChip()}
   </header>`;
 }
 
 function statusBanner() {
   if (state.demo) return '';
   const st = state.store?.status || {};
-  if (st.auth === 'mfa') {
-    return `<button class="banner warn" data-act="settings"><b>Garmin wartet auf deinen Bestätigungscode.</b> Tippe hier und gib ihn ein (innerhalb von 30 Min.).</button>`;
-  }
-  if (st.auth === 'error') {
-    return `<div class="banner bad"><b>Garmin-Anmeldung fehlgeschlagen.</b> Prüfe die Secrets GARMIN_EMAIL und GARMIN_PASSWORD auf GitHub oder starte den Sync in den Einstellungen neu.</div>`;
-  }
+  if (st.auth === 'mfa') return `<button class="banner warn" data-act="settings"><b>Garmin wartet auf einen Code.</b> Tippe hier, um ihn einzugeben.</button>`;
+  if (st.auth === 'error') return `<button class="banner bad" data-act="settings"><b>Garmin-Anmeldung fehlgeschlagen.</b> Tippe für Hilfe.</button>`;
   const last = state.model.days[state.model.days.length - 1];
   if (state.sel === state.model.days.length - 1 && last.date < todayIso()) {
-    return `<div class="banner warn">Die neuesten Daten sind von ${dayTitle(last.date) === 'Gestern' ? 'gestern' : longDate(last.date)}. Öffne die Garmin-Connect-App, damit deine Uhr synchronisiert.</div>`;
+    return `<div class="banner warn">Noch keine Daten von heute. Öffne kurz Garmin Connect, damit die Uhr synchronisiert.</div>`;
   }
   return '';
 }
@@ -426,8 +502,10 @@ function statusBanner() {
 function render() {
   renderTabbar();
   renderSheet();
+  renderOnboarding();
   const anim = state.animate;
   state.animate = false;
+  document.body.classList.toggle('chatmode', state.view === 'main' && state.tab === 'coach');
   if (state.view === 'loading') {
     app.innerHTML = '<div class="lock"><div class="spinner"></div></div>';
     return;
@@ -440,9 +518,14 @@ function render() {
     app.innerHTML = state.tab === 'settings' ? simpleHeader('Einstellungen', true) + viewSettings() : viewNoData();
     return;
   }
-  const views = { heute: viewToday, schlaf: viewSleep, recovery: viewRecovery, belastung: viewStrain, trends: viewTrends, settings: viewSettings };
-  const head = DAY_TABS.includes(state.tab) ? dayHeader() : simpleHeader(state.tab === 'trends' ? 'Trends' : 'Einstellungen', state.tab === 'settings');
+  const draft = document.getElementById('askbox')?.value || '';
+  const views = { heute: viewToday, schlaf: viewSleep, recovery: viewRecovery, belastung: viewStrain, coach: viewCoach, trends: viewTrends, settings: viewSettings };
+  let head;
+  if (DAY_TABS.includes(state.tab)) head = dayHeader();
+  else if (state.tab === 'coach') head = simpleHeader('Coach', false, `<button class="chip" data-act="chat-new" aria-label="Neuer Chat">${I.plus}Neu</button>`);
+  else head = simpleHeader(state.tab === 'trends' ? 'Trends' : 'Einstellungen', true);
   app.innerHTML = `${head}<div class="screen${anim ? ' anim' : ''}">${state.tab === 'heute' ? statusBanner() : ''}${views[state.tab](anim)}</div>`;
+  if (draft && document.getElementById('askbox')) document.getElementById('askbox').value = draft;
   if (anim) animateCounts();
 }
 
@@ -467,7 +550,7 @@ function viewLock() {
   return `<form class="lock" data-form="unlock">
     <img class="logo" src="icons/icon-192.png" alt="">
     <h1>Puls</h1>
-    <p>Deine Daten sind verschlüsselt. Gib dein Daten-Passwort ein (das Secret <b>DATA_PASSPHRASE</b>). Es bleibt nur auf diesem Gerät.</p>
+    <p>Deine Daten sind verschlüsselt. Gib einmal dein Daten-Passwort ein – danach nie wieder.</p>
     <input id="pass" type="password" autocomplete="current-password" placeholder="Daten-Passwort" required>
     ${err ? `<p class="error">${err}</p>` : ''}
     <button class="btn" type="submit">Entsperren</button>
@@ -481,26 +564,30 @@ function viewNoData() {
     state.error === 'offline'
       ? 'Keine Verbindung und noch keine gespeicherten Daten.'
       : auth === 'mfa'
-        ? 'Garmin hat dir einen Bestätigungscode geschickt. Gib ihn unter „Sync & Garmin-Code“ ein oder starte auf GitHub „Run workflow“ mit dem Code (innerhalb von 30 Min.).'
+        ? 'Garmin hat dir einen Bestätigungscode geschickt. Gib ihn in den Einstellungen ein (innerhalb von 30 Min.).'
         : auth === 'error'
-          ? 'Die Garmin-Anmeldung ist fehlgeschlagen. Prüfe die Secrets GARMIN_EMAIL und GARMIN_PASSWORD auf GitHub.'
-          : 'Noch keine Daten da. Sobald der erste Garmin-Sync gelaufen ist, erscheinen sie hier automatisch.';
+          ? 'Die Garmin-Anmeldung ist fehlgeschlagen. Prüfe E-Mail und Passwort in den GitHub-Secrets.'
+          : 'Noch keine Daten da. Sobald der erste Garmin-Abruf gelaufen ist, erscheinen sie hier.';
   return `<div class="lock">
     <img class="logo" src="icons/icon-192.png" alt="">
     <h1>Puls</h1>
     <p>${text}</p>
     <button class="btn" data-act="reload">Erneut laden</button>
     <button class="btn ghost" data-act="demo">Demo-Daten ansehen</button>
-    <button class="linkbtn" data-act="settings">Sync &amp; Garmin-Code</button>
+    <button class="linkbtn" data-act="settings">Einstellungen</button>
   </div>`;
 }
 
 // ------------------------------------------------------------------ Bausteine
 
-const card = (title, body, cls = '') => `<section class="card ${cls}">${title ? `<h2>${title}</h2>` : ''}${body}</section>`;
+const infoBtn = (key) => `<button class="infobtn" data-info="${key}" aria-label="Erklärung">i</button>`;
+const card = (title, body, cls = '', info = '') => `<section class="card ${cls}">${title ? `<h2>${title}${info ? infoBtn(info) : ''}</h2>` : ''}${body}</section>`;
 const insightHtml = (x) => `<div class="insight ${x.tone}"><b>${esc(x.title)}</b><p>${esc(x.text)}</p></div>`;
 function tile(k, v, unit = '', s = '') {
   return `<div class="tile"><div class="k">${k}</div><div class="v">${v}${unit ? `<small>${unit}</small>` : ''}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`;
+}
+function rowLink(icon, color, title, sub, act, extra = '') {
+  return `<button class="rowlink" ${act}><span class="ic" style="color:${color}">${icon}</span><span class="rl"><b>${title}</b>${sub ? `<span>${sub}</span>` : ''}</span>${extra}<span class="chev">${I.chevron}</span></button>`;
 }
 function rangeSeg() {
   return `<div class="seg">${[7, 30, 90].map((r) => `<button data-range="${r}" class="${state.range === r ? 'on' : ''}">${r === 7 ? '1 Woche' : r === 30 ? '1 Monat' : '3 Monate'}</button>`).join('')}</div>`;
@@ -521,131 +608,90 @@ function dials(d, anim) {
 
 // ------------------------------------------------------------------ Heute
 
+function setupState() {
+  return {
+    sync: !!ghConfig().token,
+    coach: !!Coach.coachConfig().apiKey,
+    push: pushReady(),
+  };
+}
+
+function setupCard() {
+  if (state.demo || ls.get(LS.setupHidden)) return '';
+  const s = setupState();
+  const done = [s.sync, s.coach, s.push].filter(Boolean).length;
+  if (done === 3) return '';
+  const item = (ok, icon, title, sub, act) =>
+    `<button class="setup-item ${ok ? 'ok' : ''}" ${ok ? 'disabled' : act}><span class="ic">${ok ? I.check : icon}</span><span class="rl"><b>${title}</b><span>${ok ? 'Erledigt' : sub}</span></span>${ok ? '' : `<span class="chev">${I.chevron}</span>`}</button>`;
+  return `<section class="card setup"><h2>Puls fertig einrichten · ${done} von 3<button class="infobtn" data-act="setup-hide" aria-label="Ausblenden">×</button></h2>
+    ${item(s.sync, I.sync, 'Automatisch aktualisieren', 'Frische Daten bei jedem Öffnen · 2 Min.', 'data-act="setup-sync"')}
+    ${item(s.coach, I.coach, 'KI-Coach aktivieren', 'Frag alles zu Training & Schlaf · 3 Min.', 'data-act="setup-coach"')}
+    ${item(s.push, I.bell, 'Benachrichtigungen', 'Recovery am Morgen, Erinnerung zum Schlafen', 'data-act="setup-push"')}
+  </section>`;
+}
+
 function viewToday(anim) {
   const m = state.model;
   const i = state.sel;
   const d = m.days[i];
   const coach = E.buildCoach(m, i);
   const insights = E.buildInsights(m, i, journal());
-  const plan = i === m.days.length - 1 ? E.bedtimePlan(m, i) : null;
-  return `
-    ${dials(d, anim)}
-    ${journalCard(d)}
-    ${coachCard(coach, d, plan)}
-    ${bodyCheckCard(E.vitals(m, i), false)}
-    ${dayCard(d)}
-    ${statsCard(m, i)}
-    ${insights.length ? card('Erkenntnisse', insights.map(insightHtml).join('')) : ''}`;
-}
+  const isLatest = i === m.days.length - 1;
+  const plan = isLatest ? E.bedtimePlan(m, i) : null;
+  const v = E.vitals(m, i);
 
-function journalCard(d) {
-  if (state.sel === 0) return '';
-  const date = E.addDays(d.date, -1);
-  const answers = journal()[date];
-  const isYesterday = dayTitle(date) === 'Gestern';
-  const dayName = isYesterday ? 'gestern' : `am ${longDate(date)}`;
-  if (!answers?._done) {
-    return `<button class="card journal-cta" data-act="journal" data-date="${date}">
-      <span class="ic">${I.journal}</span>
-      <span class="jbody"><b>Morgen-Check</b><span>Was war ${dayName}? 10 Sekunden – so lernt Puls, was deine Recovery beeinflusst.</span></span>
-      <span class="go">›</span></button>`;
-  }
-  const yes = E.JOURNAL_QUESTIONS.filter((q) => answers[q.id]).map((q) => q.label);
-  return `<button class="card journal-done" data-act="journal" data-date="${date}">
-    <span class="ic">${I.check}</span>
-    <span class="jbody"><b>Morgen-Check ${isYesterday ? 'für gestern ' : ''}erledigt</b><span>${yes.length ? esc(yes.join(' · ')) : 'Nichts Besonderes'}</span></span>
-    <span class="go">Ändern</span></button>`;
-}
-
-function coachCard(coach, d, plan) {
+  // Plan des Tages: drei Zeilen statt Textblock
+  let planCard;
   if (coach.state === 'nodata') {
-    return card('Coach', `<h3>${esc(coach.headline)}</h3><p class="muted">${esc(coach.text)}</p>${plan ? sleepCoachItem(plan) : ''}`, 'coach');
+    planCard = card('', `<h3 class="headline">${esc(coach.headline)}</h3><p class="muted small">${esc(coach.text)}</p>${plan ? rowLink(I.bed, 'var(--sleep)', `Ins Bett um ${clockDE(plan.options[0].bed)}`, `${E.fmtDur(plan.need.total)} Std. Schlaf nötig`, 'data-tab="schlaf"') : ''}`, 'plan');
+  } else {
+    planCard = `<section class="card plan">
+      <h3 class="headline zone-${coach.state}">${esc(coach.headline)}</h3>
+      ${coach.notes.length ? `<p class="small muted" style="margin:-4px 0 8px">${esc(coach.notes[0])}</p>` : ''}
+      ${rowLink(I.strain, 'var(--strain)', `Ziel-Strain ${de1(d.target.low)}–${de1(d.target.high)}`, esc(coach.remaining.short || coach.remaining.text), 'data-tab="belastung"')}
+      ${plan ? rowLink(I.bed, 'var(--sleep)', `Ins Bett um ${clockDE(plan.options[0].bed)}`, `${E.fmtDur(plan.need.total)} Std. Schlaf · spätestens ${clockDE(plan.options[1].bed)}`, 'data-tab="schlaf"') : ''}
+      ${rowLink(I.coach, 'var(--green)', 'Coach fragen', 'z. B. „Was soll ich heute trainieren?“', 'data-tab="coach"')}
+    </section>`;
   }
-  const notes = coach.notes.map((n) => `<div class="coach-item"><div class="ic">${I.info}</div><div><p>${esc(n)}</p></div></div>`).join('');
-  return `<section class="card coach">
-    <h2>Coach</h2>
-    <h3 class="zone-${coach.state}">${esc(coach.headline)}</h3>
-    <div class="coach-item"><div class="ic" style="color:var(--strain)">${I.strain}</div><div>
-      <b>Training · Ziel-Strain <span class="target-pill">${de1(d.target.low)}–${de1(d.target.high)}</span></b>
-      <p>${esc(coach.plan)}</p>
-      <p class="muted small">${esc(coach.remaining.text)}</p>
-    </div></div>
-    ${notes}
-    ${plan ? sleepCoachItem(plan) : ''}
-  </section>`;
-}
 
-function sleepCoachItem(plan) {
-  const [peak, good] = plan.options;
-  return `<div class="coach-item"><div class="ic" style="color:var(--sleep)">${I.bed}</div><div>
-    <b>Heute Nacht: ${E.fmtDur(plan.need.total)} Std. Schlaf</b>
-    <p>Ins Bett um <b>${clockDE(peak.bed)}</b> für 100 % · spätestens <b>${clockDE(good.bed)}</b> für 85 %.</p>
-    <p class="muted small">Gerechnet mit Aufstehen um ${clockDE(plan.wake)}${plan.wakeSource === 'auto' ? ` (dein typischer ${plan.weekend ? 'Wochenend' : 'Werktag'}-Wecker)` : ''}.</p>
-  </div></div>`;
-}
+  // Morgen-Check (eine Zeile)
+  let journalRow = '';
+  if (i > 0) {
+    const date = E.addDays(d.date, -1);
+    const a = journal()[date];
+    const yes = a?._done ? E.JOURNAL_QUESTIONS.filter((q) => a[q.id]).map((q) => q.label) : null;
+    journalRow = yes
+      ? `<section class="card slim">${rowLink(I.check, 'var(--green)', 'Morgen-Check erledigt', esc(yes.join(' · ') || 'Nichts Besonderes'), `data-act="journal" data-date="${date}"`)}</section>`
+      : `<section class="card slim journal-cta">${rowLink(I.journal, 'var(--sleep)', 'Morgen-Check', `Was war ${dayTitle(date) === 'Gestern' ? 'gestern' : 'am Vortag'}? · 10 Sek.`, `data-act="journal" data-date="${date}"`)}</section>`;
+  }
 
-function bodyCheckCard(v, full) {
-  if (!v.items.length) return '';
-  const ok = v.outside === 0;
-  const title = ok
-    ? `${v.measured === v.items.length ? 'Alle ' : ''}${v.measured} Vitalwerte im Normalbereich`
-    : `${v.outside} ${v.outside === 1 ? 'Wert' : 'Werte'} außerhalb deines Normalbereichs`;
-  const head = `<div class="bc-head ${ok ? 'ok' : 'bad'}"><span class="ic">${ok ? I.check : I.alert}</span>
-    <div><b>${title}</b><p class="muted small">Verglichen mit deinen letzten 30 Tagen</p></div></div>`;
-  const rows = v.items
-    .map((x) => {
-      if (x.status === 'na') return `<div class="vital"><span class="vl">${x.label}</span><span class="vv">${fmtVital(x)}</span><span class="vs muted">lernt noch</span></div>`;
-      const color = x.bad ? 'var(--red)' : x.status === 'ok' ? 'var(--green)' : 'var(--yellow)';
-      const status = x.status === 'ok' ? 'normal' : x.status === 'high' ? 'erhöht' : 'niedrig';
-      return full
-        ? `<div class="vital full"><span class="vl">${x.label}</span><span class="vv" style="color:${x.bad ? 'var(--red)' : 'inherit'}">${fmtVital(x)}</span>${rangeBar(x.value, x.lo, x.hi, color)}<span class="vr muted">normal ${fmtRange(x)}</span></div>`
-        : `<div class="vital"><span class="vl">${x.label}</span><span class="vv">${fmtVital(x)}</span><span class="vs" style="color:${color}">${status}</span></div>`;
-    })
-    .join('');
-  return `<section class="card bodycheck"><h2>Körper-Check</h2>${head}<div class="vitals">${rows}</div></section>`;
-}
-const fmtVital = (x) => (x.delta ? `${sign(x.value, 1)} ${x.unit}` : `${x.digits ? de1(x.value) : Math.round(x.value)} ${x.unit}`);
-const fmtRange = (x) => (x.delta ? `${sign(x.lo, 1)} bis ${sign(x.hi, 1)}` : x.digits ? `${de1(x.lo)}–${de1(x.hi)}` : `${Math.round(x.lo)}–${Math.round(x.hi)}`);
+  // Körper (eine Zeile)
+  const bodyRow = v.items.length
+    ? `<section class="card slim">${rowLink(v.outside ? I.alert : I.check, v.outside ? 'var(--red)' : 'var(--green)', v.outside ? `${v.outside} Körperwert${v.outside > 1 ? 'e' : ''} auffällig` : 'Körperwerte normal', v.items.map((x) => x.label).join(' · '), 'data-tab="recovery"')}</section>`
+    : '';
 
-function dayCard(d) {
-  const st = d.stats || {};
-  const facts = [
-    st.steps != null ? `<span><b>${int(st.steps)}</b> Schritte</span>` : '',
-    st.kcal != null ? `<span><b>${int(st.kcal)}</b> kcal</span>` : '',
-    st.bbHigh != null ? `<span>Body Battery <b>${st.bbHigh}</b>${st.bbNow != null ? ` → <b>${st.bbNow}</b>` : st.bbLow != null ? ` → <b>${st.bbLow}</b>` : ''}</span>` : '',
-    st.stress != null ? `<span>Stress Ø <b>${st.stress}</b></span>` : '',
-  ].filter(Boolean);
-  const acts = d.acts.length ? d.acts.map(actRow).join('') : '<p class="muted small">Noch keine Aktivität aufgezeichnet.</p>';
-  return card('Dein Tag', `${acts}${facts.length ? `<div class="facts">${facts.join('')}</div>` : ''}`);
+  const shown = state.showAllInsights ? insights : insights.slice(0, 2);
+  const insightsCard = insights.length
+    ? card('Hinweise', `${shown.map(insightHtml).join('')}${insights.length > 2 ? `<button class="linkbtn" data-act="more-insights">${state.showAllInsights ? 'Weniger' : `Alle ${insights.length} Hinweise`}</button>` : ''}`)
+    : '';
+
+  const acts = d.acts.length ? card('Aktivitäten', d.acts.map(actRow).join('')) : '';
+
+  let weekRow = '';
+  if (isLatest) {
+    const w = E.weeklyAssessment(m, i);
+    const dots = m.days.slice(Math.max(0, i - 6), i + 1).map((x) => `<i style="background:${x.zone ? zoneColor(x.zone) : 'var(--track)'}"></i>`).join('');
+    weekRow = `<section class="card slim">${rowLink(I.trends, 'var(--text)', `Deine Woche: ${esc(w.verdict.label)}`, 'Bericht, Kalender & Einflüsse', 'data-tab="trends"', `<span class="weekdots">${dots}</span>`)}</section>`;
+  }
+
+  return `${setupCard()}${dials(d, anim)}${planCard}${journalRow}${bodyRow}${insightsCard}${acts}${weekRow}`;
 }
 
 function actRow(a) {
-  const meta = [a.start, E.fmtDurLong(a.dur / 60), a.dist ? `${(a.dist / 1000).toFixed(1).replace('.', ',')} km` : '', a.avgHr ? `Ø ${a.avgHr} bpm` : '']
-    .filter(Boolean)
-    .join(' · ');
+  const meta = [a.start, E.fmtDurLong(a.dur / 60), a.dist ? `${(a.dist / 1000).toFixed(1).replace('.', ',')} km` : '', a.avgHr ? `Ø ${a.avgHr} bpm` : ''].filter(Boolean).join(' · ');
   return `<div class="act"><div class="ic" style="color:var(--strain)">${actIcon(a.type)}</div>
     <div class="body"><div class="name">${esc(a.name || a.type || 'Aktivität')}</div><div class="meta">${esc(meta)}</div></div>
     <div class="st">${de1(a.strain)}<small>Strain</small></div></div>`;
-}
-
-function statsCard(m, i) {
-  const partial = m.days[i].date === todayIso();
-  const rows = E.keyStats(m, i, { partial });
-  if (!rows.length) return '';
-  const arrow = (r) => {
-    if (!r.trend) return '<span class="arr muted">läuft</span>';
-    const cls = r.good == null ? 'muted' : r.good ? 'up' : 'down';
-    const sym = r.trend === 'up' ? '▲' : r.trend === 'down' ? '▼' : '•';
-    return `<span class="arr ${cls}">${sym}</span>`;
-  };
-  return card(
-    'Statistiken',
-    `<div class="stats">${rows
-      .map(
-        (r) => `<div class="stat"><span class="sl">${r.label}</span><span class="sv">${fmtVal(r.value, r.digits)}${r.unit ? `<small>${r.unit}</small>` : ''}</span>${arrow(r)}<span class="sb">${r.base == null ? '' : `Ø ${fmtVal(r.base, r.digits)}`}</span></div>`,
-      )
-      .join('')}</div><p class="muted small" style="margin-top:8px">▲▼ im Vergleich zu deinem 30-Tage-Schnitt · grün = besser</p>`,
-  );
 }
 
 // ------------------------------------------------------------------ Recovery
@@ -658,10 +704,12 @@ function viewRecovery(anim) {
   const parts = [];
   parts.push(`<section class="hero" style="--glow:${zoneColor(d.zone)}">
     ${ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 200, stroke: 16, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : `Recovery · ${zoneName(d.zone)}`, labelSize: 54, count: d.recovery, suffix: '%', anim, glow: true })}
-    <p class="hero-text">${d.recovery == null ? 'Für diesen Tag fehlen die Schlafdaten.' : esc(d.alarm ? 'Mehrere Körperwerte sind auffällig – dein Körper kämpft womöglich gegen einen Infekt oder eine Überlastung. Heute ist Erholung das beste Training.' : ZONE_TEXT[d.zone])}</p>
+    <p class="hero-text">${d.recovery == null ? 'Für diesen Tag fehlen die Schlafdaten.' : esc(d.alarm ? 'Mehrere Werte auffällig – vielleicht ein Infekt. Heute ist Ruhe das beste Training.' : ZONE_TEXT[d.zone])} ${infoBtn('recovery')}</p>
   </section>`);
   parts.push(factorsCard(d));
-  parts.push(bodyCheckCard(E.vitals(m, i), true));
+  parts.push(bodyCheckCard(E.vitals(m, i)));
+  parts.push(stressCard(d));
+  if (i === m.days.length - 1) parts.push(ageCard(m));
   parts.push(`<h2 class="section">Verlauf</h2>${rangeSeg()}`);
   parts.push(card('Recovery', bars({ values: span.map((x) => ({ v: x.recovery, color: zoneColor(x.zone) })), labels, every, max: 100, refs: [{ v: 67, color: 'var(--grid)', dash: true }, { v: 34, color: 'var(--grid)', dash: true }] })));
   parts.push(
@@ -676,20 +724,14 @@ function viewRecovery(anim) {
         labels,
         every,
         unit: 'ms',
-      })}<div class="legend"><span>● Nacht</span><span>— 7-Tage-Schnitt</span><span><i style="background:var(--band)"></i>Normalbereich</span></div>`,
+      })}<div class="legend"><span>● Nacht</span><span>— 7-Tage-Schnitt</span><span><i style="background:var(--band)"></i>dein Normalbereich</span></div>`,
+      '',
+      'hrv',
     ),
   );
-  parts.push(
-    card(
-      'Ruhepuls',
-      `${lines({ series: [{ values: span.map((x) => x.rhr), color: 'var(--red)', width: 1.2, opacity: 0.55, dots: state.range <= 30 }, { values: span.map((x) => x.rhr3), color: 'var(--red)', width: 2.5 }], labels, every, unit: 'bpm' })}
-      <div class="legend"><span>● Tag</span><span>— 3-Tage-Schnitt</span></div>`,
-    ),
-  );
-  if (span.some((x) => x.resp != null)) {
-    parts.push(card('Atemfrequenz (Nacht)', lines({ series: [{ values: span.map((x) => x.resp), color: 'var(--strain)', width: 2, dots: state.range <= 30 }], labels, every, unit: '/Min.' })));
-  }
+  parts.push(card('Ruhepuls', lines({ series: [{ values: span.map((x) => x.rhr), color: 'var(--red)', width: 1.2, opacity: 0.55, dots: state.range <= 30 }, { values: span.map((x) => x.rhr3), color: 'var(--red)', width: 2.5 }], labels, every, unit: 'bpm' })));
   parts.push(influencesCard(m, 5));
+  parts.push(`<section class="card slim">${rowLink(I.trends, 'var(--text)', 'Trends & Wochenbericht', 'Kalender, Einflüsse, lange Verläufe', 'data-tab="trends"')}</section>`);
   return parts.join('');
 }
 
@@ -699,29 +741,81 @@ function factorsCard(d) {
     .map((c) => {
       if (c.key === 'hrv') {
         const delta = 100 * (c.value / c.ref - 1);
-        return factor('HRV', `${Math.round(c.value)} ms`, `Normal: ${Math.round(c.ref)} ms · <span class="${delta >= 0 ? 'up' : 'down'}">${sign(delta)} %</span>`, c.score, '50 %');
+        return factor('HRV', `${Math.round(c.value)} ms`, `normal ${Math.round(c.ref)} ms · <span class="${delta >= 0 ? 'up' : 'down'}">${sign(delta)} %</span>`, c.score, 'hrv');
       }
       if (c.key === 'rhr') {
         const delta = c.value - c.ref;
-        return factor('Ruhepuls', `${Math.round(c.value)} bpm`, `Normal: ${de1(c.ref)} bpm · <span class="${delta <= 0 ? 'up' : 'down'}">${sign(delta, 1)}</span>`, c.score, '20 %');
+        return factor('Ruhepuls', `${Math.round(c.value)} bpm`, `normal ${de1(c.ref)} bpm · <span class="${delta <= 0 ? 'up' : 'down'}">${sign(delta, 1)}</span>`, c.score);
       }
-      return factor('Schlaf', `${Math.round(d.perf)} %`, `${E.fmtDur(c.value)} von ${E.fmtDur(c.ref)} Std. Bedarf · Qualität ${Math.round(c.quality)}`, c.score, '30 %');
+      return factor('Schlaf', `${Math.round(d.perf)} %`, `${E.fmtDur(c.value)} von ${E.fmtDur(c.ref)} Std.`, c.score);
     })
     .join('');
   const pens = d.penalties
-    .map((p) =>
-      p.key === 'resp'
-        ? factor('Atemfrequenz', `${de1(d.resp)} /Min.`, `<span class="down">${sign(p.delta, 1)} über normal → −${Math.round(p.points)} Punkte</span>`, null)
-        : factor('Hauttemperatur', `${sign(p.delta, 1)} °C`, `<span class="down">erhöht → −${Math.round(p.points)} Punkte</span>`, null),
-    )
+    .map((p) => (p.key === 'resp' ? factor('Atemfrequenz', `${de1(d.resp)} /Min.`, `<span class="down">${sign(p.delta, 1)} über normal · −${Math.round(p.points)} Punkte</span>`, null) : factor('Hauttemperatur', `${sign(p.delta, 1)} °C`, `<span class="down">erhöht · −${Math.round(p.points)} Punkte</span>`, null)))
     .join('');
-  const calib = d.base.calibrating ? `<p class="muted small" style="margin-top:8px">Kalibrierung: ${d.base.hrvDays} von 14 Nächten mit HRV.</p>` : '';
-  return card(d.recovery == null ? 'Beiträge' : `Woraus deine ${d.recovery} % bestehen`, `${rows}${pens}${calib}`);
+  return card('Woraus sie sich ergibt', `${rows}${pens}${d.base.calibrating ? `<p class="muted small" style="margin-top:8px">Lernt noch: ${d.base.hrvDays} von 14 Nächten.</p>` : ''}`);
 }
 
-function factor(name, val, cmp, score, weight = '') {
-  return `<div class="factor"><div class="name">${name}${weight ? ` <span class="w">${weight}</span>` : ''}</div><div class="val">${val}</div><div class="cmp">${cmp}</div>
+function factor(name, val, cmp, score, info = '') {
+  return `<div class="factor"><div class="name">${name}${info ? infoBtn(info) : ''}</div><div class="val">${val}</div><div class="cmp">${cmp}</div>
     ${score == null ? '' : `<div class="meter"><i style="width:${Math.round(score)}%;background:${scoreColor(score)}"></i></div>`}</div>`;
+}
+
+function bodyCheckCard(v) {
+  if (!v.items.length) return '';
+  const ok = v.outside === 0;
+  const head = `<div class="bc-head ${ok ? 'ok' : 'bad'}"><span class="ic">${ok ? I.check : I.alert}</span><div><b>${ok ? 'Alles im Normalbereich' : `${v.outside} ${v.outside === 1 ? 'Wert' : 'Werte'} auffällig`}</b></div></div>`;
+  const rows = v.items
+    .map((x) => {
+      if (x.status === 'na') return `<div class="vital"><span class="vl">${x.label}</span><span class="vv">${fmtVital(x)}</span><span class="vs muted">lernt noch</span></div>`;
+      const color = x.bad ? 'var(--red)' : x.status === 'ok' ? 'var(--green)' : 'var(--yellow)';
+      return `<div class="vital full"><span class="vl">${x.label}</span><span class="vv" style="color:${x.bad ? 'var(--red)' : 'inherit'}">${fmtVital(x)}</span>${rangeBar(x.value, x.lo, x.hi, color)}<span class="vr muted">normal ${fmtRange(x)}</span></div>`;
+    })
+    .join('');
+  return `<section class="card bodycheck"><h2>Körper-Check${infoBtn('body')}</h2>${head}<div class="vitals">${rows}</div></section>`;
+}
+const fmtVital = (x) => (x.delta ? `${sign(x.value, 1)} ${x.unit}` : `${x.digits ? de1(x.value) : Math.round(x.value)} ${x.unit}`);
+const fmtRange = (x) => (x.delta ? `${sign(x.lo, 1)} bis ${sign(x.hi, 1)}` : x.digits ? `${de1(x.lo)}–${de1(x.hi)}` : `${Math.round(x.lo)}–${Math.round(x.hi)}`);
+
+function stressCard(d) {
+  const s = E.stressSummary(d);
+  if (!s.series?.length && !s.minutes && s.avg == null) return '';
+  let chart = '';
+  if (s.series?.length || s.battery?.length) {
+    const slots = (series) => {
+      const arr = new Array(144).fill(null);
+      for (const [min, v] of series || []) arr[Math.floor(min / 10)] = v;
+      return arr;
+    };
+    const labels = new Array(144).fill('').map((_, k) => (k % 36 === 0 ? `${k / 6}:00` : ''));
+    chart = `${lines({ series: [{ values: slots(s.series), color: 'var(--awake)', width: 1.8 }, { values: slots(s.battery), color: 'var(--green)', width: 2.4 }], labels, every: 1, fixed: [0, 100], height: 130 })}
+      <div class="legend"><span><i style="background:var(--awake)"></i>Stress</span><span><i style="background:var(--green)"></i>Body Battery</span></div>`;
+  }
+  let split = '';
+  if (s.minutes) {
+    const total = s.minutes.rest + s.minutes.low + s.minutes.med + s.minutes.high || 1;
+    const seg = (v, c) => `<i style="width:${(100 * v) / total}%;background:${c}"></i>`;
+    split = `<div class="stressbar">${seg(s.minutes.rest, 'var(--strain)')}${seg(s.minutes.low, '#f6c54488')}${seg(s.minutes.med, 'var(--awake)')}${seg(s.minutes.high, 'var(--red)')}</div>
+      <div class="legend"><span>Ruhe ${E.fmtDur(s.minutes.rest)}</span><span>Niedrig ${E.fmtDur(s.minutes.low)}</span><span>Mittel ${E.fmtDur(s.minutes.med)}</span><span>Hoch ${E.fmtDur(s.minutes.high)}</span></div>`;
+  }
+  return card('Stress & Energie', `${s.avg != null ? `<div class="row between" style="margin-bottom:6px"><span class="muted small">Stress Ø</span><b>${s.avg} ${s.avg >= 50 ? '· hoch' : s.avg >= 26 ? '· mittel' : '· niedrig'}</b></div>` : ''}${chart}${split}`, '', 'stress');
+}
+
+function ageCard(m) {
+  const a = E.healthAge(m);
+  if (!a) return '';
+  const younger = a.diff <= 0;
+  const rows = a.items
+    .map((x) => `<div class="agerow"><span>${x.label}<small>${esc(x.value)}</small></span><b class="${x.years <= 0 ? 'up' : 'down'}">${sign(x.years, 1)} J.</b></div>`)
+    .join('');
+  const worst = a.items.find((x) => x.years > 0.3);
+  return card(
+    'Puls-Alter',
+    `<div class="age"><div class="agebig">${de1(a.pulsAge)}</div><div><b class="${younger ? 'up' : 'down'}">${de1(Math.abs(a.diff))} Jahre ${younger ? 'jünger' : 'älter'}</b><p class="muted small">als dein echtes Alter (${a.age})</p></div></div>
+    ${rows}${worst ? `<p class="small" style="margin-top:8px">Größter Hebel: <b>${worst.label}</b> – ${esc(worst.better)}</p>` : ''}`,
+    '',
+    'age',
+  );
 }
 
 function influencesCard(m, limit = Infinity) {
@@ -730,27 +824,17 @@ function influencesCard(m, limit = Infinity) {
   const pending = imp.filter((x) => x.pending);
   const inf = m.influences;
   const items = [];
-  for (const x of solid) {
-    items.push(`<div class="impact"><div class="iname">${esc(x.label)}${x.solid ? '' : ' <span class="w">vorläufig</span>'}</div>
-      ${impactBar(x.diff)}<div class="ival ${x.diff >= 0 ? 'up' : 'down'}">${sign(x.diff)}</div>
-      <div class="cmp">Recovery am Morgen danach: ${Math.round(x.yes)} % statt ${Math.round(x.no)} % (${x.ny} vs. ${x.nn} Tage)</div></div>`);
-  }
-  for (const x of inf.ready ? inf.items : []) {
-    items.push(`<div class="impact"><div class="iname">${esc(x.title)}</div>${impactBar(x.diff)}<div class="ival ${x.diff >= 0 ? 'up' : 'down'}">${sign(x.diff)}</div>
-      <div class="cmp">${esc(x.text)} (${x.na} vs. ${x.nb} Tage)</div></div>`);
-  }
-  const more = items.length > limit ? `<button class="linkbtn" data-tab="trends">Alle ${items.length} Einflüsse ansehen ›</button>` : '';
-  items.splice(limit);
-  const hint = pending.length
-    ? `<p class="muted small" style="margin-top:8px">Noch zu wenig Morgen-Checks für: ${pending.map((x) => esc(x.label)).join(', ')}. Ab 3 Tagen mit und ohne erscheint der Effekt.</p>`
-    : '';
-  const empty = !items.length
-    ? '<p class="muted">Beantworte jeden Morgen den Morgen-Check. Nach ein paar Wochen zeigt Puls hier, was deine Recovery wirklich hebt oder senkt.</p>'
-    : '';
-  return card(
-    'Was deine Recovery beeinflusst',
-    `${empty}${items.join('')}${more}${hint}<p class="muted small" style="margin-top:8px">Prozentpunkte Recovery im Schnitt · Zusammenhänge in deinen Daten, kein Beweis für Ursachen.</p>`,
-  );
+  for (const x of solid) items.push({ label: x.label + (x.solid ? '' : ' (vorläufig)'), diff: x.diff, sub: `${Math.round(x.yes)} % statt ${Math.round(x.no)} %` });
+  for (const x of inf.ready ? inf.items : []) items.push({ label: x.title, diff: x.diff, sub: `${Math.round(x.a)} % statt ${Math.round(x.b)} %` });
+  items.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+  const more = items.length > limit ? `<button class="linkbtn" data-tab="trends">Alle ${items.length} ansehen</button>` : '';
+  const html = items
+    .slice(0, limit)
+    .map((x) => `<div class="impact"><div class="iname">${esc(x.label)}<small>${x.sub}</small></div>${impactBar(x.diff)}<div class="ival ${x.diff >= 0 ? 'up' : 'down'}">${sign(x.diff)}</div></div>`)
+    .join('');
+  const empty = !items.length ? '<p class="muted small">Mach jeden Morgen den Morgen-Check – nach ein paar Wochen siehst du hier, was dir hilft und was dir schadet.</p>' : '';
+  const hint = pending.length ? `<p class="muted small" style="margin-top:8px">Sammelt noch Daten: ${pending.map((x) => esc(x.label)).join(', ')}</p>` : '';
+  return card('Was deine Recovery beeinflusst', `${empty}${html}${more}${hint}`, '', 'journal');
 }
 
 function impactBar(diff) {
@@ -779,7 +863,7 @@ function viewSleep(anim) {
         <div><span>${isNum(s.wake) ? clockDE(s.wake) : '–'}</span><small>Ende</small></div>
       </div></section>`);
   } else {
-    parts.push(card('', '<h3>Keine Schlafdaten für diese Nacht</h3><p class="muted">Synchronisiere deine Uhr in der Garmin-Connect-App.</p>'));
+    parts.push(card('', '<h3>Keine Schlafdaten für diese Nacht</h3><p class="muted small">Öffne kurz Garmin Connect, damit die Uhr synchronisiert.</p>'));
   }
 
   parts.push(isLatest ? tonightCard(E.bedtimePlan(m, i)) : card('Bedarf in dieser Nacht', needRows(d.need)));
@@ -787,15 +871,12 @@ function viewSleep(anim) {
   if (s) parts.push(stagesCard(d));
   if (s) {
     const t = [];
-    if (d.restorative != null) t.push(tile('Erholsam', E.fmtDur(d.restorative), 'Std.', `Tief + REM · ${Math.round((100 * d.restorative) / d.sleepMin)} %`));
-    if (d.eff != null) t.push(tile('Effizienz', Math.round(d.eff * 100), '%', 'Schlaf ÷ Zeit im Bett'));
-    if (d.consistency != null) t.push(tile('Konstanz', d.consistency, '%', `±${Math.round((d.sdBed + d.sdWake) / 2)} Min.`));
-    if (d.debt7 != null) t.push(tile('Schlafschuld', E.fmtDur(d.debt7), 'Std.', 'letzte 7 Nächte'));
+    if (d.restorative != null) t.push(tile('Erholsam', E.fmtDur(d.restorative), 'Std.', 'Tief + REM'));
+    if (d.eff != null) t.push(tile('Effizienz', Math.round(d.eff * 100), '%'));
+    if (d.consistency != null) t.push(tile('Konstanz', d.consistency, '%'));
+    if (d.debt7 != null) t.push(tile('Schlafschuld', E.fmtDur(d.debt7), 'Std.', '7 Nächte'));
     if (s.score != null) t.push(tile('Garmin-Score', s.score));
-    if (s.awakeCount != null) t.push(tile('Wachphasen', s.awakeCount));
-    if (s.resp != null) t.push(tile('Atemfrequenz', de1(s.resp), '/Min.'));
-    if (s.stress != null) t.push(tile('Schlafstress', Math.round(s.stress)));
-    if (s.bb != null) t.push(tile('Body Battery', sign(s.bb), '', 'über Nacht'));
+    if (s.resp != null) t.push(tile('Atmung', de1(s.resp), '/Min.'));
     parts.push(card('Kennzahlen', `<div class="grid">${t.join('')}</div>`));
   }
 
@@ -803,7 +884,7 @@ function viewSleep(anim) {
   parts.push(`<h2 class="section">Verlauf</h2>${rangeSeg()}`);
   parts.push(
     card(
-      'Schlafdauer und Bedarf',
+      'Schlaf und Bedarf',
       `${bars({
         values: span.map((n) => ({ v: n.sleepMin != null ? n.sleepMin / 60 : null, color: n.perf == null ? 'var(--track)' : n.perf >= 85 ? 'var(--sleep)' : n.perf >= 70 ? 'var(--yellow)' : 'var(--red)' })),
         line: span.map((n) => n.need.total / 60),
@@ -822,20 +903,18 @@ function viewSleep(anim) {
 function needRows(need) {
   const row = (k, v) => `<div class="need-row"><span>${k}</span><span class="num">${v}</span></div>`;
   return [
-    row('Basisbedarf', `${E.fmtDur(need.base)} Std.`),
-    need.strain >= 1 ? row('+ Belastung am Vortag', `${Math.round(need.strain)} Min.`) : '',
+    row('Basis', `${E.fmtDur(need.base)} Std.`),
+    need.strain >= 1 ? row('+ harter Vortag', `${Math.round(need.strain)} Min.`) : '',
     need.debt >= 1 ? row('+ Schlafschuld', `${Math.round(need.debt)} Min.`) : '',
-    need.recovery ? row('+ Erholung (rote Recovery)', `${need.recovery} Min.`) : '',
+    need.recovery ? row('+ Erholung', `${need.recovery} Min.`) : '',
     `<div class="need-row total"><span>Bedarf</span><span class="num">${E.fmtDur(need.total)} Std.</span></div>`,
   ].join('');
 }
 
 function tonightCard(plan) {
-  return `<section class="card"><h2>Schlafplaner · heute Nacht</h2>
-    <div class="bedtimes">${plan.options
-      .map((o, k) => `<div class="bedtime ${k === 0 ? 'main' : ''}"><div class="l">${o.label}</div><div class="t">${clockDE(o.bed)}</div><div class="l">${E.fmtDur(o.sleepMin)} Std.</div></div>`)
-      .join('')}</div>
-    <p class="muted small" style="margin:10px 0">Uhrzeit = ins Bett gehen, um ${clockDE(plan.wake)} aufzustehen${plan.wakeSource === 'auto' ? ` (dein typischer ${plan.weekend ? 'Wochenend' : 'Werktag'}-Wecker)` : ''}. Optimal deckt 100 % deines Bedarfs, Gut 85 %, Minimum 70 %.</p>
+  return `<section class="card"><h2>Schlafplaner · heute Nacht${infoBtn('sleep')}</h2>
+    <div class="bedtimes">${plan.options.map((o, k) => `<div class="bedtime ${k === 0 ? 'main' : ''}"><div class="l">${o.label}</div><div class="t">${clockDE(o.bed)}</div><div class="l">${E.fmtDur(o.sleepMin)} Std.</div></div>`).join('')}</div>
+    <p class="muted small" style="margin:10px 0">Ins Bett gehen, um ${clockDE(plan.wake)} aufzustehen.</p>
     ${needRows(plan.need)}
   </section>`;
 }
@@ -848,14 +927,9 @@ function stagesCard(d) {
     ['Leicht', d.stages.light, 'var(--light)', [45, 60], s.light],
   ]
     .filter((r) => r[1] != null)
-    .map(
-      ([name, p, color, [lo, hi], secs]) => `<div class="stage"><span>${name}</span>
-        <div class="bar"><u style="left:${lo}%;width:${hi - lo}%"></u><i style="width:${Math.min(100, p)}%;background:${color}"></i></div>
-        <span class="pv">${Math.round(p)} % · ${E.fmtDur(secs / 60)}</span></div>`,
-    )
+    .map(([name, p, color, [lo, hi], secs]) => `<div class="stage"><span>${name}</span><div class="bar"><u style="left:${lo}%;width:${hi - lo}%"></u><i style="width:${Math.min(100, p)}%;background:${color}"></i></div><span class="pv">${Math.round(p)} % · ${E.fmtDur(secs / 60)}</span></div>`)
     .join('');
-  const awake = s.awake != null ? `<p class="muted small" style="margin-top:6px">Wach: ${Math.round(s.awake / 60)} Min. · Heller Bereich = Normalbereich.</p>` : '';
-  return card('Phasen', rows + awake);
+  return card('Phasen', `${rows}${s.awake != null ? `<p class="muted small" style="margin-top:6px">Wach: ${Math.round(s.awake / 60)} Min. · heller Bereich = normal</p>` : ''}`);
 }
 
 // ------------------------------------------------------------------ Belastung
@@ -875,61 +949,47 @@ function viewStrain(anim) {
     <div class="hero-stats three">
       <div><span>${d.stats?.kcal != null ? int(d.stats.kcal) : '–'}</span><small>kcal</small></div>
       <div><span>${d.stats?.steps != null ? int(d.stats.steps) : '–'}</span><small>Schritte</small></div>
-      <div><span>${d.zoneMin ? d.zoneMin[1] + d.zoneMin[2] + d.zoneMin[3] + d.zoneMin[4] : '–'}</span><small>Min. ab Zone 2</small></div>
+      <div><span>${d.zoneMin ? d.zoneMin.reduce((a, b) => a + b, 0) : '–'}</span><small>aktive Min.</small></div>
     </div></section>`);
 
   parts.push(
     card(
       'Strain-Coach',
-      `${d.target ? `<div class="row between"><span class="muted small">Optimaler Strain heute</span><span class="target-pill">${de1(d.target.low)}–${de1(d.target.high)}</span></div>${strainGauge(d.strain, d.target)}` : '<p class="muted small">Ohne Recovery kein Zielbereich.</p>'}
-      ${coach.remaining ? `<p class="small">${esc(coach.remaining.text)}</p>` : ''}
-      ${coach.plan ? `<div class="sep"></div><p class="small">${esc(coach.plan)}</p>` : ''}`,
+      `${d.target ? `<div class="row between"><span class="muted small">Dein Ziel heute</span><span class="target-pill">${de1(d.target.low)}–${de1(d.target.high)}</span></div>${strainGauge(d.strain, d.target)}` : '<p class="muted small">Ohne Recovery kein Ziel.</p>'}
+      ${coach.remaining ? `<p class="small"><b>${esc(coach.remaining.text)}</b></p>` : ''}
+      ${coach.plan ? `<p class="small muted" style="margin-top:6px">${esc(coach.plan)}</p>` : ''}`,
+      '',
+      'strain',
     ),
   );
 
   if (d.acts.length) parts.push(card('Aktivitäten', d.acts.map(actRow).join('')));
-
   const series = d.raw.hr?.series;
-  if (series?.length > 5) {
-    parts.push(card('Puls im Tagesverlauf', `${hrCurve(series, zones, colors)}<div class="legend">${zones.map((z, k) => `<span><i style="background:${colors[k]}"></i>Z${z.zone}</span>`).join('')}</div>`));
-  }
-  if (d.zoneMin && d.zoneMin.every((v) => v === 0)) {
-    parts.push(card('Zeit in Pulszonen', `<p class="muted small">Noch keine Minute ab Zone 1 (${zones[0].lo} bpm). Zügiges Gehen zählt meist schon dazu.</p>`));
-  } else if (d.zoneMin) {
+  if (series?.length > 5) parts.push(card('Puls im Tagesverlauf', `${hrCurve(series, zones, colors)}<div class="legend">${zones.map((z, k) => `<span><i style="background:${colors[k]}"></i>Z${z.zone}</span>`).join('')}</div>`));
+  if (d.zoneMin && d.zoneMin.some((v) => v > 0)) {
     const max = Math.max(1, ...d.zoneMin);
-    parts.push(
-      card(
-        'Zeit in Pulszonen',
-        `${zones.map((z, k) => `<div class="zonebar"><span>Z${z.zone}</span><div class="bar"><i style="width:${(100 * d.zoneMin[k]) / max}%;background:${colors[k]}"></i></div><span class="m">${d.zoneMin[k]} Min.</span></div>`).join('')}
-        <p class="muted small" style="margin-top:8px">${zones.map((z) => `Z${z.zone} ${z.lo}–${z.hi}`).join(' · ')} bpm (Max-Puls ${S.maxHr}, Ruhepuls ${d.rhrRef})</p>`,
-      ),
-    );
+    parts.push(card('Zeit in Pulszonen', `${zones.map((z, k) => `<div class="zonebar"><span>Z${z.zone}</span><div class="bar"><i style="width:${(100 * d.zoneMin[k]) / max}%;background:${colors[k]}"></i></div><span class="m">${d.zoneMin[k]} Min.</span></div>`).join('')}
+      <p class="muted small" style="margin-top:8px">${zones.map((z) => `Z${z.zone} ${z.lo}–${z.hi}`).join(' · ')} bpm</p>`));
   }
-
-  let loadText = '<p class="muted small">Für die Trainingslast braucht es mindestens 14 Tage Daten.</p>';
   if (d.load) {
     const r = d.load.ratio;
     const [label, color] = r > 1.5 ? ['Belastungsspitze', 'var(--red)'] : r > 1.3 ? ['Steigt schnell', 'var(--yellow)'] : r >= 0.8 ? ['Optimal', 'var(--green)'] : ['Erholungsphase', 'var(--strain)'];
     const pos = Math.max(0, Math.min(100, ((r - 0.4) / 1.4) * 100));
-    loadText = `<div class="row between"><div><div class="muted small">Akut ÷ chronisch (7 ÷ 28 Tage)</div><div class="bignum">${r.toFixed(2).replace('.', ',')}</div></div>
-      <div style="color:${color};font-weight:750">${label}</div></div>
-      <div class="acwr"><i class="a1"></i><i class="a2"></i><i class="a3"></i><i class="a4"></i><b style="left:${pos}%"></b></div>
-      <div class="acwr-l"><span>0,4</span><span>0,8</span><span>1,3</span><span>1,5</span><span>1,8</span></div>
-      <p class="muted small" style="margin-top:8px">Optimal sind 0,8–1,3. Darüber steigt das Risiko für Verletzungen und Infekte.</p>`;
+    parts.push(card('Trainingslast', `<div class="row between"><div class="bignum">${r.toFixed(2).replace('.', ',')}</div><div style="color:${color};font-weight:750">${label}</div></div>
+      <div class="acwr"><i></i><i></i><i></i><i></i><b style="left:${pos}%"></b></div>
+      <div class="acwr-l"><span>0,4</span><span>0,8</span><span>1,3</span><span>1,5</span><span>1,8</span></div>`, '', 'load'));
   }
-  parts.push(card('Trainingslast', loadText));
-
   const { span, labels, every } = trendSpan();
   const avg7 = span.map((x) => {
     const w = m.days.slice(Math.max(0, x.i - 6), x.i + 1).map((y) => y.strain).filter(isNum);
     return w.length >= 3 ? E.mean(w) : null;
   });
   parts.push(`<h2 class="section">Verlauf</h2>${rangeSeg()}`);
-  parts.push(card('Strain', `${bars({ values: span.map((x) => ({ v: x.strain, color: 'var(--strain)' })), line: avg7, labels, every, max: 21 })}<div class="legend"><span><i style="background:var(--strain)"></i>Strain je Tag</span><span>— 7-Tage-Schnitt</span></div>`));
+  parts.push(card('Strain', `${bars({ values: span.map((x) => ({ v: x.strain, color: 'var(--strain)' })), line: avg7, labels, every, max: 21 })}<div class="legend"><span><i style="background:var(--strain)"></i>pro Tag</span><span>— 7-Tage-Schnitt</span></div>`));
   return parts.join('');
 }
 
-// ------------------------------------------------------------------ Trends
+// ------------------------------------------------------------------ Trends (Unterseite)
 
 function viewTrends() {
   const m = state.model;
@@ -937,14 +997,13 @@ function viewTrends() {
   const w = E.weeklyAssessment(m, last);
   const c = w.current;
   const p = w.previous;
-  const parts = [];
-
   const row = (name, cur, prev, fmt, better, fmtDelta = (v) => sign(v, Math.abs(v) < 10 ? 1 : 0)) => {
     if (cur == null) return '';
     const delta = prev == null ? null : cur - prev;
     const good = delta == null || Math.abs(delta) < 1e-9 ? '' : (delta > 0) === better ? 'up' : 'down';
     return `<tr><td>${name}</td><td>${fmt(cur)}</td><td class="muted">${prev == null ? '–' : fmt(prev)}</td><td class="${good}">${delta == null ? '' : fmtDelta(delta)}</td></tr>`;
   };
+  const parts = [];
   parts.push(`<section class="card"><h2>Wochenbericht</h2>
     <div class="verdict ${w.verdict.tone}">${esc(w.verdict.label)}</div>
     <p style="margin:10px 0">${esc(w.verdict.text)}</p>
@@ -955,41 +1014,28 @@ function viewTrends() {
       ${row('Ruhepuls', c.rhr, p.rhr, (v) => `${de1(v)}`, false)}
       ${row('Schlaf', c.sleep, p.sleep, (v) => `${E.fmtDur(v)}`, true, (v) => `${v >= 0 ? '+' : ''}${E.fmtDur(v)}`)}
       ${row('Strain', c.strain, p.strain, (v) => de1(v), true)}
-    </table>
-    <p class="muted small" style="margin-top:8px">Tage: <span style="color:var(--green)">${c.green} grün</span> · <span style="color:var(--yellow)">${c.yellow} gelb</span> · <span style="color:var(--red)">${c.red} rot</span></p>
-  </section>`);
-
+    </table></section>`);
   parts.push(calendarCard(m));
   parts.push(influencesCard(m));
   parts.push(journalListCard(m));
-
   const span = m.days.slice(Math.max(0, last - 89));
-  const labels = span.map((x) => shortDate(x.date));
-  parts.push(
-    card(
-      'HRV · 3 Monate',
-      `${lines({ series: [{ values: span.map((x) => x.hrv7), color: 'var(--sleep)', width: 2.5 }], band: { lo: span.map((x) => x.hrvNormal?.[0] ?? null), hi: span.map((x) => x.hrvNormal?.[1] ?? null) }, labels, every: 21, unit: 'ms' })}
-      <div class="legend"><span>— 7-Tage-Schnitt</span><span><i style="background:var(--band)"></i>Normalbereich</span></div>`,
-    ),
-  );
+  parts.push(card('HRV · 3 Monate', `${lines({ series: [{ values: span.map((x) => x.hrv7), color: 'var(--sleep)', width: 2.5 }], band: { lo: span.map((x) => x.hrvNormal?.[0] ?? null), hi: span.map((x) => x.hrvNormal?.[1] ?? null) }, labels: span.map((x) => shortDate(x.date)), every: 21, unit: 'ms' })}`));
   const weeks = [];
   for (let k = last; k >= 0 && weeks.length < 13; k -= 7) weeks.unshift(m.days.slice(Math.max(0, k - 6), k + 1));
-  const wavg = (f) =>
-    weeks.map((wk) => {
-      const v = wk.map(f).filter(isNum);
-      return v.length ? E.mean(v) : null;
-    });
+  const wavg = (f) => weeks.map((wk) => {
+    const v = wk.map(f).filter(isNum);
+    return v.length ? E.mean(v) : null;
+  });
   const wl = weeks.map((wk) => shortDate(wk[0].date));
   parts.push(card('Wochenschnitt Recovery', bars({ values: wavg((x) => x.recovery).map((v) => ({ v, color: v == null ? 'var(--track)' : scoreColor(v) })), labels: wl, every: 3, max: 100 })));
   parts.push(card('Wochenschnitt Schlaf', bars({ values: wavg((x) => (x.sleepMin == null ? null : x.sleepMin / 60)).map((v) => ({ v, color: 'var(--sleep)' })), labels: wl, every: 3, min: 0, unit: 'Std.' })));
-  parts.push(card('Wochenschnitt Strain', bars({ values: wavg((x) => x.strain).map((v) => ({ v, color: 'var(--strain)' })), labels: wl, every: 3, max: 21 })));
   return parts.join('');
 }
 
 function calendarCard(m) {
   const last = m.days.length - 1;
   const lastDate = m.days[last].date;
-  const offset = (E.weekday(lastDate) + 6) % 7; // Mo = 0
+  const offset = (E.weekday(lastDate) + 6) % 7;
   const total = 5 * 7;
   const startDate = E.addDays(lastDate, -(total - 7 + offset));
   const cells = [];
@@ -1005,14 +1051,9 @@ function calendarCard(m) {
       continue;
     }
     const d = m.days[idx];
-    const bg = d.zone ? ` style="--z:${zoneColor(d.zone)}"` : '';
-    cells.push(`<button class="cal ${d.zone ? 'z' : 'none'} ${idx === state.sel ? 'on' : ''}" data-goto="${idx}"${bg}><span>${Number(date.slice(8))}</span>${d.recovery != null ? `<small>${d.recovery}</small>` : ''}</button>`);
+    cells.push(`<button class="cal ${d.zone ? 'z' : 'none'} ${idx === state.sel ? 'on' : ''}" data-goto="${idx}"${d.zone ? ` style="--z:${zoneColor(d.zone)}"` : ''}><span>${Number(date.slice(8))}</span>${d.recovery != null ? `<small>${d.recovery}</small>` : ''}</button>`);
   }
-  return card(
-    'Kalender',
-    `<div class="calgrid">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((x) => `<span class="calh">${x}</span>`).join('')}${cells.join('')}</div>
-    <p class="muted small" style="margin-top:8px">Kleine Zahl = Recovery. Antippen öffnet den Tag.</p>`,
-  );
+  return card('Kalender', `<div class="calgrid">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((x) => `<span class="calh">${x}</span>`).join('')}${cells.join('')}</div>`);
 }
 
 function journalListCard(m) {
@@ -1023,41 +1064,165 @@ function journalListCard(m) {
     const date = m.days[k].date;
     const a = j[date];
     const yes = a?._done ? E.JOURNAL_QUESTIONS.filter((q) => a[q.id]).map((q) => q.label) : null;
-    rows.push(`<button class="jrow" data-act="journal" data-date="${date}"><span class="jd">${wdShort(date)} ${shortDate(date)}</span>
-      <span class="jt ${yes ? '' : 'muted'}">${yes ? esc(yes.join(' · ') || 'Nichts Besonderes') : 'offen – antippen'}</span><span class="go">›</span></button>`);
+    rows.push(`<button class="jrow" data-act="journal" data-date="${date}"><span class="jd">${wdShort(date)} ${shortDate(date)}</span><span class="jt ${yes ? '' : 'muted'}">${yes ? esc(yes.join(' · ') || 'Nichts Besonderes') : 'offen – antippen'}</span><span class="go">›</span></button>`);
   }
   return card('Morgen-Check · letzte Tage', rows.join(''));
 }
 
-// ------------------------------------------------------------------ Morgen-Check (Sheet)
+// ------------------------------------------------------------------ Coach (Chat)
 
-function renderSheet() {
-  if (!state.sheet) {
-    sheetEl.innerHTML = '';
-    sheetEl.hidden = true;
-    return;
+const coachApp = {
+  model: () => state.model,
+  journal,
+  saveJournal: (date, answers) => saveJournal(date, answers),
+  saveSettings: (patch) => {
+    const user = { ...ls.get(LS.settings, {}), ...patch };
+    ls.set(LS.settings, user);
+    state.model = E.analyze(state.store, user);
+  },
+  changed: () => {},
+};
+
+function viewCoach() {
+  const cfg = Coach.coachConfig();
+  if (!cfg.apiKey) {
+    return `<section class="card coach-empty">
+      <div class="bigic">${I.coach}</div>
+      <h3>Dein persönlicher Coach</h3>
+      <p class="muted">Frag alles zu Training, Schlaf und Erholung – der Coach kennt deine Daten der letzten 90 Tage.</p>
+      <button class="btn" data-act="setup-coach">Coach aktivieren</button>
+    </section>`;
   }
-  const { date } = state.sheet;
-  const answers = journal()[date] || {};
-  const dayName = dayTitle(date) === 'Gestern' ? 'gestern' : `am ${longDate(date)}`;
-  sheetEl.hidden = false;
-  sheetEl.innerHTML = `<div class="backdrop" data-act="sheet-close"></div>
-    <div class="sheet" role="dialog" aria-label="Morgen-Check">
-      <div class="grab"></div>
-      <h3>Morgen-Check</h3>
-      <p class="muted">Was trifft auf ${dayName} zu? Antippen, was passt.</p>
-      <div class="qchips">${E.JOURNAL_QUESTIONS.map((q) => `<button class="qchip ${answers[q.id] ? 'on' : ''}" data-q="${q.id}">${esc(q.label)}</button>`).join('')}</div>
-      <button class="btn" data-act="sheet-save">Speichern</button>
-      <button class="btn ghost" data-act="sheet-none">Nichts davon</button>
-    </div>`;
+  const chat = Coach.loadChat();
+  const msgs = Coach.visibleMessages(chat);
+  const bubbles = msgs.map((m) => (m.role === 'user' ? `<div class="msg user">${esc(m.text)}</div>` : `<div class="msg bot">${Coach.md(m.text)}</div>`)).join('');
+  const welcome = `<div class="msg bot"><p>Hi! Ich kenne deine Garmin-Daten und deine Recovery. Frag mich einfach – zum Beispiel:</p></div>
+    <div class="suggest">${Coach.SUGGESTIONS.map((q) => `<button class="qchip" data-ask="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
+  const live = state.chat.busy
+    ? `<div class="msg bot" id="livebubble">${state.chat.stream ? Coach.md(state.chat.stream) : `<span class="typing"><i></i><i></i><i></i></span>`}${state.chat.status && !state.chat.stream ? `<p class="muted small">${esc(state.chat.status)}</p>` : ''}</div>`
+    : '';
+  const err = state.chat.error ? `<div class="msg err">${esc(state.chat.error)}</div>` : '';
+  return `<div class="chat" id="chat">${msgs.length ? '' : welcome}${bubbles}${live}${err}</div>
+    <form class="composer" data-form="ask">
+      <textarea id="askbox" rows="1" placeholder="Frag deinen Coach …" enterkeyhint="send"></textarea>
+      <button class="sendbtn" type="submit" ${state.chat.busy ? 'disabled' : ''} aria-label="Senden">${I.send}</button>
+    </form>`;
 }
 
+function scrollChat() {
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight }));
+}
+
+const chatUi = {
+  update() {
+    if (state.tab === 'coach') {
+      render();
+      scrollChat();
+    }
+  },
+  stream(text) {
+    state.chat.stream = text;
+    if (text) state.chat.status = '';
+    const el = document.getElementById('livebubble');
+    if (el && text) {
+      el.innerHTML = Coach.md(text);
+      scrollChat();
+    }
+  },
+  status(text) {
+    state.chat.status = text;
+    if (state.tab === 'coach' && !state.chat.stream) render();
+  },
+};
+
+async function askCoach(text) {
+  const q = text.trim();
+  if (!q || state.chat.busy) return;
+  if (!state.model || state.model.empty) return toast('Noch keine Daten für den Coach.');
+  state.chat = { busy: true, stream: null, status: '', error: '' };
+  render();
+  scrollChat();
+  try {
+    await Coach.ask(q, coachApp, chatUi);
+  } catch (e) {
+    state.chat.error = e.message;
+  } finally {
+    state.chat.busy = false;
+    state.chat.stream = null;
+    if (state.tab === 'coach') {
+      render();
+      scrollChat();
+    }
+  }
+}
+
+// ------------------------------------------------------------------ Sheets (Morgen-Check, Erklärungen, Einrichtung)
+
+function openSheet(sheet) {
+  state.sheet = sheet;
+  renderSheet();
+}
 function closeSheet() {
   state.sheet = null;
   renderSheet();
 }
 
-sheetEl.addEventListener('click', (e) => {
+function renderSheet() {
+  const sh = state.sheet;
+  if (!sh) {
+    sheetEl.innerHTML = '';
+    sheetEl.hidden = true;
+    return;
+  }
+  let body = '';
+  if (sh.type === 'journal') {
+    const answers = journal()[sh.date] || {};
+    const dayName = dayTitle(sh.date) === 'Gestern' ? 'gestern' : `am ${longDate(sh.date)}`;
+    body = `<h3>Morgen-Check</h3><p class="muted">Was war ${dayName}? Antippen, was passt.</p>
+      <div class="qchips">${E.JOURNAL_QUESTIONS.map((q) => `<button class="qchip ${answers[q.id] ? 'on' : ''}" data-q="${q.id}">${esc(q.label)}</button>`).join('')}</div>
+      <button class="btn" data-act="sheet-save">Speichern</button>
+      <button class="btn ghost" data-act="sheet-none">Nichts davon</button>`;
+  } else if (sh.type === 'info') {
+    const [title, text] = INFO[sh.key] || ['', ''];
+    body = `<h3>${title}</h3><p style="margin:10px 0 18px">${text}</p><button class="btn ghost" data-act="sheet-close">Verstanden</button>`;
+  } else if (sh.type === 'setup-sync') {
+    const gh = ghConfig();
+    const url = `https://github.com/settings/personal-access-tokens/new?name=Puls+Sync&description=Startet+den+Garmin-Abruf+der+Puls-App&target_name=${encodeURIComponent((gh.repo || 'x/').split('/')[0])}&expires_in=365&actions=write`;
+    body = `<h3>Automatisch aktualisieren</h3>
+      <p class="muted">Damit Puls bei jedem Öffnen sofort neue Daten holt, braucht die App einen GitHub-Schlüssel, der nur den Abruf starten darf.</p>
+      <ol class="steps">
+        <li>Tippe auf <b>Schlüssel erstellen</b> – GitHub öffnet sich mit allem vorausgefüllt.</li>
+        <li>Bei <b>Repository access</b>: <b>Only select repositories</b> → <b>puls</b> wählen.</li>
+        <li>Ganz unten <b>Generate token</b>, dann den Schlüssel kopieren.</li>
+        <li>Zurück zu Puls und hier einfügen.</li>
+      </ol>
+      <a class="btn ghost" href="${url}" target="_blank" rel="noopener">Schlüssel erstellen ↗</a>
+      <input id="gh-token" type="password" autocomplete="off" placeholder="github_pat_…" value="${esc(gh.token)}" style="margin-top:10px">
+      <button class="btn" data-act="save-sync">Speichern & testen</button>`;
+  } else if (sh.type === 'setup-coach') {
+    const cfg = Coach.coachConfig();
+    body = `<h3>KI-Coach aktivieren</h3>
+      <p class="muted">Der Coach nutzt Claude von Anthropic. Dafür brauchst du einen eigenen Schlüssel – er bleibt nur auf diesem iPhone.</p>
+      <ol class="steps">
+        <li>Tippe auf <b>Schlüssel erstellen</b> und melde dich an bzw. lege ein Konto an.</li>
+        <li>Unter <b>Billing</b> etwas Guthaben aufladen (z. B. 5 €). Eine Frage kostet ca. 2–4 Cent.</li>
+        <li><b>Create Key</b> tippen, Namen „Puls“ eingeben, Schlüssel kopieren.</li>
+        <li>Hier einfügen.</li>
+      </ol>
+      <a class="btn ghost" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Schlüssel erstellen ↗</a>
+      <input id="coach-key" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(cfg.apiKey)}" style="margin-top:10px">
+      <button class="btn" data-act="save-coach">Speichern & testen</button>`;
+  } else if (sh.type === 'setup-push') {
+    body = `<h3>Benachrichtigungen</h3>
+      <p class="muted">Puls meldet sich morgens mit deiner Recovery und abends, wenn es Zeit fürs Bett ist.</p>
+      ${isStandalone() ? '' : '<p class="small" style="margin:8px 0"><b>Wichtig:</b> Das klappt nur, wenn du Puls vom Home-Bildschirm aus öffnest.</p>'}
+      <button class="btn" data-act="enable-push" style="margin-top:12px">Benachrichtigungen erlauben</button>`;
+  }
+  sheetEl.hidden = false;
+  sheetEl.innerHTML = `<div class="backdrop" data-act="sheet-close"></div><div class="sheet" role="dialog"><div class="grab"></div>${body}</div>`;
+}
+
+sheetEl.addEventListener('click', async (e) => {
   const chip = e.target.closest('[data-q]');
   if (chip) {
     chip.classList.toggle('on');
@@ -1065,43 +1230,129 @@ sheetEl.addEventListener('click', (e) => {
   }
   const t = e.target.closest('[data-act]');
   if (!t) return;
-  if (t.dataset.act === 'sheet-close') closeSheet();
-  if (t.dataset.act === 'sheet-save' || t.dataset.act === 'sheet-none') {
+  const act = t.dataset.act;
+  if (act === 'sheet-close') closeSheet();
+  if (act === 'sheet-save' || act === 'sheet-none') {
     const answers = { _done: true };
-    if (t.dataset.act === 'sheet-save') sheetEl.querySelectorAll('.qchip.on').forEach((c) => (answers[c.dataset.q] = true));
+    if (act === 'sheet-save') sheetEl.querySelectorAll('.qchip.on').forEach((c) => (answers[c.dataset.q] = true));
     saveJournal(state.sheet.date, answers);
     closeSheet();
     render();
     toast('Gespeichert – danke!');
   }
+  if (act === 'save-sync') {
+    const token = document.getElementById('gh-token').value.trim();
+    if (!token) return toast('Bitte den Schlüssel einfügen.');
+    t.disabled = true;
+    t.textContent = 'Teste …';
+    const gh = ghConfig();
+    try {
+      const res = await fetch(`https://api.github.com/repos/${gh.repo}/actions/workflows/${WORKFLOW}`, { headers: ghHeaders(token) });
+      if (!res.ok) throw new Error(res.status === 404 ? 'Repo nicht gefunden – „puls“ beim Schlüssel ausgewählt?' : 'Schlüssel ungültig.');
+      ls.set(LS.gh, { ...ls.get(LS.gh, {}), token });
+      closeSheet();
+      render();
+      toast('Klappt! Puls holt jetzt bei jedem Öffnen frische Daten.');
+      ls.del(LS.lastTrigger);
+      triggerSync({}, { quiet: true });
+    } catch (err) {
+      toast(err.message || 'Test fehlgeschlagen.');
+      t.disabled = false;
+      t.textContent = 'Speichern & testen';
+    }
+  }
+  if (act === 'save-coach') {
+    const key = document.getElementById('coach-key').value.trim();
+    if (!key) return toast('Bitte den Schlüssel einfügen.');
+    t.disabled = true;
+    t.textContent = 'Teste …';
+    const r = await Coach.testKey(key);
+    if (r.ok) {
+      Coach.saveCoachConfig({ apiKey: key });
+      closeSheet();
+      setTab('coach');
+      render();
+      toast('Coach ist bereit.');
+    } else {
+      toast(r.msg);
+      t.disabled = false;
+      t.textContent = 'Speichern & testen';
+    }
+  }
+  if (act === 'enable-push') enablePush();
 });
 
-// ------------------------------------------------------------------ Einstellungen
+// ------------------------------------------------------------------ Einführung (erster Start)
+
+const ONBOARDING = [
+  { color: 'var(--green)', value: 78, max: 100, label: '78%', title: 'Recovery', text: 'Jeden Morgen: Wie erholt bist du? Grün heißt Gas geben, Gelb moderat, Rot Pause.' },
+  { color: 'var(--strain)', value: 11.4, max: 21, label: '11,4', band: [12, 15], title: 'Strain', text: 'Wie sehr du dich heute belastest (0–21). Der äußere Bogen ist dein Tagesziel.' },
+  { color: 'var(--sleep)', value: 92, max: 100, label: '92%', title: 'Schlaf', text: 'Wie viel deines Schlafbedarfs du geschafft hast – und wann du heute ins Bett solltest.' },
+  { color: 'var(--green)', icon: true, title: 'Coach', text: 'Frag einfach: „Was soll ich heute trainieren?“ Der Coach kennt deine Daten.' },
+];
+
+function renderOnboarding() {
+  let el = document.getElementById('onboarding');
+  if (state.onboarding == null || state.view !== 'main') {
+    el?.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'onboarding';
+    document.body.appendChild(el);
+  }
+  const k = state.onboarding;
+  const s = ONBOARDING[k];
+  const visual = s.icon ? `<div class="ob-icon">${I.coach}</div>` : ring({ value: s.value, max: s.max, color: s.color, size: 170, stroke: 14, label: s.label, band: s.band || null, labelSize: 44, glow: true });
+  el.innerHTML = `<div class="ob">
+    <button class="ob-skip" data-ob="done">Überspringen</button>
+    <div class="ob-visual">${visual}</div>
+    <h2>${s.title}</h2><p>${s.text}</p>
+    <div class="ob-dots">${ONBOARDING.map((_, j) => `<i class="${j === k ? 'on' : ''}"></i>`).join('')}</div>
+    <button class="btn" data-ob="${k === ONBOARDING.length - 1 ? 'done' : 'next'}">${k === ONBOARDING.length - 1 ? 'Los geht’s' : 'Weiter'}</button>
+  </div>`;
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-ob]');
+  if (!t) return;
+  if (t.dataset.ob === 'next') state.onboarding += 1;
+  else {
+    state.onboarding = null;
+    ls.set(LS.onboarded, true);
+  }
+  render();
+});
+
+// ------------------------------------------------------------------ Einstellungen (Unterseite)
 
 function viewSettings() {
   const m = state.model;
   const S = m && !m.empty ? m.settings : E.resolveSettings(ls.get(LS.settings, {}), state.store?.profile || {}, []);
   const user = ls.get(LS.settings, {});
-  const gh = ghConfig();
   const st = state.store?.status || {};
-  const authText = { ok: 'verbunden', mfa: 'wartet auf Bestätigungscode', error: 'Anmeldung fehlgeschlagen' }[st.auth] || 'unbekannt';
+  const setup = setupState();
+  const cfg = Coach.coachConfig();
+  const authText = { ok: 'verbunden', mfa: 'wartet auf Code', error: 'Anmeldung fehlgeschlagen' }[st.auth] || 'unbekannt';
   const opt = (v, label, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
+  const status = (ok) => `<span class="${ok ? 'up' : 'muted'}">${ok ? 'aktiv' : 'aus'}</span>`;
 
   return `
-  <section class="card"><h2>Synchronisation</h2>
-    <p class="small">Letzter Abgleich: <b>${state.demo ? 'Demo' : ago(state.store?.generated)}</b> · Garmin: <b>${authText}</b></p>
-    <p class="muted small" style="margin:6px 0 12px">Automatisch morgens alle 20 Min., tagsüber stündlich. In der App jederzeit: oben nach unten ziehen.</p>
-    <button class="btn" data-act="sync" ${state.syncing ? 'disabled' : ''}>${state.syncing ? 'Sync läuft …' : 'Jetzt synchronisieren'}</button>
-    <button class="btn ghost" data-act="reload">Nur neu laden</button>
-    <div class="sep"></div>
-    <label class="field"><span>Garmin-Code (nur wenn Garmin einen schickt)</span><input id="mfa" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></label>
-    <button class="btn ghost" data-act="mfa">Code an Garmin senden</button>
-    <div class="sep"></div>
-    <details ${gh.token ? '' : 'open'}><summary>Sync-Knopf einrichten</summary>
-      <p>Damit der Knopf funktioniert, braucht die App einen GitHub-Token, der nur den Sync starten darf (Anleitung im README, Schritt 6).</p>
-      <label class="field" style="margin-top:10px"><span>Repo</span><input id="gh-repo" type="text" autocapitalize="off" spellcheck="false" placeholder="name/puls" value="${esc(gh.repo)}"></label>
-      <label class="field"><span>Token</span><input id="gh-token" type="password" autocomplete="off" placeholder="github_pat_…" value="${esc(gh.token)}"></label>
-      <button class="btn ghost" data-act="save-gh">Speichern</button>
+  <section class="card"><h2>Einrichtung</h2>
+    <button class="setrow" data-act="setup-sync"><span>Automatisch aktualisieren</span>${status(setup.sync)}</button>
+    <button class="setrow" data-act="setup-coach"><span>KI-Coach</span>${status(setup.coach)}</button>
+    <button class="setrow" data-act="setup-push"><span>Benachrichtigungen</span>${status(setup.push)}</button>
+    ${setup.coach ? `<label class="field" style="margin-top:12px"><span>Coach-Modell</span><select data-coach-model>${Object.entries(Coach.MODELS).map(([id, mm]) => opt(id, `${mm.label} – ${mm.note}`, cfg.model)).join('')}</select></label>` : ''}
+  </section>
+
+  <section class="card"><h2>Garmin</h2>
+    <p class="small">Letzter Abruf: <b>${state.demo ? 'Demo' : ago(state.store?.generated)}</b> · Garmin: <b>${authText}</b></p>
+    <button class="btn" data-act="sync" style="margin-top:10px" ${state.syncing ? 'disabled' : ''}>${state.syncing ? 'Aktualisiere …' : 'Jetzt aktualisieren'}</button>
+    <details ${st.auth === 'mfa' ? 'open' : ''}><summary>Garmin-Code eingeben</summary>
+      <p>Nur nötig, wenn Garmin dir einen Bestätigungscode per E-Mail schickt.</p>
+      <input id="mfa" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" style="margin:10px 0">
+      <button class="btn ghost" data-act="mfa">Code senden</button>
     </details>
   </section>
 
@@ -1114,41 +1365,25 @@ function viewSettings() {
       <label class="field"><span>Weckzeit</span><input data-setting="wakeTime" type="time" value="${user.wakeTime || ''}"></label>
       <label class="field"><span>Hauptsport</span><select data-setting="sport">${Object.entries(E.SPORTS).map(([k, v]) => opt(k, v, S.sport)).join('')}</select></label>
     </div>
-    <p class="muted small">Leer lassen = automatisch aus deinen Garmin-Daten. Weckzeit leer = dein üblicher Wecker (Werktag/Wochenende getrennt).</p>
-  </section>
-
-  <section class="card"><h2>Morgen-Check sichern</h2>
-    <p class="small">Deine Morgen-Check-Antworten liegen nur auf diesem iPhone. Sichere sie ab und zu, z. B. in Notizen.</p>
-    <button class="btn ghost" data-act="journal-export" style="margin-top:10px">Antworten kopieren</button>
-    <button class="btn ghost" data-act="journal-import">Antworten einfügen</button>
+    <p class="muted small">Leer lassen = automatisch aus deinen Daten.</p>
   </section>
 
   <section class="card"><h2>So rechnet Puls</h2>
-    <details><summary>Recovery (0–100 %)</summary>
-      <p>Jeden Morgen aus deiner letzten Nacht im Vergleich zu deinen letzten 30 Tagen:</p>
-      <ul><li><b>HRV 50 %</b> – logarithmisch, als Abweichung in Standardabweichungen.</li><li><b>Ruhepuls 20 %</b> – niedriger als normal ist besser.</li><li><b>Schlaf 30 %</b> – 70 % Schlafperformance (geschlafen ÷ Bedarf) + 30 % Qualität (Garmin-Score).</li></ul>
-      <p>Abzüge bei erhöhter Atemfrequenz (ab +0,7/Min.) oder Hauttemperatur (ab +0,5 °C). Grün ab 67 %, Gelb ab 34 %, darunter Rot. In den ersten 14 Nächten nutzt Puls teilweise Garmins HRV-Normalbereich.</p></details>
-    <details><summary>Strain (0–21)</summary>
-      <p>Aus deinem Tagespuls wird die Herz-Kreislauf-Belastung nach Banister (TRIMP) berechnet: Minuten × Anteil der Herzfrequenzreserve, exponentiell gewichtet. Die Skala ist logarithmisch – von 18 auf 19 ist viel mehr Arbeit als von 8 auf 9. Typisch: Ruhetag 4–8, normales Training 10–14, sehr hart 17+.</p></details>
-    <details><summary>Strain-Coach</summary>
-      <p>Mitte = 5,5 + 0,125 × Recovery, Bereich ±1,5. Liegt deine 7-Tage-Last über 130 % (bzw. 150 %) deines 4-Wochen-Schnitts, sinkt das Ziel um 1 (bzw. 2). Hast du zuletzt wenig trainiert (unter 80 %) und bist erholt, steigt es um 1. Bei Warnsignalen höchstens 7.</p></details>
-    <details><summary>Schlafbedarf und Schlafplaner</summary>
-      <p>Basis (dein Wert, Garmins Wert oder 8 Std.) + 4 Min. je Strain-Punkt über 10 am Vortag + ein Teil des Defizits der letzten 3 Nächte (30/15/5 %, max. 60 Min.) + 15 Min. nach roter Recovery.</p>
-      <p>Schlafenszeit = Weckzeit − Bedarf ÷ deine Schlafeffizienz − 10 Min. zum Einschlafen.</p></details>
-    <details><summary>Körper-Check</summary>
-      <p>Normalbereich = dein 30-Tage-Schnitt ± 1,5 Standardabweichungen (Atemfrequenz und SpO₂ ± 2). Rot wird nur, was in die ungünstige Richtung abweicht.</p></details>
-    <details><summary>Morgen-Check und Einflüsse</summary>
-      <p>Verhalten an einem Tag wird mit der Recovery am nächsten Morgen verglichen: Tage mit gegen Tage ohne. Ab 3 Tagen je Gruppe erscheint ein vorläufiger Effekt, ab 5 ein belastbarer.</p></details>
-    <details><summary>Warnsignale</summary>
-      <p>Ruhepuls mind. 3 bpm (und 1,5 Standardabweichungen) über normal, HRV 1,5 Standardabweichungen darunter, Atemfrequenz +1/Min., Hauttemperatur +0,5 °C. Ab zwei Signalen gleichzeitig warnt Puls vor Infekt oder Überlastung.</p></details>
+    <details><summary>Recovery</summary><p>HRV 50 %, Ruhepuls 20 %, Schlaf 30 % – jeweils verglichen mit deinen letzten 30 Tagen. Abzüge bei erhöhter Atemfrequenz oder Hauttemperatur. Grün ab 67 %, Gelb ab 34 %.</p></details>
+    <details><summary>Strain</summary><p>Herz-Kreislauf-Belastung aus deinem Tagespuls (Banister-TRIMP), logarithmisch von 0 bis 21. Ruhetag 4–8, Training 10–14, sehr hart ab 17.</p></details>
+    <details><summary>Ziel-Strain</summary><p>Mitte = 5,5 + 0,125 × Recovery, Bereich ±1,5. Gesenkt, wenn deine Last stark steigt oder Warnsignale da sind.</p></details>
+    <details><summary>Schlafbedarf</summary><p>Basis + 4 Min. je Strain-Punkt über 10 am Vortag + Teil der Schlafschuld (max. 60 Min.) + 15 Min. nach roter Recovery. Schlafenszeit = Weckzeit − Bedarf ÷ Schlafeffizienz − 10 Min.</p></details>
+    <details><summary>Puls-Alter</summary><p>VO₂max, Ruhepuls, Schlafdauer und -rhythmus, aktive Minuten und Schritte der letzten 30 Tage – jeder Faktor verschiebt das Alter um wenige Jahre. Eine Schätzung, kein medizinischer Wert.</p></details>
     <p class="muted small" style="margin-top:10px">Puls ist kein Medizinprodukt. Bei Beschwerden zum Arzt.</p>
   </section>
 
   <section class="card"><h2>Gerät</h2>
+    <button class="btn ghost" data-act="journal-export">Morgen-Check sichern</button>
+    <button class="btn ghost" data-act="journal-import">Morgen-Check einfügen</button>
+    <button class="btn ghost" data-act="replay-onboarding">Einführung nochmal zeigen</button>
     ${state.demo ? '<button class="btn" data-act="demo-off">Demo beenden</button>' : '<button class="btn ghost" data-act="demo">Demo-Daten ansehen</button>'}
-    <button class="btn ghost" data-act="reset-settings">Einstellungen zurücksetzen</button>
-    <button class="btn danger" data-act="logout">Abmelden (Passwort hier löschen)</button>
-    <p class="muted small" style="margin-top:10px">Puls ${VERSION} · Daten werden nur auf diesem Gerät entschlüsselt.</p>
+    <button class="btn danger" data-act="logout">Abmelden</button>
+    <p class="muted small" style="margin-top:10px">Puls ${VERSION}</p>
   </section>`;
 }
 
@@ -1168,22 +1403,18 @@ function saveSetting(el) {
   ls.set(LS.settings, user);
   if (state.store) state.model = E.analyze(state.store, user);
   render();
-  toast('Gespeichert – Werte neu berechnet.');
+  toast('Gespeichert.');
 }
 
 // ------------------------------------------------------------------ Ereignisse
 
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-act],[data-tab],[data-range],[data-day],[data-goto]');
+  const t = e.target.closest('[data-act],[data-tab],[data-range],[data-day],[data-goto],[data-info],[data-ask]');
   if (!t) return;
-  if (t.dataset.tab) {
-    setTab(t.dataset.tab);
-    return;
-  }
-  if (t.dataset.day) {
-    selectDay(Number(t.dataset.day));
-    return;
-  }
+  if (t.dataset.info) return openSheet({ type: 'info', key: t.dataset.info });
+  if (t.dataset.tab) return setTab(t.dataset.tab);
+  if (t.dataset.day) return selectDay(Number(t.dataset.day));
+  if (t.dataset.ask) return askCoach(t.dataset.ask);
   if (t.dataset.goto) {
     state.sel = Number(t.dataset.goto);
     state.tab = 'heute';
@@ -1203,19 +1434,36 @@ app.addEventListener('click', async (e) => {
       refresh();
       break;
     case 'settings':
-      openSettings();
+      setTab('settings');
       break;
     case 'back':
       setTab(state.view === 'main' ? state.backTab || 'heute' : 'heute');
       break;
     case 'journal':
-      state.sheet = { date: t.dataset.date };
-      renderSheet();
+      openSheet({ type: 'journal', date: t.dataset.date });
+      break;
+    case 'more-insights':
+      state.showAllInsights = !state.showAllInsights;
+      render();
+      break;
+    case 'setup-sync':
+    case 'setup-coach':
+    case 'setup-push':
+      openSheet({ type: t.dataset.act });
+      break;
+    case 'setup-hide':
+      ls.set(LS.setupHidden, true);
+      render();
+      toast('Ausgeblendet – du findest alles in den Einstellungen.');
+      break;
+    case 'chat-new':
+      Coach.resetChat();
+      state.chat = { busy: false, stream: null, status: '', error: '' };
+      render();
       break;
     case 'reload':
       state.error = null;
       await loadData();
-      if (state.view === 'main') toast('Neu geladen.');
       break;
     case 'demo':
       startDemo();
@@ -1224,6 +1472,7 @@ app.addEventListener('click', async (e) => {
       stopDemo();
       break;
     case 'sync':
+      ls.del(LS.lastTrigger);
       triggerSync();
       break;
     case 'mfa': {
@@ -1232,26 +1481,22 @@ app.addEventListener('click', async (e) => {
       else triggerSync({ mfa_code: code });
       break;
     }
-    case 'save-gh': {
-      const repo = document.getElementById('gh-repo').value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\/$/, '');
-      const token = document.getElementById('gh-token').value.trim();
-      ls.set(LS.gh, { ...ls.get(LS.gh, {}), repo, token });
-      toast('Gespeichert.');
+    case 'replay-onboarding':
+      state.onboarding = 0;
       render();
       break;
-    }
     case 'journal-export': {
       const text = JSON.stringify(ls.get(LS.journal, {}));
       try {
         await navigator.clipboard.writeText(text);
-        toast('Kopiert – füge es z. B. in Notizen ein.');
+        toast('Kopiert – z. B. in Notizen einfügen.');
       } catch {
         prompt('Diesen Text kopieren:', text);
       }
       break;
     }
     case 'journal-import': {
-      const text = prompt('Gesicherte Antworten hier einfügen:');
+      const text = prompt('Gesicherte Antworten einfügen:');
       if (!text) break;
       try {
         const data = JSON.parse(text);
@@ -1264,23 +1509,10 @@ app.addEventListener('click', async (e) => {
       }
       break;
     }
-    case 'reset-settings':
-      ls.del(LS.settings);
-      if (state.store) state.model = E.analyze(state.store, {});
-      render();
-      toast('Zurückgesetzt.');
-      break;
     case 'logout':
-      if (confirm('Passwort und Schlüssel auf diesem Gerät löschen? Deine Morgen-Check-Antworten bleiben.')) {
-        ls.del(LS.pass);
-        ls.del(LS.key);
-        ls.del(LS.demo);
-        state.demo = false;
-        state.store = null;
-        state.model = null;
-        state.box = null;
-        state.view = 'loading';
-        state.tab = 'heute';
+      if (confirm('Passwort und Schlüssel auf diesem Gerät löschen? Morgen-Check-Antworten bleiben.')) {
+        [LS.pass, LS.key, LS.demo].forEach(ls.del);
+        Object.assign(state, { demo: false, store: null, model: null, box: null, view: 'loading', tab: 'heute' });
         render();
         loadData();
       }
@@ -1296,6 +1528,10 @@ tabbar.addEventListener('click', (e) => {
 
 app.addEventListener('change', (e) => {
   if (e.target.matches('[data-setting]')) saveSetting(e.target);
+  if (e.target.matches('[data-coach-model]')) {
+    Coach.saveCoachConfig({ model: e.target.value });
+    toast('Coach-Modell gespeichert.');
+  }
 });
 
 app.addEventListener('submit', async (e) => {
@@ -1307,6 +1543,25 @@ app.addEventListener('submit', async (e) => {
     btn.textContent = 'Entschlüssle …';
     if (!state.box) await loadData();
     if (state.box) await unlock(state.box, pass);
+  }
+  if (e.target.dataset.form === 'ask') {
+    const box = document.getElementById('askbox');
+    const text = box.value;
+    box.value = '';
+    askCoach(text);
+  }
+});
+
+app.addEventListener('keydown', (e) => {
+  if (e.target.id === 'askbox' && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    e.target.form.requestSubmit();
+  }
+});
+app.addEventListener('input', (e) => {
+  if (e.target.id === 'askbox') {
+    e.target.style.height = 'auto';
+    e.target.style.height = `${Math.min(140, e.target.scrollHeight)}px`;
   }
 });
 
@@ -1322,7 +1577,7 @@ app.addEventListener(
 app.addEventListener(
   'touchmove',
   (e) => {
-    if (!touch || !touch.top || state.view !== 'main') return;
+    if (!touch || !touch.top || state.view !== 'main' || state.tab === 'coach') return;
     const dy = e.touches[0].clientY - touch.y;
     const dx = Math.abs(e.touches[0].clientX - touch.x);
     if (dy > 0 && dy > dx) {
@@ -1357,15 +1612,15 @@ app.addEventListener(
   { passive: true },
 );
 
-// Daten nachziehen, sobald die App wieder geöffnet wird
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.view === 'main' && !state.demo && Date.now() - state.lastFetch > 2 * 60e3) {
-    loadData({ silent: true });
-  }
+// Beim Öffnen und Zurückkehren: Daten nachladen und ggf. frischen Abruf anstoßen
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || state.view !== 'main' || state.demo) return;
+  if (Date.now() - state.lastFetch > 60e3) await loadData({ silent: true });
+  autoSync();
 });
 setInterval(() => {
-  if (document.visibilityState === 'visible' && state.view === 'main' && !state.demo && !state.syncing) loadData({ silent: true });
-}, 10 * 60e3);
+  if (document.visibilityState === 'visible' && state.view === 'main' && !state.demo && !state.syncing && !state.chat.busy) loadData({ silent: true });
+}, 5 * 60e3);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -1383,23 +1638,28 @@ window.__puls = {
       days: m.days.length,
       latestIsToday: m.days[m.days.length - 1].date === todayIso(),
       sleep: count((d) => d.sleep),
-      sleepTimes: count((d) => d.sleep?.bed != null),
       levels: count((d) => d.sleep?.levels?.length),
       hrv: count((d) => d.hrv != null),
       rhr: count((d) => d.rhr != null),
-      resp: count((d) => d.resp != null),
       hist: count((d) => Array.isArray(d.raw.hr?.hist)),
       series: count((d) => d.raw.hr?.series?.length),
-      stats: count((d) => d.stats?.steps != null),
+      stressSeries: count((d) => d.stressSeries?.length),
       acts: m.days.reduce((s, d) => s + d.acts.length, 0),
       recovery: count((d) => d.recovery != null),
-      strain: count((d) => d.strain != null),
       zones: { green: count((d) => d.zone === 'green'), yellow: count((d) => d.zone === 'yellow'), red: count((d) => d.zone === 'red') },
-      influencesReady: m.influences.ready,
-      profile: Object.keys(m.profile || {}),
+      healthAge: !!E.healthAge(m),
+      coachContextChars: E.coachContext(m, journal()).length,
     };
+  },
+  skipOnboarding() {
+    state.onboarding = null;
+    ls.set(LS.onboarded, true);
+    render();
   },
 };
 
-render();
-loadData();
+(async () => {
+  render();
+  await loadData();
+  autoSync();
+})();

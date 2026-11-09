@@ -1,7 +1,7 @@
 // Offline-Fähigkeit: App-Dateien aus dem Cache, Daten immer zuerst frisch aus dem Netz.
-const VERSION = 'puls-v2.0.0';
+const VERSION = 'puls-v3.0.0';
 const SHELL = [
-  './', 'index.html', 'styles.css', 'app.js', 'engine.js', 'charts.js', 'crypto.js', 'demo.js',
+  './', 'index.html', 'styles.css', 'app.js', 'engine.js', 'charts.js', 'crypto.js', 'demo.js', 'coach.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
 ];
 
@@ -48,5 +48,37 @@ self.addEventListener('fetch', (e) => {
         return res;
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true })),
+  );
+});
+
+// Benachrichtigungen (vom Garmin-Abruf in GitHub Actions geschickt)
+self.addEventListener('push', (e) => {
+  let data = {};
+  try {
+    data = e.data ? e.data.json() : {};
+  } catch {
+    data = { title: 'Puls', body: e.data?.text() || '' };
+  }
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'Puls', {
+      body: data.body || '',
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      tag: data.tag || 'puls',
+      data: { url: data.url || './' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || './', self.registration.scope).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (c.url.startsWith(self.registration.scope)) return c.focus();
+      }
+      return self.clients.openWindow(url);
+    }),
   );
 });

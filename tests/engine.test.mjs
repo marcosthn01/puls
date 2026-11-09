@@ -173,3 +173,27 @@ test('Wochenbericht liefert Urteil und Stichpunkte', () => {
   assert.ok(w.bullets.length >= 2);
   assert.equal(w.current.n, 7);
 });
+
+test('Puls-Alter: plausibel und mit Begründung', () => {
+  const a = E.healthAge(model);
+  assert.ok(a && a.items.length >= 5);
+  assert.ok(Math.abs(a.pulsAge - a.age) <= 15);
+  assert.equal(Math.round((a.age + a.items.reduce((t, x) => t + x.years, 0)) * 10) / 10, a.pulsAge);
+  assert.equal(E.healthAge({ ...model, settings: { ...model.settings, birthYear: null } }), null);
+});
+
+test('Stress-Zusammenfassung und Tagesverlauf aus den Daten', () => {
+  const s = E.stressSummary(model.days[last - 1]);
+  assert.ok(s.minutes && s.series.length > 50 && s.battery.length > 50);
+  assert.equal(E.stressSummary(model.days[0]).series, null);
+});
+
+test('Coach-Kontext enthält alle wichtigen Abschnitte und bleibt kompakt', () => {
+  const ctx = E.coachContext(model, store.journal);
+  for (const s of ['## Heute', 'Recovery', 'Ziel-Strain', 'Pulszonen', '## Woche', '## Letzte 14 Tage', '30-Tage-Schnitt']) assert.ok(ctx.includes(s), s);
+  assert.ok(ctx.length < 12000, `zu lang: ${ctx.length}`);
+  const dd = E.dayDetails(model, model.days[last - 1].date, store.journal);
+  assert.ok(dd.sleep && dd.components.length);
+  assert.ok(E.dayDetails(model, '1999-01-01').error);
+  assert.equal(E.daysTable(model, model.days[last - 6].date, model.days[last].date).length, 7);
+});

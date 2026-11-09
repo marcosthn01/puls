@@ -1,34 +1,19 @@
 # Puls – dein Recovery-Coach für die Garmin Venu 4S
 
-Eine private iPhone-App (Web-App für den Home-Bildschirm), die deine Garmin-Daten jeden Tag
-automatisch abholt und so auswertet wie ein Whoop:
+Eine private iPhone-App (Web-App für den Home-Bildschirm), die deine Garmin-Daten automatisch abholt
+und so auswertet wie Whoop:
 
-- **Recovery 0–100 %** (grün/gelb/rot) aus HRV, Ruhepuls, Schlaf und Atemfrequenz, verglichen
-  mit *deinen* letzten 30 Tagen.
-- **Strain 0–21** aus deinem Tagespuls, dazu ein **Zielbereich für heute** mit konkretem Training
-  („noch 45 Min. in Zone 2, 131–145 bpm“).
-- **Schlafbedarf und Schlafenszeit** für heute Nacht (Optimal / Gut / Minimum), mit Schlafschuld,
-  Effizienz, Konstanz und Schlafphasen.
-- **Warnsignale**, z. B. wenn Ruhepuls, HRV und Atemfrequenz gleichzeitig auffällig sind
-  (typisch 1–2 Tage vor einer Erkältung).
-- **Morgen-Check** (wie das Whoop-Journal): Alkohol, spätes Essen, Koffein, Stress, Sauna …
-  - Puls rechnet aus, was das deine Recovery kostet oder bringt.
-  - Beispiel: „Alkohol: −14 Prozentpunkte (52 % statt 66 %)“.
-- **Körper-Check**: HRV, Ruhepuls, Atemfrequenz, SpO₂ (und Hauttemperatur, falls die Uhr sie
-  liefert), jeweils im Vergleich zu deinem Normalbereich.
-- **Trends**:
-  - Wochenbericht mit Urteil (Optimal / Überlastet / Erholung nötig …)
-  - Kalender mit Recovery-Farben, HRV-Normalbereich, Trainingslast (7 zu 28 Tage)
-  - Aussagen wie „Wenn du vor 23:10 einschläfst, liegt deine Recovery im Schnitt bei 71 % statt 58 %“.
+- **Recovery, Strain, Schlaf** als leuchtende Ringe, mit Tagesziel und Schlafplaner.
+- **KI-Coach im Chat** (Claude): „Wie bin ich heute drauf?“, „Mach mir einen Trainingsplan“ – er kennt
+  deine Daten, schlägt einzelne Tage nach und kann Morgen-Check und Einstellungen für dich eintragen.
+- **Immer aktuell:** Beim Öffnen holt Puls automatisch frische Daten von Garmin (ca. 1 Minute).
+- **Benachrichtigungen:** morgens deine Recovery, abends die Erinnerung zum Schlafengehen.
+- **Morgen-Check** (wie das Whoop-Journal) mit gemessenem Effekt, z. B. „Alkohol: −14 % Recovery“.
+- **Körper-Check** (HRV, Ruhepuls, Atmung, SpO₂), **Stress & Body Battery** im Tagesverlauf,
+  **Puls-Alter** (wie Whoops Healthspan), **Trainingslast**, **Wochenbericht** und **Kalender**.
+- Einfache Bedienung: kurze Einführung beim ersten Start, (i)-Knöpfe erklären jeden Wert.
 
-Bedienung wie bei Whoop:
-
-- Oben die Wochenleiste mit farbigen Recovery-Punkten. Antippen oder links/rechts wischen wechselt
-  den Tag.
-- Die drei Ringe antippen öffnet die Details.
-- Oben nach unten ziehen holt neue Daten.
-
-Die Berechnungen stehen in der App unter **Mehr → So rechnet Puls** und im Code in
+Die Berechnungen stehen in der App unter **Einstellungen → So rechnet Puls** und im Code in
 [`app/engine.js`](app/engine.js).
 
 ## So funktioniert's
@@ -105,18 +90,19 @@ Danach merkt sich der Sync die Anmeldung.
 Das Passwort bleibt nur auf diesem iPhone gespeichert. Mit „Demo-Daten ansehen“ kannst du die App
 schon vor dem ersten Sync ausprobieren.
 
-### 6. Optional: „Jetzt synchronisieren“-Knopf in der App
+### 6. In der App: „Puls fertig einrichten“
 
-Damit holst du neue Daten sofort und kannst einen Garmin-Code direkt in der App eingeben.
+Auf der Startseite steht eine Karte mit drei Punkten. Jeder Punkt führt dich Schritt für Schritt durch:
 
-1. Auf <https://github.com/settings/personal-access-tokens/new> einen Token anlegen:
-   - Token name `Puls Sync`, Expiration z. B. 1 Jahr.
-   - **Repository access → Only select repositories → `puls`**.
-   - **Permissions → Repository permissions → Actions: Read and write**. Sonst nichts.
-2. „Generate token“ tippen und den Token kopieren.
-3. In Puls: **Mehr → Sync-Knopf einrichten** → Token einfügen → Speichern.
+1. **Automatisch aktualisieren** (2 Min.): Ein vorausgefüllter GitHub-Link erstellt einen Schlüssel,
+   der nur den Abruf starten darf. Bei „Repository access“ → „Only select repositories“ → `puls`.
+2. **KI-Coach** (3 Min.): Schlüssel in der [Claude-Konsole](https://console.anthropic.com/settings/keys)
+   erstellen, etwas Guthaben aufladen (eine Frage kostet ca. 2–4 Cent), in Puls einfügen.
+   Der Coach nutzt standardmäßig Claude Opus 5.5; in den Einstellungen kannst du ein günstigeres
+   Modell wählen.
+3. **Benachrichtigungen**: „Erlauben“ tippen. Klappt nur, wenn Puls vom Home-Bildschirm geöffnet ist.
 
-Der Token darf nur den Sync in diesem einen Repo starten.
+Beide Schlüssel bleiben nur auf deinem iPhone gespeichert.
 
 ## Gut zu wissen
 
@@ -124,8 +110,8 @@ Der Token darf nur den Sync in diesem einen Repo starten.
   - Die Uhr synchronisiert im Hintergrund.
   - Morgens hilft es, Garmin Connect kurz zu öffnen.
   - Danach die Puls-App öffnen: Sie lädt beim Öffnen automatisch neu.
-- **GitHub startet geplante Läufe oft 5–30 Minuten später.** Mit dem Knopf (Schritt 6) geht es
-  sofort.
+- **Zusätzlich läuft der Abruf** morgens alle 20 Minuten und tagsüber alle 30 Minuten –
+  auch wenn du die App nicht öffnest (GitHub startet diese Läufe oft ein paar Minuten später).
 - **Inoffizielle Schnittstelle:**
   - Garmin bietet Privatleuten keine offizielle API an.
   - Puls nutzt die Bibliothek [`garminconnect`](https://github.com/cyberjunky/python-garminconnect).
@@ -152,8 +138,10 @@ Der Token darf nur den Sync in diesem einen Repo starten.
 
 ```
 app/          Web-App (ohne Build-Schritt, ohne externe Bibliotheken)
-  engine.js   Auswertung: Recovery, Strain, Schlafbedarf, Coach, Erkenntnisse
+  engine.js   Auswertung: Recovery, Strain, Schlafbedarf, Puls-Alter, Coach-Kontext
   app.js      Oberfläche
+  coach.js    KI-Coach (Claude, Werkzeuge, Chat-Verlauf)
+  vendor/     Anthropic-SDK als Browser-Datei
   charts.js   Diagramme (SVG)
   crypto.js   Entschlüsselung (WebCrypto)
   demo.js     Beispieldaten
@@ -163,8 +151,10 @@ sync/         Garmin-Abruf (Python 3.12+)
   garmin_auth.py  Login inkl. Bestätigungscode und Token-Erneuerung
   garmin_data.py  Garmin-Antworten → kompaktes Tagesformat
   crypto_box.py   AES-256-GCM + PBKDF2
-tests/        pytest (Sync) und node --test (Auswertung, Verschlüsselung)
-.github/workflows/sync.yml   Zeitplan, Sync, Veröffentlichung
+  notify.mjs      Benachrichtigungen (Web Push)
+tests/        pytest (Sync), node --test (Auswertung, Coach, Benachrichtigungen), live_check.mjs
+.github/workflows/sync.yml   Zeitplan, Sync, Benachrichtigungen, Veröffentlichung
+.github/workflows/check.yml  Selbsttest der echten App
 ```
 
 Lokal ausprobieren:

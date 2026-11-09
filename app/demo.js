@@ -137,6 +137,31 @@ export function makeDemoStore({ now = new Date(), days = 90, seed = 11 } = {}) {
       hist[Math.min(BINS - 1, Math.max(0, Math.floor((bpm - HR_BIN_START) / HR_BIN_WIDTH)))] += 1;
     });
 
+    // Stress (0–100) und Body Battery im Tagesverlauf (nur letzte 14 Tage, wie beim echten Abruf)
+    let stressDay;
+    const stressMin = { rest: 0, low: 0, med: 0, high: 0 };
+    {
+      const stress = [];
+      const bb = [];
+      let level = Math.min(100, 30 + sleep.bb);
+      for (let b = 0; b < (isToday ? Math.floor(nowMin / 10) : 144); b++) {
+        const m = b * 10;
+        const hrv = minutes[m] ?? rhr;
+        const asleep = m < wake || (!isToday && m >= 1440 + bed);
+        let st = asleep ? 8 + r() * 10 : Math.max(0, Math.min(100, (hrv - rhr) * 1.4 + gauss() * 8 + (wd >= 1 && wd <= 5 && m > 540 && m < 1020 ? 12 : 0)));
+        if (act && m >= act.start && m < act.start + act.dur) st = null; // während Sport kein Stresswert
+        if (st != null) {
+          stress.push([m, Math.round(st)]);
+          const k = st <= 25 ? 'rest' : st <= 50 ? 'low' : st <= 75 ? 'med' : 'high';
+          stressMin[k] += 10;
+        }
+        level += asleep ? 0.9 : st == null ? -2.5 : -(0.15 + (st || 0) / 120);
+        level = Math.max(5, Math.min(100, level));
+        bb.push([m, Math.round(level)]);
+      }
+      if (n < 14) stressDay = { stress, bb };
+    }
+
     const acts = [];
     if (act) {
       const avgHr = Math.round(rhr + act.hrr * (hrMax - rhr));
@@ -183,12 +208,17 @@ export function makeDemoStore({ now = new Date(), days = 90, seed = 11 } = {}) {
         bbHigh: Math.min(100, Math.round(70 + gauss() * 10 - sick * 30 + (sleep.bb - 55) / 2)),
         bbLow: Math.max(5, Math.round(22 + gauss() * 8 - (act ? 8 : 0))),
         bbNow: isToday ? Math.round(80 - nowMin / 25) : undefined,
+        stressRest: stressMin.rest * 60,
+        stressLow: stressMin.low * 60,
+        stressMed: stressMin.med * 60,
+        stressHigh: stressMin.high * 60,
         rhr,
         imMod: act ? Math.round(act.dur * 0.6) : Math.round(10 + r() * 15),
         imVig: act && act.hrr > 0.7 ? Math.round(act.dur * 0.5) : 0,
       },
       hr: { hist: hist.map((v) => Math.round(v * 10) / 10), rhr, ...(n < 14 ? { series } : {}) },
       ...(acts.length ? { acts } : {}),
+      ...(stressDay ? { stressDay } : {}),
     };
   }
   return store;

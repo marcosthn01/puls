@@ -132,6 +132,19 @@ def test_normalize_heart_histogram_and_series():
     assert len(h["series"]) == 144 and h["series"][108] == [1080, 150]
 
 
+def test_normalize_stress():
+    day = dt.date(2026, 11, 8)
+    t0 = ms(2026, 11, 8, 9, 0)
+    raw = {
+        "stressValuesArray": [[t0, 30], [t0 + 180_000, 50], [t0 + 360_000, -1], [t0 + 900_000, 80]],
+        "bodyBatteryValuesArray": [[t0, "MEASURED", 70, 3.0], [t0 + 600_000, "MEASURED", 66, 3.0]],
+    }
+    s = gd.normalize_stress(raw, day, TZ)
+    assert s["stress"] == [[540, 40], [550, 80]]
+    assert s["bb"] == [[540, 70], [550, 66]]
+    assert gd.normalize_stress({}, day, TZ) is None
+
+
 def test_normalize_activity():
     raw = {"activityId": 1, "activityName": "Lauf", "startTimeLocal": "2026-11-08 18:00:05",
            "activityType": {"typeKey": "running"}, "duration": 3600.4, "distance": 10012.3,
@@ -211,6 +224,10 @@ def fake_module(needs_mfa=False, valid_tokens=("tok-1",)):
         def get_heart_rates(self, d):
             return heart_payload(dt.date.fromisoformat(d))
 
+        def get_stress_data(self, d):
+            t0 = ms(*dt.date.fromisoformat(d).timetuple()[:3], 10, 0)
+            return {"stressValuesArray": [[t0, 25]], "bodyBatteryValuesArray": [[t0, "MEASURED", 80, 3.0]]}
+
         def get_activities_by_date(self, start, end):
             return [{"activityId": 7, "startTimeLocal": f"{end} 18:00:00", "duration": 3600, "averageHR": 150,
                      "activityType": {"typeKey": "running"}}]
@@ -251,6 +268,7 @@ def test_first_run_backfills_and_reuses_tokens(tmp_path):
     assert store["profile"] == {"sex": "male", "birthYear": 1992}
     assert store["days"]["2026-11-09"]["acts"][0]["type"] == "running"
     assert "levels" in store["days"]["2026-11-09"]["sleep"]
+    assert store["days"]["2026-11-09"]["stressDay"] == {"stress": [[600, 25]], "bb": [[600, 80]]}
     assert store["status"]["auth"] == "ok"
     first_salt = json.loads((tmp_path / "site" / "data.enc.json").read_text())["salt"]
 
