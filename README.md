@@ -7,7 +7,7 @@ und so auswertet wie Whoop:
 - **KI-Coach im Chat** (Claude): „Wie bin ich heute drauf?“, „Mach mir einen Trainingsplan“ – er kennt
   deine Daten, schlägt einzelne Tage nach und kann Morgen-Check und Einstellungen für dich eintragen.
 - **Immer aktuell:** Beim Öffnen holt Puls automatisch frische Daten von Garmin (ca. 1 Minute).
-- **Benachrichtigungen:** morgens deine Recovery, abends die Erinnerung zum Schlafengehen.
+  Es gibt keinen Zeitplan – abgerufen wird nur, wenn du die App öffnest.
 - **Morgen-Check** (wie das Whoop-Journal) mit gemessenem Effekt, z. B. „Alkohol: −14 % Recovery“.
 - **Körper-Check** (HRV, Ruhepuls, Atmung, SpO₂), **Stress & Body Battery** im Tagesverlauf,
   **Puls-Alter** (wie Whoops Healthspan), **Trainingslast**, **Wochenbericht** und **Kalender**.
@@ -20,8 +20,8 @@ Die Berechnungen stehen in der App unter **Einstellungen → So rechnet Puls** u
 
 ```
 Venu 4S ──► Garmin-Connect-App ──► Garmin-Cloud
-                                       │  GitHub Actions holt die Daten
-                                       │  (morgens alle 20 Min., tagsüber stündlich)
+                                       │  GitHub Actions holt die Daten,
+                                       │  sobald du Puls öffnest
                                        ▼
                         data.enc.json (AES-256 verschlüsselt) auf GitHub Pages
                                        │
@@ -92,16 +92,15 @@ schon vor dem ersten Sync ausprobieren.
 
 ### 6. In der App: „Puls fertig einrichten“
 
-Auf der Startseite steht eine Karte mit drei Punkten. Jeder Punkt führt dich Schritt für Schritt durch:
+Auf der Startseite steht eine Karte mit zwei Punkten. Jeder Punkt führt dich Schritt für Schritt durch:
 
-1. **Automatisch aktualisieren** (2 Min.): Ein vorausgefüllter GitHub-Link erstellt einen Schlüssel,
-   der nur den Abruf starten darf. Bei „Repository access“ → „Only select repositories“ → `puls`.
+1. **Automatisch aktualisieren** (2 Min., wichtig): Ein vorausgefüllter GitHub-Link erstellt einen
+   Schlüssel, der nur den Abruf starten darf. Bei „Repository access“ → „Only select repositories“ →
+   `puls`. Ohne diesen Schlüssel kann Puls keine neuen Daten holen.
 2. **KI-Coach** (3 Min.): Schlüssel in der [Claude-Konsole](https://console.anthropic.com/settings/keys)
    erstellen, etwas Guthaben aufladen (eine Frage kostet ca. 2–4 Cent), in Puls einfügen.
    Der Coach nutzt standardmäßig Claude Opus 5.5; in den Einstellungen kannst du ein günstigeres
    Modell wählen.
-3. **Benachrichtigungen**: „Erlauben“ tippen. Klappt nur, wenn Puls vom Home-Bildschirm geöffnet ist.
-
 Beide Schlüssel bleiben nur auf deinem iPhone gespeichert.
 
 ## Gut zu wissen
@@ -110,8 +109,12 @@ Beide Schlüssel bleiben nur auf deinem iPhone gespeichert.
   - Die Uhr synchronisiert im Hintergrund.
   - Morgens hilft es, Garmin Connect kurz zu öffnen.
   - Danach die Puls-App öffnen: Sie lädt beim Öffnen automatisch neu.
-- **Zusätzlich läuft der Abruf** morgens alle 20 Minuten und tagsüber alle 30 Minuten –
-  auch wenn du die App nicht öffnest (GitHub startet diese Läufe oft ein paar Minuten später).
+- **Abruf nur beim Öffnen:** Puls zeigt sofort den letzten Stand und aktualisiert sich nach ca.
+  1 Minute. Öffnest du Puls länger als eine Woche nicht, vergisst GitHub die gespeicherte
+  Garmin-Anmeldung – dann kann Garmin einmal nach einem Code fragen (in der App unter Einstellungen
+  eingeben).
+- **Benachrichtigungen** (Recovery am Morgen, Schlaf-Erinnerung) sind vorbereitet
+  (`sync/notify.mjs`), brauchen aber einen Zeitplan und sind deshalb aus.
 - **Inoffizielle Schnittstelle:**
   - Garmin bietet Privatleuten keine offizielle API an.
   - Puls nutzt die Bibliothek [`garminconnect`](https://github.com/cyberjunky/python-garminconnect).
@@ -153,7 +156,7 @@ sync/         Garmin-Abruf (Python 3.12+)
   crypto_box.py   AES-256-GCM + PBKDF2
   notify.mjs      Benachrichtigungen (Web Push)
 tests/        pytest (Sync), node --test (Auswertung, Coach, Benachrichtigungen), live_check.mjs
-.github/workflows/sync.yml   Zeitplan, Sync, Benachrichtigungen, Veröffentlichung
+.github/workflows/sync.yml   Sync (von der App gestartet) und Veröffentlichung
 .github/workflows/check.yml  Selbsttest der echten App
 ```
 

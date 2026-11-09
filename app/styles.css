@@ -514,3 +514,5 @@ body.chatmode #app { padding-bottom: calc(var(--safe-bottom) + 160px); }
 .ob-dots i.on { background: var(--text); width: 20px; border-radius: 4px; }
 .ob .btn { max-width: 320px; }
 .ob-skip { position: absolute; top: calc(var(--safe-top) + 14px); right: 18px; background: none; border: 0; color: var(--muted); font-size: 15px; cursor: pointer; }
+.banner.sync { display: flex; align-items: center; gap: 10px; border-left: 3px solid var(--strain); }
+.spinner.small { width: 16px; height: 16px; border-width: 2px; margin: 0; flex: none; }

@@ -341,11 +341,11 @@ async function triggerSync(inputs = {}, { quiet = false } = {}) {
   }
 }
 
-/** Beim Öffnen: automatisch frische Daten anfordern, wenn der Stand älter als 8 Minuten ist. */
+/** Beim Öffnen: frische Daten anfordern (es gibt keinen Zeitplan – die App ist der Auslöser). */
 function autoSync() {
   if (state.demo || state.view !== 'main' || state.syncing || !ghConfig().token) return;
   const age = Date.now() - new Date(state.store?.generated || 0).getTime();
-  if (age < 8 * 60e3 || Date.now() - ls.get(LS.lastTrigger, 0) < 5 * 60e3) return;
+  if (age < 5 * 60e3 || Date.now() - ls.get(LS.lastTrigger, 0) < 3 * 60e3) return;
   triggerSync({}, { quiet: true });
 }
 
@@ -452,6 +452,7 @@ function syncChip() {
 }
 /** Nur den Sync-Status neu zeichnen (ohne die Seite neu aufzubauen, z. B. während des Chats). */
 function renderChrome() {
+  if (state.tab === 'heute' && state.view === 'main') return render();
   const chip = document.getElementById('syncchip');
   if (chip) chip.outerHTML = syncChip();
 }
@@ -489,6 +490,7 @@ function simpleHeader(title, back = false, right = null) {
 
 function statusBanner() {
   if (state.demo) return '';
+  if (state.syncing) return `<div class="banner sync"><span class="spinner small"></span>Hole neue Daten von Garmin … (ca. 1 Min.)</div>`;
   const st = state.store?.status || {};
   if (st.auth === 'mfa') return `<button class="banner warn" data-act="settings"><b>Garmin wartet auf einen Code.</b> Tippe hier, um ihn einzugeben.</button>`;
   if (st.auth === 'error') return `<button class="banner bad" data-act="settings"><b>Garmin-Anmeldung fehlgeschlagen.</b> Tippe für Hilfe.</button>`;
@@ -617,16 +619,16 @@ function setupState() {
 }
 
 function setupCard() {
-  if (state.demo || ls.get(LS.setupHidden)) return '';
+  if (state.demo) return '';
   const s = setupState();
-  const done = [s.sync, s.coach, s.push].filter(Boolean).length;
-  if (done === 3) return '';
+  if (ls.get(LS.setupHidden) && s.sync) return '';
+  const done = [s.sync, s.coach].filter(Boolean).length;
+  if (done === 2) return '';
   const item = (ok, icon, title, sub, act) =>
     `<button class="setup-item ${ok ? 'ok' : ''}" ${ok ? 'disabled' : act}><span class="ic">${ok ? I.check : icon}</span><span class="rl"><b>${title}</b><span>${ok ? 'Erledigt' : sub}</span></span>${ok ? '' : `<span class="chev">${I.chevron}</span>`}</button>`;
-  return `<section class="card setup"><h2>Puls fertig einrichten · ${done} von 3<button class="infobtn" data-act="setup-hide" aria-label="Ausblenden">×</button></h2>
+  return `<section class="card setup"><h2>Puls fertig einrichten · ${done} von 2<button class="infobtn" data-act="setup-hide" aria-label="Ausblenden">×</button></h2>
     ${item(s.sync, I.sync, 'Automatisch aktualisieren', 'Frische Daten bei jedem Öffnen · 2 Min.', 'data-act="setup-sync"')}
     ${item(s.coach, I.coach, 'KI-Coach aktivieren', 'Frag alles zu Training & Schlaf · 3 Min.', 'data-act="setup-coach"')}
-    ${item(s.push, I.bell, 'Benachrichtigungen', 'Recovery am Morgen, Erinnerung zum Schlafen', 'data-act="setup-push"')}
   </section>`;
 }
 
@@ -1342,7 +1344,6 @@ function viewSettings() {
   <section class="card"><h2>Einrichtung</h2>
     <button class="setrow" data-act="setup-sync"><span>Automatisch aktualisieren</span>${status(setup.sync)}</button>
     <button class="setrow" data-act="setup-coach"><span>KI-Coach</span>${status(setup.coach)}</button>
-    <button class="setrow" data-act="setup-push"><span>Benachrichtigungen</span>${status(setup.push)}</button>
     ${setup.coach ? `<label class="field" style="margin-top:12px"><span>Coach-Modell</span><select data-coach-model>${Object.entries(Coach.MODELS).map(([id, mm]) => opt(id, `${mm.label} – ${mm.note}`, cfg.model)).join('')}</select></label>` : ''}
   </section>
 
