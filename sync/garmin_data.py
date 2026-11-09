@@ -338,6 +338,15 @@ def normalize_activity(raw: dict[str, Any]) -> tuple[str, dict[str, Any]] | None
     return start[:10], act
 
 
+def _weight_kg(value: Any) -> float | None:
+    """Garmin speichert das Gewicht in Gramm."""
+    v = num(value)
+    if v is None or v <= 0:
+        return None
+    kg = v / 1000 if v > 500 else v
+    return round(kg, 1) if 30 <= kg <= 300 else None
+
+
 def normalize_profile(raw: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
@@ -353,6 +362,8 @@ def normalize_profile(raw: dict[str, Any] | None) -> dict[str, Any]:
             "sex": {"MALE": "male", "FEMALE": "female"}.get(gender) if isinstance(gender, str) else None,
             "birthYear": birth_year,
             "vo2max": rnd(user.get("vo2MaxRunning"), 0),
+            "weight": _weight_kg(user.get("weight")),
+            "height": rnd(user.get("height"), 0) if (num(user.get("height")) or 0) > 100 else None,
             "lthr": rnd(user.get("lactateThresholdHeartRate"), 0),
             "sleepTime": rnd(sleep.get("sleepTime"), 0),
             "wakeTime": rnd(sleep.get("wakeTime"), 0),

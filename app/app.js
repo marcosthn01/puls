@@ -5,7 +5,7 @@ import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, str
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '3.3.1';
+const VERSION = '3.4.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -21,6 +21,8 @@ const LS = {
   push: 'puls.push',
   setupHidden: 'puls.setupHidden',
   pushPrefs: 'puls.pushPrefs',
+  profile: 'puls.profile',
+  reportAuto: 'puls.reportAuto',
 };
 
 const PUSH_KINDS = [
@@ -177,6 +179,9 @@ const INFO = {
   age: ['Puls-Alter', 'Eine Schätzung, wie alt dein Körper wirkt – aus Fitness (VO₂max), Ruhepuls, Schlaf und Bewegung der letzten 30 Tage. Jeder Faktor zählt nur ein paar Jahre. Kein medizinischer Wert.'],
   load: ['Trainingslast', 'Deine Belastung der letzten 7 Tage im Vergleich zu den letzten 28. Zwischen 0,8 und 1,3 machst du Fortschritte, darüber steigt das Verletzungsrisiko.'],
   pad: ['Walking-Pad', 'Schritte von deinem Walking-Pad (PitPat → Apple Health → Kurzbefehl). Wenn du am Schreibtisch läufst, zählt die Uhr kaum mit, weil der Arm still bleibt. Puls zieht ab, was die Uhr in der Zeit schon gezählt hat, und addiert nur den Rest. So zählt nichts doppelt.'],
+  report: ['Dein Tagesbericht', 'Jeden Morgen schaut sich der KI-Coach (Claude) alle deine Werte an – wie ein Arzt, Trainer und Ernährungscoach zusammen: Recovery, Schlaf, Trends der letzten Wochen, deinen Morgen-Check und deine Angaben (Ziel, Gesundheit, Essen). Daraus wird ein persönlicher Plan für heute. Kostet ca. 5–15 Cent pro Bericht über deinen Claude-Schlüssel. Keine ärztliche Diagnose.'],
+  nutrition: ['Ernährung heute', 'Dein Tagesbedarf aus deinem echten Garmin-Verbrauch der letzten 2 Wochen, angepasst an die Belastung von heute und dein Ziel. Eiweiß je nach Ziel 1,4–2,0 g pro kg, Kohlenhydrate 3–7 g pro kg je nach Strain (harte Tage brauchen mehr), Fett mindestens 0,8 g pro kg. Wasser: 35 ml pro kg plus 0,6 L pro Trainingsstunde. Richtwerte, keine Diät.'],
+  health: ['Gesundheits-Check', 'Wie ein Arzt auf Trends schaut: Der Schnitt deiner letzten 7 Tage wird mit deinen eigenen Werten der 2 Monate davor verglichen – Ruhepuls, HRV, Atemfrequenz, Schlaf, Schlafrhythmus, Blutsauerstoff, Bewegung und VO₂max. Einzelne schlechte Nächte sind normal; wichtig sind Veränderungen über Tage. Bei Hinweisen der Stufe „Arzt“ bitte ärztlich abklären lassen.'],
   journal: ['Morgen-Check', 'Tippe jeden Morgen an, was gestern war (z. B. Alkohol, spätes Essen). Nach ein paar Wochen zeigt Puls, was deine Recovery wirklich hebt oder senkt.'],
 };
 
@@ -193,6 +198,7 @@ function toast(text) {
 
 // ------------------------------------------------------------------ Journal (Morgen-Check)
 
+const profile = () => ls.get(LS.profile, {});
 const journal = () => (state.demo ? state.demoJournal : ls.get(LS.journal, {}));
 function saveJournal(date, answers) {
   if (state.demo) state.demoJournal = { ...state.demoJournal, [date]: answers };
@@ -541,6 +547,7 @@ function render() {
   app.innerHTML = `${head}<div class="screen${anim ? ' anim' : ''}">${state.tab === 'heute' ? statusBanner() : ''}${views[state.tab](anim)}</div>`;
   if (draft && document.getElementById('askbox')) document.getElementById('askbox').value = draft;
   if (anim) animateCounts();
+  queueMicrotask(maybeReport);
 }
 
 function animateCounts() {
@@ -713,7 +720,119 @@ function viewToday(anim) {
     weekRow = `<section class="card slim">${rowLink(I.trends, 'var(--text)', `Deine Woche: ${esc(w.verdict.label)}`, 'Bericht, Kalender & Einflüsse', 'data-tab="trends"', `<span class="weekdots">${dots}</span>`)}</section>`;
   }
 
-  return `${setupCard()}${dials(d, anim)}${planCard}${journalRow}${bodyRow}${acts}${insightsCard}${statsCard(m, i)}${weekRow}`;
+  const report = isLatest ? reportCard(m, i) : '';
+  const ht = E.healthTrends(m, i);
+  const healthRow = ht.flags.length
+    ? `<section class="card slim">${rowLink(I.alert, ht.verdict === 'arzt' ? 'var(--red)' : 'var(--yellow)', esc(ht.flags[0].title), ht.flags.length > 1 ? `+ ${ht.flags.length - 1} weitere${ht.flags.length > 2 ? '' : 'r'} Hinweis${ht.flags.length > 2 ? 'e' : ''} · Gesundheits-Check` : 'Gesundheits-Check · 7 Tage vs. deine Basis', 'data-tab="recovery"')}</section>`
+    : '';
+  const nutri = isLatest ? nutritionCard(m, i) : '';
+  return `${setupCard()}${dials(d, anim)}${planCard}${report}${journalRow}${bodyRow}${healthRow}${nutri}${acts}${insightsCard}${statsCard(m, i)}${weekRow}`;
+}
+
+// ------------------------------------------------------------------ Tagesbericht, Ernährung, Gesundheit
+
+const rich = (t) => esc(t || '').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+const reportRun = { busy: false, error: null, tried: new Set() };
+
+function reportCard(m, i) {
+  const d = m.days[i];
+  if (state.demo) return '';
+  const cfg = Coach.coachConfig();
+  if (!cfg.apiKey) {
+    return `<section class="card slim">${rowLink(I.journal, 'var(--green)', 'Dein persönlicher Tagesbericht', 'Wie beim Arzt: jeden Morgen eine Einschätzung deiner Werte · KI-Coach einrichten', 'data-act="setup-coach"')}</section>`;
+  }
+  const cached = Coach.cachedReport();
+  const fresh = cached && cached.key === Coach.reportKey(m, profile());
+  const today = cached && cached.date === d.date ? cached : null;
+  if (reportRun.busy && !today) {
+    return `<section class="card report"><div class="rp-top"><span class="rp-badge">Dein Tagesbericht</span></div><div class="rp-wait"><span class="spinner small"></span><span>Dein Coach schaut sich deine Werte an … <span class="muted">(ca. 30–60 Sek.)</span></span></div></section>`;
+  }
+  if (!today) {
+    if (d.recovery == null) return `<section class="card slim">${rowLink(I.journal, 'var(--muted)', 'Tagesbericht folgt', 'Sobald deine Nacht da ist, schreibt dein Coach den Bericht.', 'data-act="sync"')}</section>`;
+    const err = reportRun.error ? `<p class="small" style="color:var(--red);margin:6px 0">${esc(reportRun.error)}</p>` : '';
+    return `<section class="card report"><div class="rp-top"><span class="rp-badge">Dein Tagesbericht</span></div>${err}<p class="small muted">Dein Coach wertet deine Nacht, die letzten Wochen und deine Angaben aus.</p><button class="btn" data-act="report-refresh" style="margin-top:10px">Bericht erstellen</button></section>`;
+  }
+  const r = today.report;
+  const sec = (key, icon, title) => {
+    const x = r[key];
+    return `<details class="rp-sec"><summary><span class="rp-ic">${icon}</span>${title}</summary><p>${rich(x.text)}</p>${x.punkte.length ? `<ul>${x.punkte.map((p) => `<li>${rich(p)}</li>`).join('')}</ul>` : ''}</details>`;
+  };
+  const level = { arzt: ['var(--red)', 'Ärztlich abklären'], beobachten: ['var(--yellow)', 'Beobachten'], info: ['var(--muted)', 'Info'] };
+  const notes = r.hinweise.length
+    ? `<div class="rp-notes">${r.hinweise.map((h) => `<div class="rp-note"><i style="background:${(level[h.stufe] || level.info)[0]}"></i><div><b>${(level[h.stufe] || level.info)[1]}</b> ${rich(h.text)}</div></div>`).join('')}</div>`
+    : '';
+  const when = new Date(today.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const label = Coach.MODELS[today.model]?.label || 'Claude';
+  return `<section class="card report">
+    <div class="rp-top"><span class="rp-badge">Dein Tagesbericht</span>${infoBtn('report')}<button class="iconbtn small" data-act="report-refresh" aria-label="Neu erstellen" ${reportRun.busy ? 'disabled' : ''}>${reportRun.busy ? '<span class="spinner small"></span>' : I.sync}</button></div>
+    <h3 class="rp-head">${rich(r.schlagzeile)}</h3>
+    <p class="rp-sum">${rich(r.einschaetzung)}</p>
+    <div class="rp-focus"><span>Heute im Fokus</span>${rich(r.fokus)}</div>
+    ${notes}
+    ${sec('koerper', '🩺', 'Körper & Gesundheit')}${sec('training', '🏃', 'Training')}${sec('ernaehrung', '🥗', 'Ernährung')}${sec('schlaf', '🌙', 'Schlaf')}
+    <p class="muted small rp-foot">${fresh ? '' : 'Neue Daten seit dem Bericht · '}Erstellt ${when} · ${esc(label)} · keine ärztliche Diagnose</p>
+  </section>`;
+}
+
+/** Startet den Tagesbericht einmal pro neuer Nacht automatisch (wenn der Coach eingerichtet ist). */
+function maybeReport() {
+  if (state.view !== 'main' || state.tab !== 'heute' || state.demo || reportRun.busy) return;
+  const m = state.model;
+  if (!m || m.empty || state.sel !== m.days.length - 1) return;
+  const d = m.days[m.days.length - 1];
+  if (d.recovery == null || d.date !== todayIso() || !Coach.coachConfig().apiKey || ls.get(LS.reportAuto, true) === false) return;
+  const key = Coach.reportKey(m, profile());
+  const cached = Coach.cachedReport();
+  if (cached?.key === key || reportRun.tried.has(key)) return;
+  reportRun.tried.add(key);
+  makeReport();
+}
+
+async function makeReport() {
+  if (reportRun.busy) return;
+  reportRun.busy = true;
+  reportRun.error = null;
+  if (state.tab === 'heute') render();
+  try {
+    await Coach.dailyReport(coachApp);
+  } catch (err) {
+    reportRun.error = err.message || 'Bericht konnte nicht erstellt werden.';
+  } finally {
+    reportRun.busy = false;
+    if (state.tab === 'heute' && !state.sheet) render();
+  }
+}
+
+function nutritionCard(m, i) {
+  const n = E.nutritionPlan(m, i, profile(), journal(), { partial: m.days[i].date === todayIso() });
+  if (n.missing) {
+    return `<section class="card slim">${rowLink(I.plus, 'var(--green)', 'Ernährung für heute', 'Gewicht & Ziel eintragen – dann rechnet Puls deinen Bedarf aus', 'data-act="profile"')}</section>`;
+  }
+  const t = (k, v, u, sub = '') => tile(k, v, u, sub);
+  const tips = n.tips.slice(0, 3).map((x) => `<li>${esc(x.text)}</li>`).join('');
+  return card(
+    'Ernährung heute',
+    `<div class="grid four">${t('Energie', int(n.kcal), 'kcal', n.goal === 'gesund' ? n.strainWord : n.goalLabel)}${t('Eiweiß', n.protein, 'g', `${String(Math.round((n.protein / n.refKg) * 10) / 10).replace('.', ',')} g/kg`)}${t('Kohlenh.', n.carbs, 'g')}${t('Fett', n.fat, 'g')}</div>
+    <p class="small" style="margin:10px 0 4px">💧 <b>${String(n.water).replace('.', ',')} L</b> trinken${n.caffeineCut ? ` · ☕ letzter Kaffee bis <b>${n.caffeineCut}</b>` : ''}</p>
+    <ul class="tips">${tips}</ul>
+    <details><summary>Warum diese Werte?</summary><p>${esc(n.basis)}</p><button class="linkbtn" data-act="profile">Ziel & Gewicht ändern</button></details>`,
+    'nutrition',
+    'nutrition',
+  );
+}
+
+function healthTrendsCard(m, i) {
+  const h = E.healthTrends(m, i);
+  if (!h.items.length) return '';
+  const col = { good: 'var(--green)', ok: 'var(--muted)', watch: 'var(--yellow)' };
+  const word = { good: 'gut', ok: 'normal', watch: 'auffällig' };
+  const fmt = (x) => `${x.value >= 1000 ? int(x.value) : String(x.value).replace('.', ',')}${x.unit ? ` ${x.unit}` : ''}`;
+  const delta = (x) => (x.delta == null || x.key === 'vo2' ? (x.key === 'vo2' && x.base != null ? `Schnitt ${x.base}` : x.key === 'im' ? 'Ziel 150' : '') : `${x.delta > 0 ? '+' : x.delta < 0 ? '−' : '±'}${String(Math.abs(x.delta)).replace('.', ',')} vs. ${String(x.base).replace('.', ',')}`);
+  const rows = h.items.map((x) => `<div class="trow"><span class="tl">${x.label}</span><span class="tv">${fmt(x)}</span><span class="td muted">${delta(x)}</span><span class="ts" style="color:${col[x.status]}">${word[x.status]}</span></div>`).join('');
+  const lv = { arzt: ['var(--red)', 'Arzt'], beobachten: ['var(--yellow)', 'Beobachten'], info: ['var(--muted)', 'Info'] };
+  const flags = h.flags.map((f) => `<div class="rp-note"><i style="background:${lv[f.level][0]}"></i><div><b>${f.title}</b> ${esc(f.text)}</div></div>`).join('');
+  const head = h.verdict === 'gut' ? `<p class="small" style="margin-bottom:8px">✅ Keine auffälligen Trends – deine Werte sind stabil.</p>` : `<div class="rp-notes" style="margin-bottom:10px">${flags}</div>`;
+  return card('Gesundheits-Check', `${head}<div class="trows">${rows}</div><p class="note">Letzte 7 Tage im Vergleich zu deinen eigenen Werten der ${h.ready ? '2 Monate' : 'Tage'} davor. Keine Diagnose.</p>`, '', 'health');
 }
 
 function driversLine(d) {
@@ -796,6 +915,7 @@ function viewRecovery(anim) {
   </section>`);
   parts.push(factorsCard(d));
   parts.push(bodyCheckCard(E.vitals(m, i)));
+  parts.push(healthTrendsCard(m, i));
   parts.push(stressCard(d));
   if (i === m.days.length - 1) parts.push(ageCard(m));
   parts.push(`<h2 class="section">Verlauf</h2>${rangeSeg()}`);
@@ -1212,6 +1332,10 @@ const coachApp = {
     ls.set(LS.settings, user);
     state.model = E.analyze(state.store, user);
   },
+  profile,
+  saveProfile: (patch) => {
+    ls.set(LS.profile, { ...profile(), ...patch });
+  },
   changed: () => {},
 };
 
@@ -1344,6 +1468,22 @@ function renderSheet() {
       <a class="btn ghost" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Schlüssel erstellen ↗</a>
       <input id="coach-key" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(cfg.apiKey)}" style="margin-top:10px">
       <button class="btn" data-act="save-coach">Speichern & testen</button>`;
+  } else if (sh.type === 'profile') {
+    const p = profile();
+    const gp = state.store?.profile || {};
+    const opt = (v, label, cur) => `<option value="${v}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${label}</option>`;
+    body = `<h3>Über dich</h3>
+      <p class="muted small">Damit Puls dich wie ein persönlicher Arzt, Trainer und Ernährungscoach beraten kann. Alles bleibt auf diesem iPhone und geht nur an deinen KI-Coach.</p>
+      <div class="fields2" style="margin-top:12px">
+        <label class="field"><span>Dein Ziel</span><select data-profile="goal">${opt('', 'bitte wählen', p.goal)}${Object.entries(E.GOALS).map(([k, v]) => opt(k, v, p.goal)).join('')}</select></label>
+        <label class="field"><span>Ernährung</span><select data-profile="diet">${Object.entries(E.DIETS).map(([k, v]) => opt(k, v, p.diet || 'alles')).join('')}</select></label>
+        <label class="field"><span>Gewicht (kg)</span><input data-profile="weight" type="number" inputmode="decimal" step="0.1" min="30" max="300" placeholder="${gp.weight ? `Garmin: ${String(gp.weight).replace('.', ',')}` : 'z. B. 78'}" value="${p.weight || ''}"></label>
+        <label class="field"><span>Größe (cm)</span><input data-profile="height" type="number" inputmode="numeric" min="120" max="230" placeholder="${gp.height ? `Garmin: ${gp.height}` : 'z. B. 180'}" value="${p.height || ''}"></label>
+      </div>
+      <label class="field"><span>Training & Wünsche</span><textarea data-profile="training" rows="2" placeholder="z. B. 3× Kraft, 2× Laufen · Halbmarathon im April · Rücken stärken">${esc(p.training || '')}</textarea></label>
+      <label class="field"><span>Essen</span><textarea data-profile="food" rows="2" placeholder="z. B. kein Fisch, Laktoseintoleranz, esse gern Pasta, wenig Zeit mittags">${esc(p.food || '')}</textarea></label>
+      <label class="field"><span>Gesundheit (optional)</span><textarea data-profile="health" rows="2" placeholder="z. B. Bluthochdruck, Betablocker, Knieprobleme, Heuschnupfen">${esc(p.health || '')}</textarea></label>
+      <button class="btn" data-act="profile-done" style="margin-top:12px">Fertig</button>`;
   } else if (sh.type === 'setup-pad') {
     const gh = ghConfig();
     const url = `https://api.github.com/repos/${gh.repo || 'DEIN-NAME/puls'}/actions/workflows/${WORKFLOW}/dispatches`;
@@ -1381,6 +1521,28 @@ function renderSheet() {
   sheetEl.innerHTML = `<div class="backdrop" data-act="sheet-close"></div><div class="sheet" role="dialog"><div class="grab"></div>${body}</div>`;
 }
 
+function saveProfileFields() {
+  const p = { ...profile() };
+  sheetEl.querySelectorAll('[data-profile]').forEach((el) => {
+    const k = el.dataset.profile;
+    const v = el.value.trim();
+    if (k === 'weight') {
+      const n = Number(v.replace(',', '.'));
+      if (v && n >= 30 && n <= 300) p.weight = Math.round(n * 10) / 10;
+      else if (!v) delete p.weight;
+    } else if (k === 'height') {
+      const n = Number(v);
+      if (v && n >= 120 && n <= 230) p.height = Math.round(n);
+      else if (!v) delete p.height;
+    } else if (v) p[k] = v.slice(0, 600);
+    else delete p[k];
+  });
+  ls.set(LS.profile, p);
+}
+sheetEl.addEventListener('change', (e) => {
+  if (e.target.matches('[data-profile]')) saveProfileFields();
+});
+
 sheetEl.addEventListener('click', async (e) => {
   const chip = e.target.closest('[data-q]');
   if (chip) {
@@ -1391,6 +1553,12 @@ sheetEl.addEventListener('click', async (e) => {
   if (!t) return;
   const act = t.dataset.act;
   if (act === 'sheet-close') closeSheet();
+  if (act === 'profile-done') {
+    saveProfileFields();
+    closeSheet();
+    render();
+    toast('Gespeichert – deine Empfehlungen sind jetzt persönlicher.');
+  }
   if (act === 'copy') {
     const text = t.dataset.copy;
     if (!text) return toast('Zuerst „Automatisch aktualisieren“ einrichten.');
@@ -1513,7 +1681,8 @@ function viewSettings() {
     <button class="setrow" data-act="setup-coach"><span>KI-Coach</span>${status(setup.coach)}</button>
     <button class="setrow" data-act="setup-push"><span>Benachrichtigungen</span>${status(setup.push)}</button>
     <button class="setrow" data-act="setup-pad"><span>Walking-Pad (PitPat)</span>${status(setup.pad)}</button>
-    ${setup.coach ? `<label class="field" style="margin-top:12px"><span>Coach-Modell</span><select data-coach-model>${Object.entries(Coach.MODELS).map(([id, mm]) => opt(id, `${mm.label} – ${mm.note}`, cfg.model)).join('')}</select></label>` : ''}
+    ${setup.coach ? `<label class="field" style="margin-top:12px"><span>Coach-Modell</span><select data-coach-model>${Object.entries(Coach.MODELS).map(([id, mm]) => opt(id, `${mm.label} – ${mm.note}`, cfg.model)).join('')}</select></label>
+    <label class="toggle"><span><b>Tagesbericht automatisch</b><small>jeden Morgen, sobald die Nacht da ist · ca. 5–15 Cent</small></span><input type="checkbox" data-report-auto ${ls.get(LS.reportAuto, true) === false ? '' : 'checked'}><i></i></label>` : ''}
   </section>
 
   ${setup.push ? `<section class="card"><h2>Benachrichtigungen</h2>
@@ -1531,7 +1700,8 @@ function viewSettings() {
   </section>
 
   <section class="card"><h2>Über dich</h2>
-    <div class="fields2">
+    <button class="setrow" data-act="profile"><span>Ziel, Gewicht, Ernährung & Gesundheit</span><span class="${profile().goal && (profile().weight || state.store?.profile?.weight) ? 'up' : 'muted'}">${profile().goal ? esc(E.GOALS[profile().goal] || '') : 'ausfüllen'}</span></button>
+    <div class="fields2" style="margin-top:10px">
       <label class="field"><span>Geschlecht</span><select data-setting="sex">${opt('', `Auto: ${S.sex === 'female' ? 'weiblich' : 'männlich'}`, user.sex || '')}${opt('male', 'männlich', user.sex)}${opt('female', 'weiblich', user.sex)}</select></label>
       <label class="field"><span>Geburtsjahr</span><input data-setting="birthYear" type="number" inputmode="numeric" min="1930" max="2015" placeholder="${S.birthYear || 'z. B. 1990'}" value="${user.birthYear || ''}"></label>
       <label class="field"><span>Max-Puls</span><input data-setting="maxHr" type="number" inputmode="numeric" min="140" max="230" placeholder="auto: ${S.maxHrAuto}" value="${user.maxHr || ''}"></label>
@@ -1547,6 +1717,9 @@ function viewSettings() {
     <details><summary>Strain</summary><p>Herz-Kreislauf-Belastung aus deinem Tagespuls (Banister-TRIMP), logarithmisch von 0 bis 21. Ruhetag 4–8, Training 10–14, sehr hart ab 17.</p></details>
     <details><summary>Ziel-Strain</summary><p>Mitte = 5,5 + 0,125 × Recovery, Bereich ±1,5. Gesenkt, wenn deine Last stark steigt oder Warnsignale da sind.</p></details>
     <details><summary>Schlafbedarf</summary><p>Basis + 4 Min. je Strain-Punkt über 10 am Vortag + Teil der Schlafschuld (max. 60 Min.) + 15 Min. nach roter Recovery. Schlafenszeit = Weckzeit − Bedarf ÷ Schlafeffizienz − 10 Min.</p></details>
+    <details><summary>Tagesbericht</summary><p>Jeden Morgen bekommt der KI-Coach (Claude) alle deine Werte: Recovery mit Bestandteilen, Schlaf, die letzten 14 Tage, den Gesundheits-Check, deinen Morgen-Check, die berechneten Ernährungsziele und deine Angaben (Ziel, Training, Essen, Gesundheit). Er schreibt daraus eine persönliche Einschätzung wie ein Sportarzt, Trainer und Ernährungscoach. Die Zahlen rechnet Puls selbst – der Coach erklärt und verknüpft sie.</p></details>
+    <details><summary>Gesundheits-Check</summary><p>Schnitt der letzten 7 Tage gegen deine eigenen Werte der bis zu 60 Tage davor: Ruhepuls (auffällig ab +4 bpm, Arzt ab +8 bpm über eine Woche oder dauerhaft über 90), HRV (auffällig ab −12 %), Atemfrequenz (Infekt-Frühzeichen), Schlaf (unter 6 Std.), Schlafrhythmus (Schwankung über 60 Min.), Blutsauerstoff (mehrere Nächte unter 92 % → Schlafapnoe abklären), Bewegung (WHO: 150 Min./Woche), VO₂max im Vergleich zum Altersschnitt.</p></details>
+    <details><summary>Ernährung</summary><p>Verbrauch = dein Garmin-Gesamtverbrauch (Median der letzten 14 Tage), angepasst an den Ziel-Strain von heute (±3 % pro Strain-Punkt). Ziel: Abnehmen −18 % (an roten Tagen −10 %), Muskelaufbau +8 %. Eiweiß 1,4–2,0 g/kg (ISSN), Kohlenhydrate 3–7 g/kg je nach Belastung (ACSM), Fett mindestens 0,8 g/kg, Ballaststoffe 30 g, Wasser 35 ml/kg + 0,6 L pro Trainingsstunde, Koffein bis 8 Std. vor dem Schlafen. Bei BMI über 27 wird mit dem Normalgewicht gerechnet.</p></details>
     <details><summary>Puls-Alter</summary><p>VO₂max, Ruhepuls, Schlafdauer und -rhythmus, aktive Minuten und Schritte der letzten 30 Tage – jeder Faktor verschiebt das Alter um wenige Jahre. Eine Schätzung, kein medizinischer Wert.</p></details>
     <p class="muted small" style="margin-top:10px">Puls ist kein Medizinprodukt. Bei Beschwerden zum Arzt.</p>
   </section>
@@ -1625,6 +1798,12 @@ app.addEventListener('click', async (e) => {
     case 'setup-push':
     case 'setup-pad':
       openSheet({ type: t.dataset.act });
+      break;
+    case 'profile':
+      openSheet({ type: 'profile' });
+      break;
+    case 'report-refresh':
+      makeReport();
       break;
     case 'setup-hide':
       ls.set(LS.setupHidden, true);
@@ -1718,6 +1897,10 @@ function savePushPref(el) {
 
 app.addEventListener('change', (e) => {
   if (e.target.matches('[data-pushpref]')) savePushPref(e.target);
+  if (e.target.matches('[data-report-auto]')) {
+    ls.set(LS.reportAuto, e.target.checked);
+    toast(e.target.checked ? 'Tagesbericht kommt jeden Morgen automatisch.' : 'Tagesbericht nur noch auf Knopfdruck.');
+  }
   if (e.target.matches('[data-setting]')) saveSetting(e.target);
   if (e.target.matches('[data-coach-model]')) {
     Coach.saveCoachConfig({ model: e.target.value });

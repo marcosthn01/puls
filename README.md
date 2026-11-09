@@ -4,6 +4,14 @@ Eine private iPhone-App (Web-App für den Home-Bildschirm), die deine Garmin-Dat
 und so auswertet wie Whoop:
 
 - **Recovery, Strain, Schlaf** als leuchtende Ringe, mit Tagesziel und Schlafplaner.
+- **Dein Tagesbericht – wie beim Arzt:** Jeden Morgen schaut sich der KI-Coach alle deine Werte an
+  (Nacht, Trends der letzten Wochen, Morgen-Check, deine Angaben zu Ziel, Essen und Gesundheit) und
+  schreibt eine persönliche Einschätzung mit Plan für Training, Ernährung und Schlaf – plus klare
+  Hinweise, wann etwas ärztlich abgeklärt werden sollte.
+- **Ernährung heute:** Kalorien, Eiweiß, Kohlenhydrate, Fett und Wasser aus deinem echten
+  Garmin-Verbrauch, angepasst an die Belastung des Tages und dein Ziel (abnehmen, Muskeln, Ausdauer …).
+- **Gesundheits-Check:** deine letzten 7 Tage gegen deine eigenen 2 Monate davor (Ruhepuls, HRV,
+  Atmung, Schlaf, Rhythmus, Blutsauerstoff, Bewegung, VO₂max) – wie ein Arzt auf Trends schaut.
 - **KI-Coach im Chat** (Claude): „Wie bin ich heute drauf?“, „Mach mir einen Trainingsplan“ – er kennt
   deine Daten, schlägt einzelne Tage nach und kann Morgen-Check und Einstellungen für dich eintragen.
 - **Immer aktuell:** Beim Öffnen holt Puls automatisch frische Daten von Garmin (ca. 1 Minute).

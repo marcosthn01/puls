@@ -952,12 +952,199 @@ export function stressSummary(d) {
   };
 }
 
+// ---------------------------------------------------------------- Ernährung
+
+export const GOALS = {
+  gesund: 'Gesund & fit bleiben',
+  abnehmen: 'Abnehmen',
+  muskeln: 'Muskeln aufbauen',
+  ausdauer: 'Ausdauer verbessern',
+  leistung: 'Wettkampf & Leistung',
+};
+export const DIETS = { alles: 'Alles', vegetarisch: 'Vegetarisch', vegan: 'Vegan', pescetarisch: 'Pescetarisch' };
+
+/**
+ * Tagesziele für Energie, Makros und Wasser – aus Garmin-Verbrauch, Belastung und Ziel.
+ * Grundlagen: Mifflin-St-Jeor (Grundumsatz), ISSN/ACSM (Eiweiß 1,4–2,2 g/kg, Kohlenhydrate 3–8 g/kg je
+ * nach Belastung), DGE (Ballaststoffe, Wasser ~35 ml/kg + Sport), Koffein ≥ 8 Std. vor dem Schlafen.
+ */
+export function nutritionPlan(model, i, profile = {}, journal = {}, { partial = i === model.days.length - 1 } = {}) {
+  const d = model.days[i];
+  const S = model.settings;
+  const kg = Number(profile.weight) || model.profile?.weight || null;
+  const cm = Number(profile.height) || model.profile?.height || null;
+  if (!isNum(kg) || kg < 30) return { missing: 'weight' };
+  const goal = GOALS[profile.goal] ? profile.goal : 'gesund';
+  const bmr = 10 * kg + 6.25 * (cm || (S.sex === 'female' ? 165 : 178)) - 5 * S.age + (S.sex === 'female' ? -161 : 5);
+  const refKg = cm && kg / (cm / 100) ** 2 > 27 ? Math.round(25 * (cm / 100) ** 2) : kg; // Bezugsgewicht bei Übergewicht
+
+  // Verbrauch: dein typischer Garmin-Gesamtverbrauch, angepasst an die heutige Belastung
+  const past = model.days.slice(Math.max(0, i - 14), i).map((x) => x.stats?.kcal).filter((v) => isNum(v) && v > bmr);
+  const base = past.length >= 4 ? median(past) : bmr * 1.45;
+  const strains = model.days.slice(Math.max(0, i - 28), i).map((x) => x.strain).filter(isNum);
+  const avgStrain = strains.length ? mean(strains) : 10;
+  const target = d.target ? (d.target.low + d.target.high) / 2 : avgStrain;
+  const strainBasis = partial ? Math.max(target, d.strain ?? 0) : d.strain ?? target;
+  let burn = partial ? base * (1 + clamp((strainBasis - avgStrain) * 0.03, -0.1, 0.25)) : isNum(d.stats?.kcal) ? d.stats.kcal : base;
+  if (partial && isNum(d.stats?.kcal)) burn = Math.max(burn, d.stats.kcal);
+
+  const red = d.alarm || d.zone === 'red';
+  const adjust = { gesund: 0, abnehmen: red ? -0.1 : -0.18, muskeln: 0.08, ausdauer: 0, leistung: 0.03 }[goal];
+  const kcalTarget = Math.max(bmr * 1.1, burn * (1 + adjust));
+
+  const protein = Math.round((refKg * { gesund: 1.4, abnehmen: 2.0, muskeln: 1.9, ausdauer: 1.6, leistung: 1.8 }[goal]) / 5) * 5;
+  const cPerKg = strainBasis >= 17 ? 7 : strainBasis >= 14 ? 6 : strainBasis >= 10 ? 4.5 : strainBasis >= 7 ? 3.5 : 3;
+  let carbs = refKg * Math.max(2, cPerKg - (goal === 'abnehmen' ? 1 : 0));
+  let fat = (kcalTarget - protein * 4 - carbs * 4) / 9;
+  const fatMin = 0.8 * refKg;
+  if (fat < fatMin) {
+    fat = fatMin;
+    carbs = Math.max(2 * refKg, (kcalTarget - protein * 4 - fat * 9) / 4);
+  }
+  carbs = Math.round(carbs / 5) * 5;
+  fat = Math.round(fat / 5) * 5;
+  const kcal = Math.round((protein * 4 + carbs * 4 + fat * 9) / 50) * 50;
+
+  // Training heute (gemacht oder noch geplant)
+  const doneMin = d.acts.reduce((s, a) => s + (a.dur || 0) / 60, 0);
+  const coach = d.recovery != null ? buildCoach(model, i) : null;
+  const planMin = partial && coach?.remaining && !coach.remaining.done ? coach.remaining.z2 : 0;
+  const trainMin = Math.round(doneMin + planMin);
+  const water = Math.round((kg * 0.035 + (trainMin / 60) * 0.6) * 10) / 10;
+
+  const plan = i === model.days.length - 1 ? bedtimePlan(model, i) : null;
+  const bed = plan?.options[1].bed ?? null; // „Gut“-Zeit: realistisch spätestes Zubettgehen
+  const caffeineCut = bed != null ? fmtClock(bed - 8 * 60) : null;
+  const lastMeal = bed != null ? fmtClock(bed - 3 * 60) : null;
+  const perMeal = Math.round((0.4 * refKg) / 5) * 5;
+
+  const tips = [];
+  const add = (key, text) => tips.push({ key, text });
+  if (trainMin >= 30) {
+    add('training', `Rund ums Training: 1–3 Std. vorher Kohlenhydrate (z. B. Haferflocken, Banane, Reis), danach innerhalb von 2 Std. ${perMeal}–${perMeal + 10} g Eiweiß plus Kohlenhydrate.`);
+  }
+  add('protein', `Eiweiß auf 4 Mahlzeiten verteilen: je ca. ${perMeal} g (z. B. Skyr, Eier, Hülsenfrüchte, Fisch, Tofu).`);
+  if (red) add('red', 'Erholungstag: viel Gemüse, Obst und Wasser, kein Alkohol – das unterstützt Immunsystem und HRV.');
+  const y = journal?.[addDays(d.date, -1)];
+  if (y?._done && y.alkohol) add('alkohol', 'Gestern Alkohol: heute 0,5 L extra trinken (gern mit etwas Salz/Elektrolyten) und früh essen.');
+  if (caffeineCut) add('koffein', `Letzter Kaffee bis ${caffeineCut} (8 Std. vor dem Schlafen), letzte größere Mahlzeit bis ${lastMeal}.`);
+  if (profile.diet === 'vegan') add('vegan', 'Vegan: Eiweiß aus Soja, Linsen, Seitan kombinieren; an Vitamin B12 denken.');
+  if (profile.diet === 'vegetarisch') add('vegetarisch', 'Vegetarisch: Eier, Milchprodukte und Hülsenfrüchte decken das Eiweiß gut.');
+  if (goal === 'abnehmen') add('abnehmen', `Defizit von ca. ${Math.round(burn - kcal)} kcal – genug Eiweiß schützt die Muskeln, an harten Tagen das Defizit nicht vergrößern.`);
+
+  const strainWord = strainBasis >= 17 ? 'sehr harter Tag' : strainBasis >= 14 ? 'harter Tag' : strainBasis >= 10 ? 'Trainingstag' : 'ruhiger Tag';
+  const basis = `Verbrauch ca. ${Math.round(burn / 10) * 10} kcal (dein Garmin-Schnitt ${Math.round(base / 10) * 10} kcal, angepasst an Strain ${strainBasis.toFixed(1).replace('.', ',')} = ${strainWord}). Ziel „${GOALS[goal]}“: ${adjust ? `${adjust > 0 ? '+' : '−'}${Math.round(Math.abs(adjust) * 100)} %` : 'ausgeglichen'}. Eiweiß ${(protein / refKg).toFixed(1).replace('.', ',')} g/kg, Kohlenhydrate ${(carbs / refKg).toFixed(1).replace('.', ',')} g/kg${refKg !== kg ? ` (bezogen auf ${refKg} kg Normalgewicht)` : ''}.`;
+
+  return { kcal, protein, carbs, fat, water, fiber: 30, burn: Math.round(burn), base: Math.round(base), bmr: Math.round(bmr), goal, goalLabel: GOALS[goal], strainBasis, strainWord, trainMin, perMeal, caffeineCut, lastMeal, tips, basis, kg, refKg };
+}
+
+// ---------------------------------------------------------------- Gesundheits-Check (Trends wie beim Arzt)
+
+/**
+ * Letzte 7 Tage gegen deine eigene Basis (die bis zu 60 Tage davor) – plus Hinweise, wann ein Arzt draufschauen sollte.
+ * Schwellen orientieren sich an üblichen Faustregeln aus Sportmedizin und Schlafmedizin; keine Diagnose.
+ */
+export function healthTrends(model, i = model.days.length - 1) {
+  const days = model.days;
+  const recent = days.slice(Math.max(0, i - 6), i + 1);
+  const two = days.slice(Math.max(0, i - 13), i + 1);
+  const base = days.slice(Math.max(0, i - 67), Math.max(0, i - 6));
+  const avg = (arr, f, min = 3) => {
+    const v = arr.map(f).filter(isNum);
+    return v.length >= min ? mean(v) : null;
+  };
+  const items = [];
+  const flags = [];
+  const flag = (level, key, title, text) => flags.push({ level, key, title, text });
+  const ready = base.filter((x) => x.rhr != null).length >= 14;
+  const r1 = (v) => Math.round(v * 10) / 10;
+
+  const item = (key, label, unit, now, ref, { digits = 0, goodUp, warnAbs, warnRel, text }) => {
+    if (now == null) return null;
+    const delta = ref != null ? now - ref : null;
+    const rel = ref ? delta / ref : null;
+    let status = 'ok';
+    if (delta != null) {
+      const bad = goodUp ? -delta : delta;
+      const badRel = goodUp ? -rel : rel;
+      if ((warnAbs != null && bad >= warnAbs) || (warnRel != null && badRel >= warnRel)) status = 'watch';
+      else if ((warnAbs != null && -bad >= warnAbs * 0.6) || (warnRel != null && -badRel >= warnRel * 0.6)) status = 'good';
+    }
+    const it = { key, label, unit, value: digits ? r1(now) : Math.round(now), base: ref == null ? null : digits ? r1(ref) : Math.round(ref), delta: delta == null ? null : digits ? r1(delta) : Math.round(delta), status, text };
+    items.push(it);
+    return it;
+  };
+
+  const rhrNow = avg(recent, (x) => x.rhr);
+  const rhrBase = ready ? avg(base, (x) => x.rhr, 14) : null;
+  const rhr = item('rhr', 'Ruhepuls', 'bpm', rhrNow, rhrBase, { goodUp: false, warnAbs: 4, text: 'Steigt bei Infekten, Stress, Übertraining und Schlafmangel; sinkt mit besserer Fitness.' });
+  if (rhr && rhrBase != null && rhrNow - rhrBase >= 8) flag('arzt', 'rhr', 'Ruhepuls seit Tagen deutlich erhöht', `Seit einer Woche im Schnitt ${Math.round(rhrNow - rhrBase)} bpm über deinem Normalwert. Wenn du dich krank fühlst, Fieber, Herzstolpern oder Atemnot hast: ärztlich abklären lassen und bis dahin nicht hart trainieren.`);
+  else if (rhr?.status === 'watch') flag('beobachten', 'rhr', 'Ruhepuls erhöht', `Seit 7 Tagen ${Math.round(rhrNow - rhrBase)} bpm über deiner Basis – oft Stress, wenig Schlaf, Alkohol oder ein beginnender Infekt. Belastung etwas zurückfahren.`);
+  if (rhrNow != null && rhrNow > 90) flag('arzt', 'rhr-high', 'Ruhepuls über 90', 'Ein dauerhaft so hoher Ruhepuls sollte ärztlich angeschaut werden.');
+
+  const hrvNow = avg(recent, (x) => x.hrv);
+  const hrvBase = ready ? avg(base, (x) => x.hrv, 14) : null;
+  const hrv = item('hrv', 'HRV', 'ms', hrvNow, hrvBase, { goodUp: true, warnRel: 0.12, text: 'Höher = Nervensystem gut erholt. Fällt bei Belastung, Stress, Alkohol und Infekten.' });
+  if (hrv?.status === 'watch') flag('beobachten', 'hrv', 'HRV unter deinem Normalbereich', `Die Woche liegt ${Math.round(-100 * (hrvNow / hrvBase - 1))} % unter deiner Basis. Zeichen für zu wenig Erholung – Schlaf und lockere Tage priorisieren.`);
+
+  const respNow = avg(recent, (x) => x.resp);
+  const respBase = ready ? avg(base, (x) => x.resp, 10) : null;
+  const resp = item('resp', 'Atemfrequenz', '/Min.', respNow, respBase, { digits: 1, goodUp: false, warnAbs: 0.8, text: 'Im Schlaf sehr stabil – ein Anstieg ist ein frühes Infektzeichen.' });
+  const respHigh = respBase != null ? recent.filter((x) => isNum(x.resp) && x.resp - respBase >= 2).length : 0;
+  if (respHigh >= 3) flag('arzt', 'resp', 'Atemfrequenz mehrere Nächte erhöht', 'In mindestens 3 Nächten 2 Atemzüge pro Minute über normal. Zusammen mit Husten, Fieber oder Atemnot ärztlich abklären.');
+  else if (resp?.status === 'watch') flag('beobachten', 'resp', 'Atemfrequenz leicht erhöht', 'Kann ein frühes Infektzeichen sein – auf Symptome achten, Training locker halten.');
+
+  const sleepNow = avg(two, (x) => (x.sleepMin != null ? x.sleepMin / 60 : null), 5);
+  const sleepBase = ready ? avg(base, (x) => (x.sleepMin != null ? x.sleepMin / 60 : null), 14) : null;
+  item('sleep', 'Schlaf (14 Tage)', 'Std.', sleepNow, sleepBase, { digits: 1, goodUp: true, warnAbs: 0.5, text: 'Erwachsene brauchen 7–9 Std. Dauerhaft unter 6 Std. erhöht Infekt-, Herz- und Stoffwechselrisiken.' });
+  if (sleepNow != null && sleepNow < 6) flag('beobachten', 'sleep', 'Zu wenig Schlaf', `Seit 2 Wochen im Schnitt nur ${fmtDur(sleepNow * 60)} Std. – das bremst Erholung, Leistung und Abnehmen.`);
+
+  const beds = two.map((x) => x.sleep?.bed).filter(isNum);
+  if (beds.length >= 7) {
+    const spread = Math.round(sd(beds));
+    items.push({ key: 'rhythm', label: 'Schlafrhythmus', unit: 'Min.', value: spread, base: null, delta: null, status: spread > 60 ? 'watch' : spread <= 30 ? 'good' : 'ok', text: 'Wie stark deine Einschlafzeit schwankt (Standardabweichung). Unter 30 Min. ist ideal.', spread: true });
+    if (spread > 60) flag('beobachten', 'rhythm', 'Unregelmäßiger Schlafrhythmus', `Deine Einschlafzeit schwankt um ±${spread} Min. Feste Zeiten (auch am Wochenende) verbessern Tiefschlaf und HRV.`);
+  }
+
+  const spo = two.map((x) => x.sleep?.spo2).filter(isNum);
+  if (spo.length >= 5) {
+    const low = spo.filter((v) => v < 92).length;
+    items.push({ key: 'spo2', label: 'Blutsauerstoff nachts', unit: '%', value: Math.round(mean(spo)), base: null, delta: null, status: low >= 3 ? 'watch' : 'ok', text: 'Normal sind 95–100 %. Garmin misst am Handgelenk – einzelne tiefe Werte sind oft Messfehler.', lowNights: low });
+    if (low >= 3) flag('arzt', 'spo2', 'Blutsauerstoff nachts öfter niedrig', `In ${low} von ${spo.length} Nächten im Schnitt unter 92 %. Wenn du schnarchst, tagsüber müde bist oder morgens Kopfschmerzen hast: beim Arzt Schlafapnoe abklären lassen.`);
+  }
+
+  const temps = recent.filter((x) => isNum(x.skinTemp) && x.skinTemp >= 0.6).length;
+  if (temps >= 2) flag('beobachten', 'temp', 'Hauttemperatur erhöht', `In ${temps} Nächten mehr als 0,5 °C über normal – möglicher Infekt (bei Frauen auch zyklusbedingt).`);
+
+  const imWeek = recent.reduce((s, x) => s + (x.stats?.imMod || 0) + 2 * (x.stats?.imVig || 0), 0);
+  if (recent.some((x) => isNum(x.stats?.imMod))) {
+    items.push({ key: 'im', label: 'Intensitätsminuten (7 Tage)', unit: 'Min.', value: Math.round(imWeek), base: 150, delta: null, status: imWeek >= 150 ? 'good' : imWeek < 75 ? 'watch' : 'ok', text: 'WHO-Empfehlung: mindestens 150 Min. moderate Bewegung pro Woche (intensive zählt doppelt).' });
+    if (imWeek < 75) flag('beobachten', 'im', 'Wenig Bewegung diese Woche', `Nur ${Math.round(imWeek)} von empfohlenen 150 Intensitätsminuten. Zügiges Gehen oder lockeres Radfahren zählt schon.`);
+  }
+
+  const stepsNow = avg(recent.slice(0, -1), (x) => x.stats?.steps, 3);
+  if (stepsNow != null) items.push({ key: 'steps', label: 'Schritte (Ø)', unit: '', value: Math.round(stepsNow / 100) * 100, base: null, delta: null, status: stepsNow >= 8000 ? 'good' : stepsNow < 5000 ? 'watch' : 'ok', text: 'Ab ca. 7.000–8.000 Schritten am Tag sinkt das Sterberisiko deutlich (Meta-Analysen).' });
+
+  const vo2 = model.profile?.vo2max;
+  if (isNum(vo2)) {
+    const S = model.settings;
+    const norm = S.sex === 'female' ? 44 - 0.3 * S.age : 50.5 - 0.33 * S.age;
+    const diff = vo2 - norm;
+    items.push({ key: 'vo2', label: 'VO₂max', unit: '', value: Math.round(vo2), base: Math.round(norm), delta: Math.round(diff), status: diff >= 3 ? 'good' : diff <= -5 ? 'watch' : 'ok', text: `Stärkster Einzelfaktor für Lebenserwartung. Durchschnitt für dein Alter ca. ${Math.round(norm)}.` });
+  }
+
+  const order = { arzt: 0, beobachten: 1, info: 2 };
+  flags.sort((a, b) => order[a.level] - order[b.level]);
+  const verdict = flags.some((f) => f.level === 'arzt') ? 'arzt' : flags.length ? 'beobachten' : 'gut';
+  return { ready, items, flags, verdict };
+}
+
 // ---------------------------------------------------------------- Kontext für den KI-Coach
 
 const fmtN = (v, digits = 0) => (isNum(v) ? (digits ? v.toFixed(digits).replace('.', ',') : String(Math.round(v))) : '–');
 
 /** Kompakte Text-Zusammenfassung aller Daten für den Coach (ohne Rohdaten). */
-export function coachContext(model, journal = {}, i = model.days.length - 1) {
+export function coachContext(model, journal = {}, i = model.days.length - 1, profile = {}) {
   const S = model.settings;
   const d = model.days[i];
   const lines = [];
@@ -968,6 +1155,19 @@ export function coachContext(model, journal = {}, i = model.days.length - 1) {
   L(`Datenstand: ${model.generated || 'unbekannt'} · Heute ist ${wd(d.date)}, ${d.date}.`);
   L(`Profil: ${S.sex === 'female' ? 'weiblich' : 'männlich'}, ${S.age} Jahre, Max-Puls ${S.maxHr}, Ruhepuls-Basis ${d.rhrRef} bpm, Hauptsport ${SPORTS[S.sport]}, Schlafbedarf-Basis ${fmtDur(S.sleepNeed)} h${isNum(model.profile?.vo2max) ? `, VO2max ${model.profile.vo2max}` : ''}.`);
   L(`Pulszonen (Herzfrequenzreserve): ${zones.map((z) => `Z${z.zone} ${z.lo}–${z.hi}`).join(', ')} bpm.`);
+  const kg = Number(profile?.weight) || model.profile?.weight;
+  const cm = Number(profile?.height) || model.profile?.height;
+  const me = [
+    profile?.goal && GOALS[profile.goal] ? `Ziel: ${GOALS[profile.goal]}` : 'Ziel: nicht angegeben',
+    kg ? `Gewicht ${fmtN(kg, 1)} kg` : 'Gewicht unbekannt',
+    cm ? `Größe ${cm} cm${kg ? `, BMI ${fmtN(kg / (cm / 100) ** 2, 1)}` : ''}` : null,
+    profile?.diet && DIETS[profile.diet] ? `Ernährung: ${DIETS[profile.diet]}` : null,
+  ].filter(Boolean);
+  L(`Angaben des Nutzers: ${me.join(', ')}.`);
+  const free = [['Training & Wünsche', profile?.training], ['Essen (Vorlieben, Unverträglichkeiten)', profile?.food], ['Gesundheit (Vorerkrankungen, Medikamente, Beschwerden)', profile?.health]]
+    .filter(([, v]) => typeof v === 'string' && v.trim())
+    .map(([k, v]) => `${k}: ${v.trim().slice(0, 400)}`);
+  if (free.length) L(`<nutzerangaben>\n${free.join('\n')}\n</nutzerangaben>`);
   L();
 
   L('## Heute');
@@ -1003,6 +1203,21 @@ export function coachContext(model, journal = {}, i = model.days.length - 1) {
   if (d.hrv7) L(`HRV-Trend: 7-Tage-Schnitt ${fmtN(d.hrv7)} ms${d.hrvNormal ? `, Normalbereich ${fmtN(d.hrvNormal[0])}–${fmtN(d.hrvNormal[1])} ms (${d.hrvTrend})` : ''}.`);
   const ins = buildInsights(model, i, journal);
   if (ins.length) L(`Hinweise der App: ${ins.map((x) => `${x.title} (${x.text})`).join(' | ')}`);
+  L();
+
+  const ht = healthTrends(model, i);
+  if (ht.items.length) {
+    L(`## Gesundheits-Check (letzte 7 Tage gegen die ${ht.ready ? 'bis zu 60 Tage davor' : 'wenigen Tage davor – Basis noch dünn'})`);
+    L(ht.items.map((x) => `${x.label} ${x.value}${x.unit ? ` ${x.unit}` : ''}${x.base != null ? ` (Basis ${x.base}${x.delta != null ? `, ${signed(x.delta, x.key === 'resp' || x.key === 'sleep' ? 1 : 0)}` : ''})` : ''} [${x.status}]`).join('; ') + '.');
+    for (const f of ht.flags) L(`- ${f.level.toUpperCase()}: ${f.title} – ${f.text}`);
+    L();
+  }
+  const np = nutritionPlan(model, i, profile || {}, journal);
+  if (np.missing) {
+    L('## Ernährung: Gewicht fehlt – Puls kann noch keine Zielwerte berechnen (Nutzer kann es unter Einstellungen → Über dich eintragen).');
+  } else {
+    L(`## Ernährung heute (von Puls berechnet – diese Zahlen verwenden): ${np.kcal} kcal, Eiweiß ${np.protein} g, Kohlenhydrate ${np.carbs} g, Fett ${np.fat} g, Ballaststoffe ${np.fiber} g, Wasser ${fmtN(np.water, 1)} L. ${np.basis}${np.caffeineCut ? ` Koffein bis ${np.caffeineCut}, letzte große Mahlzeit bis ${np.lastMeal}.` : ''} Training heute ca. ${np.trainMin} Min.`);
+  }
   L();
 
   const w = weeklyAssessment(model, model.days.length - 1);

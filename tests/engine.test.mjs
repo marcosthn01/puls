@@ -219,3 +219,59 @@ test('Walking-Pad: Schritte werden ohne Doppelzählung addiert', () => {
   const only = E.analyze({ days: { '2026-11-09': { pad: { samples: [[0, 60, 500]], total: 500 } } } }, {});
   assert.equal(only.days[0].stats.steps, 500);
 });
+
+test('Ernährung: Ziele folgen Gewicht, Ziel und Belastung', () => {
+  assert.deepEqual(E.nutritionPlan(model, last, {}), { missing: 'weight' });
+  const base = E.nutritionPlan(model, last, { weight: 80, height: 180 });
+  assert.ok(base.kcal > 1800 && base.kcal < 4500, base.kcal);
+  assert.equal(base.protein, 110); // 1,4 g/kg
+  assert.ok(Math.abs(base.protein * 4 + base.carbs * 4 + base.fat * 9 - base.kcal) <= 50);
+  assert.ok(base.fat >= 0.8 * 80 - 5);
+  const cut = E.nutritionPlan(model, last, { weight: 80, height: 180, goal: 'abnehmen' });
+  const bulk = E.nutritionPlan(model, last, { weight: 80, height: 180, goal: 'muskeln' });
+  assert.ok(cut.kcal < base.kcal && base.kcal < bulk.kcal);
+  assert.equal(cut.protein, 160);
+  assert.ok(cut.kcal >= cut.bmr * 1.1 - 50, 'nie unter Grundumsatz');
+  // Bezugsgewicht bei Übergewicht
+  assert.ok(E.nutritionPlan(model, last, { weight: 130, height: 175, goal: 'abnehmen' }).refKg < 80);
+  // harter Tag braucht mehr Kohlenhydrate als Ruhetag
+  const idx = model.days.map((d, k) => k).filter((k) => k > 40 && model.days[k].strain != null);
+  const hard = idx.reduce((a, b) => (model.days[b].strain > model.days[a].strain ? b : a));
+  const easy = idx.reduce((a, b) => (model.days[b].strain < model.days[a].strain ? b : a));
+  const h = E.nutritionPlan(model, hard, { weight: 80 }, {}, { partial: false });
+  const e = E.nutritionPlan(model, easy, { weight: 80 }, {}, { partial: false });
+  assert.ok(h.carbs > e.carbs, `${h.carbs} > ${e.carbs}`);
+  // Garmin-Gewicht als Ersatz
+  assert.ok(!E.nutritionPlan({ ...model, profile: { weight: 75 } }, last, {}).missing);
+  assert.match(base.caffeineCut, /^\d\d:\d\d$/);
+});
+
+test('Gesundheits-Check: Trends gegen die eigene Basis, Erkältung fällt auf', () => {
+  const ok = E.healthTrends(model, last);
+  assert.ok(ok.ready);
+  for (const key of ['rhr', 'hrv', 'resp', 'sleep']) assert.ok(ok.items.find((x) => x.key === key), key);
+  const cold = E.healthTrends(model, last - 34);
+  assert.ok(cold.flags.length >= 1, JSON.stringify(cold.flags));
+  assert.notEqual(cold.verdict, 'gut');
+  // stark erhöhter Ruhepuls über eine Woche → Arzt
+  const copy = structuredClone(store);
+  const keys = Object.keys(copy.days).sort().slice(-7);
+  for (const k of keys) {
+    if (copy.days[k].sleep) copy.days[k].sleep.rhr = (copy.days[k].sleep.rhr || 52) + 12;
+    if (copy.days[k].stats) copy.days[k].stats.rhr = (copy.days[k].stats.rhr || 52) + 12;
+    if (copy.days[k].hr) copy.days[k].hr.rhr = (copy.days[k].hr.rhr || 52) + 12;
+  }
+  const sick = E.healthTrends(E.analyze(copy, {}));
+  assert.equal(sick.verdict, 'arzt');
+  assert.equal(sick.flags[0].key, 'rhr');
+  // wenige Tage: noch keine Basis
+  const small = { ...store, days: Object.fromEntries(Object.keys(store.days).sort().slice(-10).map((k) => [k, store.days[k]])) };
+  assert.equal(E.healthTrends(E.analyze(small, {})).ready, false);
+});
+
+test('Coach-Kontext enthält Profil, Ernährung und Gesundheits-Check', () => {
+  const ctx = E.coachContext(model, store.journal, last, { weight: 80, height: 180, goal: 'muskeln', health: 'Betablocker' });
+  for (const s of ['Ziel: Muskeln aufbauen', '## Gesundheits-Check', '## Ernährung heute', '<nutzerangaben>', 'Betablocker']) assert.ok(ctx.includes(s), s);
+  assert.ok(ctx.length < 12000);
+  assert.match(E.coachContext(model, store.journal), /Gewicht fehlt/);
+});

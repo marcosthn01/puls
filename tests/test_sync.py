@@ -210,7 +210,7 @@ def fake_module(needs_mfa=False, valid_tokens=("tok-1",)):
             self.client.token = "tok-1"
 
         def get_user_profile(self):
-            return {"userData": {"gender": "MALE", "birthDate": "1992-04-01"}}
+            return {"userData": {"gender": "MALE", "birthDate": "1992-04-01", "weight": 82400.0, "height": 183.0}}
 
         def get_sleep_data(self, d):
             return sleep_payload(dt.date.fromisoformat(d))
@@ -270,7 +270,7 @@ def test_first_run_backfills_and_reuses_tokens(tmp_path):
     assert run(tmp_path, mod, GARMIN_EMAIL="a@b.de", GARMIN_PASSWORD="pw") == 0
     store = read_store(tmp_path)
     assert len(store["days"]) == 5
-    assert store["profile"] == {"sex": "male", "birthYear": 1992}
+    assert store["profile"] == {"sex": "male", "birthYear": 1992, "weight": 82.4, "height": 183}
     assert store["days"]["2026-11-09"]["acts"][0]["type"] == "running"
     assert "levels" in store["days"]["2026-11-09"]["sleep"]
     assert store["days"]["2026-11-09"]["stressDay"] == {"stress": [[600, 25]], "bb": [[600, 80]]}

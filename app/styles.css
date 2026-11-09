@@ -544,3 +544,41 @@ body.chatmode #app { padding-bottom: calc(var(--safe-bottom) + 160px); }
 .copyrow { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: none; color: inherit; font: inherit; cursor: pointer; }
 .copyrow b { color: var(--green); font-size: 14px; }
 .copyrow:active { opacity: 0.7; }
+
+/* Tagesbericht */
+.report { border: 1px solid rgba(34, 224, 138, 0.25); background: linear-gradient(180deg, rgba(34, 224, 138, 0.07), transparent 60%), var(--card); }
+.rp-top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.rp-badge { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--green); }
+.rp-top .iconbtn.small { margin-left: auto; width: 32px; height: 32px; }
+.rp-top .iconbtn.small svg { width: 16px; height: 16px; }
+.rp-head { font-size: 19px; line-height: 1.3; margin: 2px 0 6px; }
+.rp-sum { font-size: 15px; line-height: 1.5; margin: 0 0 10px; }
+.rp-focus { background: var(--card2); border-radius: 12px; padding: 10px 12px; font-size: 15px; line-height: 1.45; margin-bottom: 10px; }
+.rp-focus span { display: block; font-size: 12px; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+.rp-notes { display: grid; gap: 8px; margin: 4px 0 10px; }
+.rp-note { display: flex; gap: 10px; font-size: 14px; line-height: 1.45; }
+.rp-note > i { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; }
+.rp-sec { border-top: 1px solid var(--line); padding: 10px 0 2px; }
+.rp-sec summary { font-weight: 650; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.rp-sec summary::-webkit-details-marker { display: none; }
+.rp-sec summary::after { content: '+'; margin-left: auto; color: var(--muted); font-weight: 400; font-size: 20px; line-height: 1; }
+.rp-sec[open] summary::after { content: '−'; }
+.rp-sec p { margin: 8px 0 4px; font-size: 15px; line-height: 1.5; }
+.rp-sec ul, .tips { margin: 4px 0 6px; padding-left: 18px; font-size: 14px; line-height: 1.5; }
+.rp-sec li + li, .tips li + li { margin-top: 3px; }
+.rp-ic { width: 22px; text-align: center; }
+.rp-foot { margin-top: 10px; }
+.rp-wait { display: flex; align-items: center; gap: 10px; padding: 10px 0; font-size: 15px; }
+
+/* Ernährung & Gesundheits-Check */
+.grid.four { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.grid.four .tile { padding: 8px 8px; }
+.grid.four .tile .v { font-size: 17px; }
+.trows { display: grid; gap: 2px; }
+.trow { display: grid; grid-template-columns: 1fr auto; grid-template-areas: 'l v' 'd s'; padding: 8px 0; border-top: 1px solid var(--line); column-gap: 10px; }
+.trow:first-child { border-top: 0; }
+.trow .tl { grid-area: l; font-weight: 600; }
+.trow .tv { grid-area: v; text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+.trow .td { grid-area: d; font-size: 13px; }
+.trow .ts { grid-area: s; text-align: right; font-size: 13px; font-weight: 650; }
+.field textarea { width: 100%; background: var(--card2); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 16px; resize: vertical; }
