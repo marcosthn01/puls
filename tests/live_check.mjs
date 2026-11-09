@@ -26,26 +26,27 @@ const summary = await page.evaluate(() => window.__puls?.summary());
 console.log('Zusammenfassung:', JSON.stringify(summary));
 
 if (summary?.view === 'main') {
-  const tabs = ['heute', 'schlaf', 'recovery', 'belastung'];
-  for (const tab of tabs) {
-    await page.click(`#tabbar [data-tab=${tab}]`);
+  // Wochenleiste Tag für Tag in eine Richtung durchklicken, bis es nicht weitergeht
+  const walk = async (dir) => {
     let steps = 0;
-    for (;;) {
-      const moved = await page.evaluate(() => {
+    for (; steps < 800; steps++) {
+      const moved = await page.evaluate((d) => {
         const cells = [...document.querySelectorAll('.wd')];
         const on = cells.findIndex((c) => c.classList.contains('on'));
-        if (on > 0) {
-          cells[on - 1].click();
-          return true;
-        }
-        return false;
-      });
+        const next = cells[on + d];
+        if (!next) return false;
+        next.click();
+        return true;
+      }, dir);
       if (!moved) break;
-      steps++;
-      if (steps > 800) break;
     }
-    await page.evaluate(() => [...document.querySelectorAll('.wd')].pop()?.click());
-    console.log(`Bereich ${tab}: ${steps + 1} Tage geöffnet`);
+    return steps;
+  };
+  for (const tab of ['heute', 'schlaf', 'recovery', 'belastung']) {
+    await page.click(`#tabbar [data-tab=${tab}]`);
+    const back = await walk(-1);
+    const forward = await walk(1);
+    console.log(`Bereich ${tab}: ${forward + 1} Tage geöffnet (${back} zurück, ${forward} vor)`);
   }
   for (const tab of ['trends']) await page.click(`#tabbar [data-tab=${tab}]`);
   await page.click('[data-act=settings]');
