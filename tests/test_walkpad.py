@@ -94,3 +94,15 @@ def test_merge_is_idempotent_and_adds_new_samples():
     more = walkpad.parse_input("2026-11-09 08:00;2026-11-09 08:20;2000\n2026-11-09 12:00;2026-11-09 12:10;800", TZ)
     assert walkpad.merge(store, more) == 1
     assert len(store["days"]["2026-11-09"]["pad"]["samples"]) == 2
+
+
+def test_shortcut_without_loop_sends_three_lists():
+    # Health-Messungen → Startdatum ; Enddatum ; Wert (Listen werden zeilenweise eingefügt)
+    text = "09.11.2026, 09:00\n09.11.2026, 14:00 ; 09.11.2026, 09:20\n09.11.2026, 14:45 ; 1.500\n3600"
+    rows = walkpad.parse_input(text, TZ)
+    assert [(r["s"] // 60, r["e"] // 60, r["n"]) for r in rows] == [(540, 560, 1500), (840, 885, 3600)]
+    # nur ein Eintrag: gleiches Ergebnis wie das Zeilenformat
+    one = walkpad.parse_input("Nov 9, 2026 at 2:00\u202fPM ; Nov 9, 2026 at 2:45\u202fPM ; 3600", TZ)
+    assert [(r["s"] // 60, r["e"] // 60, r["n"]) for r in one] == [(840, 885, 3600)]
+    assert walkpad.parse_input(" ;  ; ", TZ) == []
+    assert walkpad.describe_format("09.11.26, 14:05;x;12") == "20 Zeichen, Muster: 99.99.99, 99:99;x;99"

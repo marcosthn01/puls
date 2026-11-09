@@ -123,6 +123,11 @@ def parse_input(text: Any, tz: ZoneInfo) -> list[dict[str, Any]]:
             for item in data:
                 if isinstance(item, dict):
                     rows.append((item.get("start"), item.get("end"), item.get("steps", item.get("value"))))
+    blocks = [b.strip() for b in re.split(r"##|[;|\t]", stripped)]
+    if not rows and len(blocks) == 3 and any("\n" in b for b in blocks):
+        # Kurzbefehl ohne Schleife: alle Startzeiten ; alle Endzeiten ; alle Werte (je eine Zeile pro Eintrag)
+        cols = [[x.strip() for x in re.split(r"[\r\n]+", b) if x.strip()] for b in blocks]
+        rows = list(zip(*cols))
     if not rows:
         for line in re.split(r"[\r\n]+", text):
             parts = [p.strip() for p in re.split(r"[;|\t]", line)]
@@ -211,3 +216,11 @@ def refresh(store: dict, today: dt.date, detail_days: int) -> None:
         pad["total"] = total
         pad["units"] = [[round(s / 60), round(e / 60), n] for s, e, n in units]
         pad["min"] = round(sum(max(e - s, 60) for s, e, _ in units) / 60)
+
+
+def describe_format(text: Any) -> str:
+    """Form der Eingabe fürs Log, ohne Werte: Ziffern werden zu 9 (hilft bei Formatproblemen)."""
+    if not isinstance(text, str):
+        return "-"
+    sample = re.sub(r"\d", "9", text.strip()[:60]).replace("\n", " ⏎ ")
+    return f"{len(text)} Zeichen, Muster: {sample}"

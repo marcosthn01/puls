@@ -255,6 +255,8 @@ def run(
         samples = walkpad.parse_input(str(walk_raw), tz)
         changed = walkpad.merge(store, samples)
         log(f"Walking-Pad: {len(samples)} Einträge erkannt, {changed} Tag(e) aktualisiert.")
+        if not samples and str(walk_raw).strip(" ;|#\n"):
+            log(f"Walking-Pad: Format nicht erkannt ({walkpad.describe_format(str(walk_raw))}).")
     walkpad.refresh(store, today, DETAIL_DAYS)
 
     try:

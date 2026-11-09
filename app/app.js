@@ -5,7 +5,7 @@ import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, str
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '3.3.0';
+const VERSION = '3.3.1';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -1353,16 +1353,15 @@ function renderSheet() {
       ${gh.token ? '' : '<p class="small" style="margin:8px 0"><b>Zuerst:</b> „Automatisch aktualisieren“ einrichten – der Kurzbefehl nutzt denselben Schlüssel.</p>'}
       <h4>1 · PitPat</h4>
       <p class="small">In PitPat die Verbindung zu <b>Apple Health</b> einschalten und <b>Schritte</b> erlauben. Danach einmal kurz laufen, damit PitPat in Health auftaucht.</p>
-      <h4>2 · Kurzbefehl bauen</h4>
+      <h4>2 · Kurzbefehl bauen (2 Aktionen)</h4>
       <ol class="steps small">
-        <li>App <b>Kurzbefehle</b> → <b>+</b> → Name: <b>Puls Walking-Pad</b>.</li>
-        <li>Aktion <b>Health-Samples suchen</b>: Typ <b>Schritte</b>. <b>Filter hinzufügen</b>: <b>Quelle ist PitPat</b>, dann <b>Startdatum ist in den letzten 2 Tagen</b>.</li>
-        <li>Aktion <b>Wiederholen mit jedem Objekt</b> (in Health-Samples).</li>
-        <li>Darin eine Aktion <b>Text</b> mit drei Variablen, getrennt durch Semikolon:<br><b>Startdatum ; Enddatum ; Wert</b><br><span class="muted">Jeweils <b>Wiederholungsobjekt</b> einsetzen, antippen und die Eigenschaft wählen.</span></li>
-        <li>Nach <b>Ende</b> der Wiederholung: Aktion <b>Inhalte von URL abrufen</b>. URL einfügen ↓, dann <b>Mehr anzeigen</b>:
-          Methode <b>POST</b> · Header <b>Authorization</b> = Schlüssel ↓ · Hauptteil <b>JSON</b> mit
-          <b>ref</b> (Text) = <b>main</b> und <b>inputs</b> (Wörterbuch) → darin <b>walk</b> (Text) = Variable <b>Wiederholungsergebnisse</b>.</li>
-        <li>Kurzbefehl einmal antippen und Zugriff auf Health und GitHub <b>erlauben</b>.</li>
+        <li>App <b>Kurzbefehle</b> → <b>+</b>. Oben auf den Namen tippen → <b>Puls Walking-Pad</b>.</li>
+        <li>Aktion <b>Health-Messungen suchen</b>: Typ <b>Schritte</b>. Über <b>Filter hinzufügen</b>: <b>Quelle</b> ist <b>PitPat</b> und <b>Startdatum</b> ist <b>heute</b>.</li>
+        <li>Aktion <b>Inhalte von URL abrufen</b>. Ins URL-Feld die Adresse einfügen ↓ (steht dort „Health-Messungen“, vorher löschen).</li>
+        <li>Pfeil <b>›</b> antippen: Methode <b>POST</b> · <b>Header hinzufügen</b>: Schlüssel <b>Authorization</b>, Text = Schlüssel ↓.</li>
+        <li><b>Haupttext anfordern: JSON</b> → <b>Neues Feld hinzufügen</b> → Text: <b>ref</b> = <b>main</b>. Nochmal → Wörterbuch: <b>inputs</b> → darin Text: <b>walk</b>.</li>
+        <li>Ins Feld <b>walk</b>: Variable <b>Health-Messungen</b> → antippen → <b>Startdatum</b>, dann <b>;</b> tippen, wieder Health-Messungen → <b>Enddatum</b>, <b>;</b>, Health-Messungen → <b>Wert</b>.</li>
+        <li>Unten <b>▶</b> antippen und Zugriff auf Health und GitHub <b>erlauben</b>.</li>
       </ol>
       ${copy('URL', url)}
       ${copy('Schlüssel (Authorization)', gh.token ? `Bearer ${gh.token}` : '')}
