@@ -5,7 +5,7 @@ import { bars, esc, hrCurve, hypnogram, lines, rangeBar, ring, sleepWindows, str
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 
-const VERSION = '3.1.0';
+const VERSION = '3.2.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -20,7 +20,17 @@ const LS = {
   lastTrigger: 'puls.lastTrigger',
   push: 'puls.push',
   setupHidden: 'puls.setupHidden',
+  pushPrefs: 'puls.pushPrefs',
 };
+
+const PUSH_KINDS = [
+  ['morning', 'Recovery am Morgen', 'sobald deine Nacht da ist'],
+  ['midday', 'Bewegung & Stress', 'mittags, wenn du wenig gelaufen bist oder Stress hast'],
+  ['afternoon', 'Trainingsziel', 'nachmittags: was bis zum Ziel fehlt'],
+  ['steps', 'Schritte', 'früher Abend: fehlende Schritte oder „geschafft“'],
+  ['bedtime', 'Schlafenszeit', 'kurz bevor du ins Bett solltest'],
+  ['weekly', 'Woche', 'freitags Wochenziel, sonntags Wochenbericht'],
+];
 
 const ls = {
   get(k, fallback = null) {
@@ -397,7 +407,7 @@ async function enablePush() {
       sub = null;
     }
     sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(publicKey) });
-    await dispatch({ push_subscription: JSON.stringify({ subscription: sub, settings: ls.get(LS.settings, {}) }) });
+    await dispatch({ push_subscription: JSON.stringify({ subscription: sub, settings: ls.get(LS.settings, {}), prefs: ls.get(LS.pushPrefs, {}) }) });
     ls.set(LS.push, { publicKey, at: Date.now() });
     closeSheet();
     render();
@@ -641,7 +651,7 @@ function setupCard() {
   return `<section class="card setup"><h2>Puls fertig einrichten · ${done} von 3<button class="infobtn" data-act="setup-hide" aria-label="Ausblenden">×</button></h2>
     ${item(s.sync, I.sync, 'Automatisch aktualisieren', 'Frische Daten bei jedem Öffnen · 2 Min.', 'data-act="setup-sync"')}
     ${item(s.coach, I.coach, 'KI-Coach aktivieren', 'Frag alles zu Training & Schlaf · 3 Min.', 'data-act="setup-coach"')}
-    ${item(s.push, I.bell, 'Benachrichtigungen', 'Morgens Recovery, nachmittags Ziel, abends Schlaf', 'data-act="setup-push"')}
+    ${item(s.push, I.bell, 'Benachrichtigungen', 'Morgens Recovery, tagsüber Schritte & Training, abends Schlaf', 'data-act="setup-push"')}
   </section>`;
 }
 
@@ -1322,7 +1332,8 @@ function renderSheet() {
   } else if (sh.type === 'setup-push') {
     body = `<h3>Benachrichtigungen</h3>
       <p class="muted">Puls meldet sich höchstens viermal am Tag:</p>
-      <ul class="steps"><li><b>Morgens</b>, sobald deine Nacht da ist: Recovery, Ziel und Schlaf.</li><li><b>Nachmittags</b>: wie viel Training bis zu deinem Ziel fehlt.</li><li><b>Abends</b>: wann du ins Bett solltest.</li><li><b>Sonntags</b>: dein Wochenbericht.</li></ul>
+      <ul class="steps"><li><b>Morgens</b>, sobald deine Nacht da ist: Recovery, Ziel und Schlaf.</li><li><b>Mittags</b>: wenn du kaum gelaufen bist oder dein Stress hoch ist.</li><li><b>Nachmittags</b>: wie viel Training bis zu deinem Ziel fehlt.</li><li><b>Früher Abend</b>: wie viele Schritte noch fehlen.</li><li><b>Abends</b>: wann du ins Bett solltest.</li></ul>
+      <p class="muted small">Nur wenn es etwas zu sagen gibt – jede Art einzeln abschaltbar in den Einstellungen.</p>
       ${isStandalone() ? '' : '<p class="small" style="margin:8px 0"><b>Wichtig:</b> Das klappt nur, wenn du Puls vom Home-Bildschirm aus öffnest.</p>'}
       <button class="btn" data-act="enable-push" style="margin-top:12px">Benachrichtigungen erlauben</button>`;
   }
@@ -1453,6 +1464,10 @@ function viewSettings() {
     <button class="setrow" data-act="setup-push"><span>Benachrichtigungen</span>${status(setup.push)}</button>
     ${setup.coach ? `<label class="field" style="margin-top:12px"><span>Coach-Modell</span><select data-coach-model>${Object.entries(Coach.MODELS).map(([id, mm]) => opt(id, `${mm.label} – ${mm.note}`, cfg.model)).join('')}</select></label>` : ''}
   </section>
+
+  ${setup.push ? `<section class="card"><h2>Benachrichtigungen</h2>
+    ${PUSH_KINDS.map(([k, label, sub]) => `<label class="toggle"><span><b>${label}</b><small>${sub}</small></span><input type="checkbox" data-pushpref="${k}" ${ls.get(LS.pushPrefs, {})[k] === false ? '' : 'checked'}><i></i></label>`).join('')}
+  </section>` : ''}
 
   <section class="card"><h2>Garmin</h2>
     <p class="small">Letzter Abruf: <b>${state.demo ? 'Demo' : ago(state.store?.generated)}</b> · Garmin: <b>${authText}</b></p>
@@ -1634,7 +1649,23 @@ tabbar.addEventListener('click', (e) => {
   if (t) setTab(t.dataset.tab);
 });
 
+let prefTimer = null;
+function savePushPref(el) {
+  const prefs = { ...ls.get(LS.pushPrefs, {}), [el.dataset.pushpref]: el.checked };
+  ls.set(LS.pushPrefs, prefs);
+  clearTimeout(prefTimer);
+  prefTimer = setTimeout(async () => {
+    try {
+      await dispatch({ push_subscription: JSON.stringify({ prefs }) });
+      toast('Gespeichert – gilt ab dem nächsten Abruf.');
+    } catch (err) {
+      toast(err.message || 'Konnte nicht gespeichert werden.');
+    }
+  }, 1500);
+}
+
 app.addEventListener('change', (e) => {
+  if (e.target.matches('[data-pushpref]')) savePushPref(e.target);
   if (e.target.matches('[data-setting]')) saveSetting(e.target);
   if (e.target.matches('[data-coach-model]')) {
     Coach.saveCoachConfig({ model: e.target.value });

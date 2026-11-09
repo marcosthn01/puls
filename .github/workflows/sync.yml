@@ -5,15 +5,16 @@ name: Puls Sync
 # Wann abgerufen wird:
 # - Wenn du Puls öffnest (die App startet den Lauf selbst).
 # - Morgens: alle 20 Min., bis deine Nacht da ist – dann Benachrichtigung und Schluss für den Morgen.
-# - Nachmittags einmal (Trainingsziel, sonntags Wochenbericht) und abends zur Schlafenszeit –
-#   nur wenn Benachrichtigungen eingerichtet sind.
+# - Mit Benachrichtigungen zusätzlich: mittags (Bewegung, Stress), nachmittags (Trainingsziel,
+#   freitags Wochenziel, sonntags Wochenbericht), früher Abend (Schritte) und zur Schlafenszeit.
 # Geplante Läufe ohne Anlass enden nach wenigen Sekunden, ohne Garmin zu fragen.
 # Zeiten im Zeitplan sind UTC (Deutschland = UTC+1 im Winter, UTC+2 im Sommer).
 on:
   schedule:
     - cron: "*/20 3-9 * * *"      # Morgen-Fenster
-    - cron: "17 14,15 * * *"      # Nachmittag
-    - cron: "17,47 17-23 * * *"   # Abend (Schlaf-Erinnerung)
+    - cron: "17,47 11 * * *"      # Mittag (Bewegung, Stress)
+    - cron: "17 14,15 * * *"      # Nachmittag (Trainingsziel)
+    - cron: "17,47 17-23 * * *"   # Abend (Schritte, Schlaf-Erinnerung)
   workflow_dispatch:
     inputs:
       mfa_code:

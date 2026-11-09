@@ -8,8 +8,13 @@ und so auswertet wie Whoop:
   deine Daten, schlägt einzelne Tage nach und kann Morgen-Check und Einstellungen für dich eintragen.
 - **Immer aktuell:** Beim Öffnen holt Puls automatisch frische Daten von Garmin (ca. 1 Minute).
   Morgens fragt Puls zusätzlich von selbst nach, bis deine Nacht da ist.
-- **Benachrichtigungen:** morgens Recovery, Ziel und Schlaf · nachmittags dein Trainingsziel ·
-  abends die Erinnerung zum Schlafengehen · sonntags der Wochenbericht.
+- **Benachrichtigungen** (jede einzeln abschaltbar, je höchstens einmal am Tag):
+  - morgens: Recovery, Ziel-Strain und Schlaf
+  - mittags: „Erst 2.100 Schritte“ oder „Stress seit einer Stunde hoch“ – nur wenn es zutrifft
+  - nachmittags: wie viele Minuten bis zum Trainingsziel fehlen, oder „Ziel erreicht“
+  - früher Abend: „Noch 2.600 Schritte bis zu deinem Ziel“ oder „Schrittziel geschafft“
+  - abends: Erinnerung zum Schlafengehen
+  - freitags: fehlende Intensitätsminuten der Woche · sonntags: Wochenbericht
 - **Morgen-Check** (wie das Whoop-Journal) mit gemessenem Effekt, z. B. „Alkohol: −14 % Recovery“.
 - **Körper-Check** (HRV, Ruhepuls, Atmung, SpO₂), **Stress & Body Battery** im Tagesverlauf,
   **Puls-Alter** (wie Whoops Healthspan), **Trainingslast**, **Wochenbericht** und **Kalender**.
@@ -104,6 +109,7 @@ Auf der Startseite steht eine Karte mit drei Punkten. Jeder Punkt führt dich Sc
    Der Coach nutzt standardmäßig Claude Opus 5.5; in den Einstellungen kannst du ein günstigeres
    Modell wählen.
 3. **Benachrichtigungen**: „Erlauben“ tippen. Klappt nur, wenn Puls vom Home-Bildschirm geöffnet ist.
+   Welche du bekommst, wählst du danach unter Einstellungen → Benachrichtigungen.
 
 Beide Schlüssel bleiben nur auf deinem iPhone gespeichert.
 
@@ -114,7 +120,8 @@ Beide Schlüssel bleiben nur auf deinem iPhone gespeichert.
   - Morgens hilft es, Garmin Connect kurz zu öffnen.
   - Danach die Puls-App öffnen: Sie lädt beim Öffnen automatisch neu.
 - **Wann abgerufen wird:** beim Öffnen der App; morgens ab 5 Uhr alle 20 Minuten, bis deine Nacht
-  da ist; nachmittags einmal und abends zur Schlafenszeit (nur mit Benachrichtigungen). Geplante Läufe
+  da ist; mit Benachrichtigungen zusätzlich mittags, nachmittags, am frühen Abend und zur
+  Schlafenszeit. Geplante Läufe
   ohne Anlass enden nach Sekunden, ohne Garmin zu fragen. GitHub startet geplante Läufe oft ein paar
   Minuten später.
 - **Inoffizielle Schnittstelle:**

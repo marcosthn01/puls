@@ -40,11 +40,84 @@ test('Zeitplan: morgens bis die Nacht da ist, sonst nur mit Anlass', () => {
   assert.equal(planRun({ now: at(6), state: { morningDone: today }, model }).sync, false);
   assert.equal(planRun({ now: at(16), state: null, model }).sync, false); // ohne Benachrichtigungen
   assert.equal(planRun({ now: at(16), state: { ...sub, sent: {} }, model }).sync, true);
-  assert.equal(planRun({ now: at(16), state: { ...sub, sent: { afternoon: today } }, model }).sync, at(16).weekday === 0);
+  const weeklyDay = [0, 5].includes(at(16).weekday);
+  assert.equal(planRun({ now: at(16), state: { ...sub, sent: { afternoon: today } }, model }).sync, weeklyDay);
+  assert.equal(planRun({ now: at(16), state: { ...sub, sent: { afternoon: today, weekly: today } }, model }).sync, false);
   const bed = E.bedtimePlan(model, model.days.length - 1).options[0].bed;
   assert.equal(planRun({ now: { ...at(0), minutes: 1440 + bed - 30 }, state: { ...sub, sent: {} }, model }).sync, true);
-  assert.equal(planRun({ now: { ...at(0), minutes: 1440 + bed - 100 }, state: { ...sub, sent: {} }, model }).sync, false);
-  assert.equal(planRun({ now: at(13), state: { ...sub, sent: {} }, model }).sync, false);
+  assert.equal(planRun({ now: { ...at(0), minutes: 1440 + bed - 100 }, state: { ...sub, sent: { steps: today } }, model }).sync, false);
+  assert.equal(planRun({ now: at(14, 45), state: { ...sub, sent: {} }, model }).sync, false);
+  // Mittag und früher Abend
+  assert.equal(planRun({ now: at(12, 17), state: { ...sub, sent: {} }, model }).sync, true);
+  assert.equal(planRun({ now: at(12, 17), state: { ...sub, sent: { midday: today } }, model }).sync, false);
+  assert.equal(planRun({ now: at(12, 17), state: null, model }).sync, false);
+  assert.equal(planRun({ now: at(18, 17), state: { ...sub, sent: {} }, model }).sync, true);
+  assert.equal(planRun({ now: at(18, 17), state: { ...sub, sent: { steps: today } }, model }).sync, false);
+  // abgewählte Arten lösen keinen Lauf aus
+  const off = { ...sub, sent: {}, prefs: { midday: false, steps: false } };
+  assert.equal(planRun({ now: at(12, 17), state: off, model }).sync, false);
+  assert.equal(planRun({ now: at(18, 17), state: off, model }).sync, false);
+});
+
+/** Modell mit geänderten Werten für heute. */
+function todayWith(stats = {}, stressDay) {
+  const copy = structuredClone(store);
+  const key = Object.keys(copy.days).sort().pop();
+  Object.assign(copy.days[key].stats, stats);
+  if (stressDay !== undefined) copy.days[key].stressDay = stressDay;
+  return E.analyze(copy, {});
+}
+
+test('Mittags: Hinweis auf zu wenig Schritte oder hohen Stress', () => {
+  const lazy = todayWith({ steps: 1200, stepGoal: 9000 }, null);
+  const m = dueMessages(lazy, at(12, 30), { morning: today }).find((x) => x.kind === 'midday');
+  assert.ok(m, 'midday fehlt');
+  assert.match(m.title, /Erst 1\.200 Schritte/);
+  assert.match(m.body, /9\.000/);
+  assert.ok(!dueMessages(lazy, at(12, 30), { morning: today, midday: today }).some((x) => x.kind === 'midday'));
+  assert.ok(!dueMessages(lazy, at(10, 30), { morning: today }).some((x) => x.kind === 'midday'));
+  // genug gelaufen, wenig Stress: keine Nachricht
+  const fine = todayWith({ steps: 6000, stepGoal: 9000 }, null);
+  assert.ok(!dueMessages(fine, at(12, 30), { morning: today }).some((x) => x.kind === 'midday'));
+  // hoher Stress in der letzten Stunde geht vor
+  const stress = Array.from({ length: 8 }, (_, k) => [12 * 60 + 30 - 70 + k * 10, 70]);
+  const tense = todayWith({ steps: 1200 }, { stress, bb: [] });
+  assert.match(dueMessages(tense, at(12, 30), { morning: today }).find((x) => x.kind === 'midday').title, /Stress/);
+});
+
+test('Früher Abend: noch fehlende Schritte oder Ziel geschafft', () => {
+  const short = todayWith({ steps: 5400, stepGoal: 8000 });
+  const m = dueMessages(short, at(18, 20), { morning: today }).find((x) => x.kind === 'steps');
+  assert.ok(m && /Noch 2\.600 Schritte/.test(m.title), m?.title);
+  assert.match(m.body, /5\.400 von 8\.000 .* \d+ Min\./);
+  const done = todayWith({ steps: 10400, stepGoal: 8000 });
+  assert.match(dueMessages(done, at(18, 20), { morning: today }).find((x) => x.kind === 'steps').title, /geschafft/);
+  assert.ok(!dueMessages(short, at(18, 20), { steps: today }).some((x) => x.kind === 'steps'));
+  assert.ok(!dueMessages(short, at(21, 0), {}).some((x) => x.kind === 'steps'));
+});
+
+test('Abgewählte Benachrichtigungen kommen nicht', () => {
+  const short = todayWith({ steps: 1200 });
+  const prefs = { morning: false, midday: false, steps: false };
+  assert.ok(!dueMessages(short, at(7, 30), {}, prefs).some((x) => x.kind === 'morning'));
+  assert.ok(!dueMessages(short, at(12, 30), {}, prefs).some((x) => x.kind === 'midday'));
+  assert.ok(!dueMessages(short, at(18, 20), {}, prefs).some((x) => x.kind === 'steps'));
+  assert.ok(dueMessages(short, at(18, 20), {}, { midday: false }).some((x) => x.kind === 'steps'));
+});
+
+test('Freitags: Erinnerung an die Intensitätsminuten der Woche', () => {
+  const friday = model.days.map((d) => d.date).filter((d) => E.weekday(d) === 5).pop();
+  const keys = Object.keys(store.days).filter((k) => k <= friday);
+  const copy = structuredClone(Object.fromEntries(keys.map((k) => [k, store.days[k]])));
+  for (const k of keys.slice(-5)) Object.assign(copy[k].stats, { imMod: 10, imVig: 5 }); // Mo–Fr je 20
+  const m5 = E.analyze({ ...store, days: copy }, {});
+  const w = dueMessages(m5, at(16, 0, friday), {}).find((x) => x.kind === 'weekly');
+  assert.ok(w, 'weekly fehlt');
+  assert.equal(w.title, 'Noch 50 Intensitätsminuten diese Woche');
+  assert.match(w.body, /Bisher 100 von 150/);
+  for (const k of keys.slice(-5)) Object.assign(copy[k].stats, { imMod: 40, imVig: 0 });
+  const m6 = E.analyze({ ...store, days: copy }, {});
+  assert.ok(!dueMessages(m6, at(16, 0, friday), {}).some((x) => x.kind === 'weekly'));
 });
 
 test('Sonntags kommt der Wochenbericht', () => {
