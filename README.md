@@ -204,14 +204,14 @@ node --test tests/*.test.mjs
 
 Zwei Darstellungen, umschaltbar unter **Einstellungen → Darstellung**:
 
-- **Zukunft** (Standard, v5): Sci-Fi-HUD. Kurzer Systemstart beim Öffnen (einmal pro Sitzung,
-  Antippen überspringt), Lichtstaub mit Netz und Scan-Linie im Hintergrund, Ringe mit sich
-  drehenden Skalen, Klammern und Scanner, Hologramm-Kugeln mit Drahtgitter, beim Puls-Alter über
-  einem Projektor. Auf den Detailseiten stehen Messwerte mit Hinweislinien neben dem großen Ring.
-  Dazu eine EKG-Linie im Takt deines Ruhepulses, Überschriften, die sich „entschlüsseln“,
-  Lichtimpulse in den Diagrammen und ein Lichtring beim Antippen. Alles pausiert im Hintergrund
-  und außerhalb des Bildschirms. Bei „Bewegung reduzieren“ bleibt es still.
-- **Klassisch** (v4): ruhiges, tiefschwarzes Premium-Design ohne Sci-Fi-Effekte.
+- **Premium** (Standard): ruhiges, tiefschwarzes Design im Stil von Whoop und Apple. Flache Karten,
+  drei Ringe, viel Schwarz. Bewegung gibt es nur in den Emblemen: Die Kugeln in den Ringen und beim
+  Puls-Alter haben ein feines, sich drehendes Drahtgitter mit einer langsamen Lichtlinie, und um
+  die Ringe dreht sich eine hauchdünne Skala wie eine Uhren-Lünette.
+- **Sci-Fi**: volles HUD mit Systemstart, Partikel-Hintergrund, Hologramm-Rahmen, Messwerten neben
+  den großen Ringen, EKG-Linie und Lichteffekten.
+
+Alles pausiert im Hintergrund und außerhalb des Bildschirms. Bei „Bewegung reduzieren“ bleibt es still.
 
 Schrift für Zahlen und Überschriften: Barlow Condensed (SIL Open Font License, siehe
 [`app/fonts/OFL-Barlow.txt`](app/fonts/OFL-Barlow.txt)). Datenschilder in der Systemschrift

@@ -37,3 +37,12 @@ test('Messwerte: leere Werte fallen weg, zwei links, zwei rechts, Text wird mask
   assert.ok(right.includes('&lt;b&gt;') && right.includes('1&amp;2'));
   assert.ok(right.includes('<b>0</b>'));
 });
+
+test('Darstellung: Standard ist Premium, nur „scifi“ schaltet das HUD ein', async () => {
+  const { themeFor, isHud } = await import('../app/hud.js');
+  assert.equal(themeFor(null), 'premium');
+  assert.equal(themeFor('premium'), 'premium');
+  assert.equal(themeFor('hud'), 'premium');
+  assert.equal(themeFor('scifi'), 'hud');
+  assert.equal(isHud(), false); // ohne Seite (Node) nie HUD
+});

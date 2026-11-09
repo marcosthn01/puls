@@ -148,9 +148,15 @@ export function startOrbs(root = document) {
       }
       if (now - last >= 32 || still) {
         last = now;
-        const hud = document.documentElement.dataset.theme !== 'classic';
+        const t = (now - t0) / 1000;
         ctx.clearRect(0, 0, o.W2, o.W2);
-        (hud ? drawHolo : drawSoft)(ctx, o, (now - t0) / 1000);
+        if (document.documentElement.dataset.theme === 'hud') drawHolo(ctx, o, t);
+        else {
+          // Premium: weiches Licht wie gehabt, darüber ein feines, sich drehendes Gitter
+          drawSoft(ctx, o, t);
+          const R = o.W2 * 0.4;
+          holoWire(ctx, o, t, { c: o.W2 / 2, cy: o.W2 / 2, R, k: o.plain ? 0.75 : 0.9, lw: o.W2 / (o.plain ? 260 : 330), front: 0.3, back: 0.06, dots: false, scan: 0.38 });
+        }
       }
       if (!still) requestAnimationFrame(frame);
     };
@@ -243,20 +249,6 @@ function drawHolo(ctx, o, t) {
   const cy = big ? c - W2 * 0.05 : c;
   const k = big ? 1 : 0.85;
   const lw = W2 / (big ? 260 : 210);
-  const spin = t * 0.32;
-  const tilt = -0.42;
-  const cs = Math.cos(spin);
-  const sn = Math.sin(spin);
-  const ct = Math.cos(tilt);
-  const st = Math.sin(tilt);
-  const proj = (x, y, z) => {
-    const x1 = x * cs + z * sn;
-    const z1 = -x * sn + z * cs;
-    const y2 = y * ct - z1 * st;
-    const z2 = y * st + z1 * ct;
-    return [c + x1 * R, cy - y2 * R, z2];
-  };
-
   // Licht im Kern
   const core = ctx.createRadialGradient(c, cy, 0, c, cy, R * 1.25);
   core.addColorStop(0, `rgba(${rgb},${0.3 * k})`);
@@ -300,68 +292,7 @@ function drawHolo(ctx, o, t) {
     ctx.globalAlpha = 1;
   }
 
-  // Drahtgitter: Längen- und Breitenkreise, vorne/hinten getrennt
-  const back = new Path2D();
-  const front = new Path2D();
-  const seg = (pts) => {
-    for (let j = 1; j < pts.length; j++) {
-      const a = pts[j - 1];
-      const b = pts[j];
-      const p = a[2] + b[2] > 0 ? front : back;
-      p.moveTo(a[0], a[1]);
-      p.lineTo(b[0], b[1]);
-    }
-  };
-  const N = 30;
-  for (let m = 0; m < 6; m++) {
-    const ph = (m * Math.PI) / 6;
-    const pts = [];
-    for (let j = 0; j <= N; j++) {
-      const th = (j / N) * Math.PI * 2;
-      pts.push(proj(Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph)));
-    }
-    seg(pts);
-  }
-  for (const y of [-0.7, -0.38, 0, 0.38, 0.7]) {
-    const rr = Math.sqrt(1 - y * y);
-    const pts = [];
-    for (let j = 0; j <= N; j++) {
-      const a = (j / N) * Math.PI * 2;
-      pts.push(proj(rr * Math.cos(a), y, rr * Math.sin(a)));
-    }
-    seg(pts);
-  }
-  ctx.lineWidth = lw;
-  ctx.strokeStyle = `rgba(${rgb},${0.13 * k})`;
-  ctx.stroke(back);
-  ctx.strokeStyle = `rgba(${rgb},${0.55 * k})`;
-  ctx.stroke(front);
-
-  // Lichtpunkte auf der Oberfläche
-  for (const d of o.dots) {
-    const [x, y, z] = proj(Math.sin(d.th) * Math.cos(d.ph), Math.cos(d.th), Math.sin(d.th) * Math.sin(d.ph));
-    if (z < -0.1) continue;
-    const tw = 0.5 + 0.5 * Math.sin(t * 2.2 * d.s + d.ph);
-    ctx.fillStyle = `rgba(230,255,255,${((0.15 + z * 0.75) * tw * k).toFixed(3)})`;
-    const s = (0.6 + z * 1.3) * (W2 / 300) * d.s;
-    ctx.fillRect(x - s, y - s, s * 2, s * 2);
-  }
-
-  // Scan-Linie wandert auf und ab
-  const sy = Math.sin(t * 0.85) * 0.86;
-  const hw = Math.sqrt(1 - sy * sy) * R;
-  const Y = cy - sy * R;
-  const band = ctx.createLinearGradient(0, Y - R * 0.22, 0, Y);
-  band.addColorStop(0, `rgba(${rgb},0)`);
-  band.addColorStop(1, `rgba(${rgb},${0.22 * k})`);
-  ctx.fillStyle = band;
-  ctx.fillRect(c - hw, Y - R * 0.22, hw * 2, R * 0.22);
-  ctx.strokeStyle = `rgba(255,255,255,${0.7 * k})`;
-  ctx.lineWidth = lw * 1.1;
-  ctx.beginPath();
-  ctx.moveTo(c - hw, Y);
-  ctx.lineTo(c + hw, Y);
-  ctx.stroke();
+  holoWire(ctx, o, t, { c, cy, R, k, lw, front: 0.55, back: 0.13, dots: true, scan: 0.7 });
 
   // Rand
   ctx.strokeStyle = `rgba(${rgb},${0.6 * k})`;
@@ -394,6 +325,88 @@ function drawHolo(ctx, o, t) {
     ctx.restore();
   }
   ctx.restore();
+}
+
+/** Drahtgitter-Kugel (Längen- und Breitenkreise, vorne hell, hinten schwach), optional Lichtpunkte
+ *  und eine Scan-Linie, die langsam auf und ab wandert. */
+function holoWire(ctx, o, t, { c, cy, R, k, lw, front: fa, back: ba, dots, scan }) {
+  const { W2, rgb } = o;
+  const spin = t * 0.32;
+  const tilt = -0.42;
+  const cs = Math.cos(spin);
+  const sn = Math.sin(spin);
+  const ct = Math.cos(tilt);
+  const st = Math.sin(tilt);
+  const proj = (x, y, z) => {
+    const x1 = x * cs + z * sn;
+    const z1 = -x * sn + z * cs;
+    const y2 = y * ct - z1 * st;
+    const z2 = y * st + z1 * ct;
+    return [c + x1 * R, cy - y2 * R, z2];
+  };
+  // Drahtgitter: Längen- und Breitenkreise, vorne/hinten getrennt
+  const back = new Path2D();
+  const front = new Path2D();
+  const seg = (pts) => {
+    for (let j = 1; j < pts.length; j++) {
+      const a = pts[j - 1];
+      const b = pts[j];
+      const p = a[2] + b[2] > 0 ? front : back;
+      p.moveTo(a[0], a[1]);
+      p.lineTo(b[0], b[1]);
+    }
+  };
+  const N = 30;
+  for (let m = 0; m < 6; m++) {
+    const ph = (m * Math.PI) / 6;
+    const pts = [];
+    for (let j = 0; j <= N; j++) {
+      const th = (j / N) * Math.PI * 2;
+      pts.push(proj(Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph)));
+    }
+    seg(pts);
+  }
+  for (const y of [-0.7, -0.38, 0, 0.38, 0.7]) {
+    const rr = Math.sqrt(1 - y * y);
+    const pts = [];
+    for (let j = 0; j <= N; j++) {
+      const a = (j / N) * Math.PI * 2;
+      pts.push(proj(rr * Math.cos(a), y, rr * Math.sin(a)));
+    }
+    seg(pts);
+  }
+  ctx.lineWidth = lw;
+  ctx.strokeStyle = `rgba(${rgb},${ba * k})`;
+  ctx.stroke(back);
+  ctx.strokeStyle = `rgba(${rgb},${fa * k})`;
+  ctx.stroke(front);
+
+  // Lichtpunkte auf der Oberfläche
+  if (dots) for (const d of o.dots) {
+    const [x, y, z] = proj(Math.sin(d.th) * Math.cos(d.ph), Math.cos(d.th), Math.sin(d.th) * Math.sin(d.ph));
+    if (z < -0.1) continue;
+    const tw = 0.5 + 0.5 * Math.sin(t * 2.2 * d.s + d.ph);
+    ctx.fillStyle = `rgba(230,255,255,${((0.15 + z * 0.75) * tw * k).toFixed(3)})`;
+    const s = (0.6 + z * 1.3) * (W2 / 300) * d.s;
+    ctx.fillRect(x - s, y - s, s * 2, s * 2);
+  }
+
+  // Scan-Linie wandert auf und ab
+  const sy = Math.sin(t * 0.85) * 0.86;
+  const hw = Math.sqrt(1 - sy * sy) * R;
+  const Y = cy - sy * R;
+  const band = ctx.createLinearGradient(0, Y - R * 0.22, 0, Y);
+  band.addColorStop(0, `rgba(${rgb},0)`);
+  band.addColorStop(1, `rgba(${rgb},${0.3 * scan * k})`);
+  ctx.fillStyle = band;
+  ctx.fillRect(c - hw, Y - R * 0.22, hw * 2, R * 0.22);
+  ctx.strokeStyle = `rgba(255,255,255,${scan * k})`;
+  ctx.lineWidth = lw * 1.1;
+  ctx.beginPath();
+  ctx.moveTo(c - hw, Y);
+  ctx.lineTo(c + hw, Y);
+  ctx.stroke();
+
 }
 
 function hexRgb(hex) {

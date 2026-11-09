@@ -6,7 +6,7 @@ import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 import * as Hud from './hud.js';
 
-const VERSION = '5.0.0';
+const VERSION = '5.1.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -64,8 +64,8 @@ const ls = {
   },
 };
 
-// Darstellung: „Zukunft“ (HUD, Standard) oder „Klassisch“
-document.documentElement.dataset.theme = ls.get(LS.theme, 'hud') === 'classic' ? 'classic' : 'hud';
+// Darstellung: „Premium“ (Standard) oder „Sci-Fi“
+document.documentElement.dataset.theme = Hud.themeFor(ls.get(LS.theme, 'premium'));
 
 const state = {
   view: 'loading',
@@ -1975,11 +1975,11 @@ function viewSettings() {
   const opt = (v, label, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
   const status = (ok) => `<span class="${ok ? 'up' : 'muted'}">${ok ? 'aktiv' : 'aus'}</span>`;
 
-  const look = Hud.isHud() ? 'hud' : 'classic';
+  const look = Hud.isHud() ? 'scifi' : 'premium';
   return `
   <section class="card"><h2>Darstellung</h2>
-    <div class="seg look">${[['hud', 'Zukunft'], ['classic', 'Klassisch']].map(([k, l]) => `<button data-look="${k}" class="${look === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-    <p class="muted small">${look === 'hud' ? 'Hologramm-Ringe, lebendiger Hintergrund, Systemstart beim Öffnen.' : 'Ruhiges, dunkles Design ohne Sci-Fi-Effekte.'}</p>
+    <div class="seg look">${[['premium', 'Premium'], ['scifi', 'Sci-Fi']].map(([k, l]) => `<button data-look="${k}" class="${look === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <p class="muted small">${look === 'premium' ? 'Ruhig und minimalistisch. Bewegung nur in den Ringen und Kugeln.' : 'Volles HUD: Hologramm-Rahmen, Partikel-Hintergrund, Systemstart beim Öffnen.'}</p>
   </section>
 
   <section class="card"><h2>Einrichtung</h2>

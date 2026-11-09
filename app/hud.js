@@ -2,19 +2,23 @@
 // EKG-Linie im Takt deines Ruhepulses, Text-Entschlüsselung und Tipp-Impulse.
 // Alles ruht, sobald die App im Hintergrund ist. Bei „Bewegung reduzieren“ bleibt alles still.
 
-export const THEME_KEY = 'puls.theme';
+// Darstellung: „premium“ (Standard: ruhig, Hologramm nur in den Emblemen) oder „scifi“ (volles HUD)
+export const THEME_KEY = 'puls.look';
 const root = () => document.documentElement;
 
-export const isHud = () => typeof document !== 'undefined' && root().dataset.theme !== 'classic';
+export const isHud = () => typeof document !== 'undefined' && root().dataset.theme === 'hud';
+/** Gespeicherte Wahl → Wert für data-theme. */
+export const themeFor = (look) => (look === 'scifi' ? 'hud' : 'premium');
 const still = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const f1 = (v) => Math.round(v * 10) / 10;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-export function setTheme(theme) {
-  const t = theme === 'classic' ? 'classic' : 'hud';
+export function setTheme(look) {
+  const l = look === 'scifi' ? 'scifi' : 'premium';
+  const t = themeFor(l);
   root().dataset.theme = t;
   try {
-    localStorage.setItem(THEME_KEY, JSON.stringify(t));
+    localStorage.setItem(THEME_KEY, JSON.stringify(l));
   } catch {
     /* privater Modus */
   }
