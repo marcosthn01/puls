@@ -14,8 +14,9 @@ und so auswertet wie Whoop:
   Atmung, Schlaf, Rhythmus, Blutsauerstoff, Bewegung, VO₂max) – wie ein Arzt auf Trends schaut.
 - **KI-Coach im Chat** (Claude): „Wie bin ich heute drauf?“, „Mach mir einen Trainingsplan“ – er kennt
   deine Daten, schlägt einzelne Tage nach und kann Morgen-Check und Einstellungen für dich eintragen.
-- **Immer aktuell:** Beim Öffnen holt Puls automatisch frische Daten von Garmin (ca. 1 Minute).
-  Morgens fragt Puls zusätzlich von selbst nach, bis deine Nacht da ist.
+- **Immer aktuell:** Beim Öffnen zeigt Puls sofort den letzten Stand und holt im Hintergrund frische
+  Daten von Garmin (ca. 1 Minute, mit sichtbarem Fortschritt). Fehlt morgens die Nacht noch, wartet
+  die Morgenwache darauf und holt sie, sobald sie bei Garmin ist – auch bei geschlossener App.
 - **Benachrichtigungen** (jede einzeln abschaltbar, je höchstens einmal am Tag):
   - morgens: Recovery, Ziel-Strain und Schlaf
   - mittags: „Erst 2.100 Schritte“ oder „Stress seit einer Stunde hoch“ – nur wenn es zutrifft
@@ -141,11 +142,16 @@ Anleitung mit Kopier-Knöpfen steht in der App unter Einstellungen → **Walking
   - Die Uhr synchronisiert im Hintergrund.
   - Morgens hilft es, Garmin Connect kurz zu öffnen.
   - Danach die Puls-App öffnen: Sie lädt beim Öffnen automatisch neu.
-- **Wann abgerufen wird:** beim Öffnen der App; morgens ab 5 Uhr alle 20 Minuten, bis deine Nacht
-  da ist; mit Benachrichtigungen zusätzlich mittags, nachmittags, am frühen Abend und zur
-  Schlafenszeit. Geplante Läufe
-  ohne Anlass enden nach Sekunden, ohne Garmin zu fragen. GitHub startet geplante Läufe oft ein paar
-  Minuten später.
+- **Wann abgerufen wird:** beim Öffnen der App; mit Benachrichtigungen zusätzlich mittags,
+  nachmittags, am frühen Abend und zur Schlafenszeit. Geplante Läufe ohne Anlass enden nach
+  Sekunden, ohne Garmin zu fragen. GitHub startet geplante Läufe oft später oder lässt sie ganz aus.
+- **Morgenwache** ([`wache.yml`](.github/workflows/wache.yml)): Findet ein Abruf zwischen 4 und 12:30 Uhr
+  die Nacht noch nicht, prüft die Wache alle 3 Minuten bei Garmin (eine kleine Anfrage, nur mit
+  gespeicherten Tokens). Sobald die Nacht da ist, startet sie den Abruf – dann kommt die
+  Morgen-Benachrichtigung. Gestartet wird sie vom ersten Abruf am Morgen: von der App beim Öffnen oder
+  von einem geplanten Lauf.
+- **Schneller Start:** Die App-Dateien kommen aus dem Speicher des iPhones; die Daten wartet Puls
+  höchstens 2,5 Sekunden aus dem Netz ab, sonst zeigt es erst den letzten Stand und lädt gleich nach.
 - **Inoffizielle Schnittstelle:**
   - Garmin bietet Privatleuten keine offizielle API an.
   - Puls nutzt die Bibliothek [`garminconnect`](https://github.com/cyberjunky/python-garminconnect).

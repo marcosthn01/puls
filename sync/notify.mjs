@@ -90,6 +90,14 @@ function bedtimeWindow(model, now) {
 // ------------------------------------------------------------------ Entscheidungen (rein, getestet)
 
 /** Soll ein geplanter Lauf Garmin abfragen? Läufe ohne Anlass enden sofort. */
+/** Morgens: fehlt die Nacht noch bei Garmin? Dann soll die Morgenwache übernehmen. */
+export const NIGHT_WATCH = [4 * 60, 12 * 60 + 30];
+export function needsNightWatch(model, now) {
+  if (!inWin(now.minutes, NIGHT_WATCH)) return false;
+  const last = model && !model.empty ? model.days[model.days.length - 1] : null;
+  return !(last && last.date === now.date && last.sleep);
+}
+
 export function planRun({ now, state, model }) {
   const sent = state?.sent || {};
   const subscribed = !!state?.subscription;
@@ -342,7 +350,12 @@ async function send(cacheDir, pass) {
     const now = localNow();
     const last = model && !model.empty ? model.days[model.days.length - 1] : null;
     if (last && last.date === now.date && last.recovery != null) state.morningDone = now.date;
-    const scheduled = process.env.GITHUB_EVENT_NAME === 'schedule';
+    // Von der Morgenwache gestartet zählt wie geplant: dann gibt es die Morgen-Benachrichtigung.
+    const fromWatch = inputs.source === 'wache';
+    const scheduled = process.env.GITHUB_EVENT_NAME === 'schedule' || fromWatch;
+    const watch = !fromWatch && !walkRun && process.env.GITHUB_EVENT_NAME !== 'push' && needsNightWatch(model, now);
+    setOutput('wait_night', watch ? 'true' : 'false');
+    if (watch) log('Morgen: Nacht noch nicht bei Garmin – die Morgenwache übernimmt.');
     if (walkRun) {
       // Vom Kurzbefehl nach dem Laufen: nur die Walking-Pad-Bestätigung, sonst nichts abhaken.
       const msg = padMessage(model, now, state.padSeen?.[now.date], state.prefs);

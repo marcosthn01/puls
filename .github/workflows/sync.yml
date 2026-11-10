@@ -4,7 +4,9 @@ name: Puls Sync
 #
 # Wann abgerufen wird:
 # - Wenn du Puls öffnest (die App startet den Lauf selbst).
-# - Morgens: alle 20 Min., bis deine Nacht da ist – dann Benachrichtigung und Schluss für den Morgen.
+# - Morgens: fehlt die Nacht noch, startet die Morgenwache (wache.yml). Sie prüft alle 3 Min. bei
+#   Garmin und startet den Abruf, sobald die Nacht da ist – dann kommt die Benachrichtigung.
+#   Die geplanten Morgen-Läufe stoßen das nur an (GitHub lässt geplante Läufe manchmal aus).
 # - Mit Benachrichtigungen zusätzlich: mittags (Bewegung, Stress), nachmittags (Trainingsziel,
 #   freitags Wochenziel, sonntags Wochenbericht), früher Abend (Schritte) und zur Schlafenszeit.
 # - Wenn der iPhone-Kurzbefehl Walking-Pad-Schritte schickt (input "walk").
@@ -12,7 +14,7 @@ name: Puls Sync
 # Zeiten im Zeitplan sind UTC (Deutschland = UTC+1 im Winter, UTC+2 im Sommer).
 on:
   schedule:
-    - cron: "*/20 3-9 * * *"      # Morgen-Fenster
+    - cron: "8,38 3-9 * * *"      # Morgen-Fenster (nicht zur vollen Stunde: da lässt GitHub öfter aus)
     - cron: "17,47 11 * * *"      # Mittag (Bewegung, Stress)
     - cron: "17 14,15 * * *"      # Nachmittag (Trainingsziel)
     - cron: "17,47 17-23 * * *"   # Abend (Schritte, Schlaf-Erinnerung)
@@ -32,6 +34,10 @@ on:
         default: ""
       walk:
         description: "Nur für den iPhone-Kurzbefehl: Walking-Pad-Schritte aus Apple Health"
+        required: false
+        default: ""
+      source:
+        description: "Nur intern: wer den Abruf startet (z. B. die Morgenwache)"
         required: false
         default: ""
   push:
@@ -123,6 +129,7 @@ jobs:
         run: python sync/puls_sync.py --cache .puls-cache --site-url "${{ steps.pages.outputs.base_url }}"
 
       - name: Benachrichtigungen
+        id: notify
         continue-on-error: true
         env:
           DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
@@ -131,6 +138,15 @@ jobs:
         run: |
           npm install --no-save --no-package-lock --silent web-push@3.6.7
           node sync/notify.mjs send .puls-cache
+
+      - name: Morgenwache starten
+        if: steps.notify.outputs.wait_night == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          busy=$(gh run list --repo "${{ github.repository }}" --workflow wache.yml --limit 5 --json status --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$busy" = "0" ]; then gh workflow run wache.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"; echo "Morgenwache gestartet."; else echo "Morgenwache läuft schon."; fi
 
       - name: Zwischenspeicher sichern
         if: always()

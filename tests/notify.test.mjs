@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import { makeDemoStore } from '../app/demo.js';
 import * as E from '../app/engine.js';
-import { dueMessages, localNow, planRun, seal, unseal } from '../sync/notify.mjs';
+import { dueMessages, localNow, needsNightWatch, planRun, seal, unseal } from '../sync/notify.mjs';
 
 const store = makeDemoStore({ now: new Date('2026-11-09T16:30:00') });
 const model = E.analyze(store, {});
@@ -157,4 +157,17 @@ test('Walking-Pad: Bestätigung nach dem Laufen, nur bei neuen Schritten', async
   copy.days[key].pad.add = 0;
   const counted = padMessage(E.analyze(copy, {}), at(15), 0);
   assert.match(counted.body, /^Deine Uhr hatte sie schon mitgezählt\. Heute insgesamt 5\.000 von 8\.000 – noch 3\.000\.$/);
+});
+
+test('Morgenwache: startet nur morgens und nur, wenn die Nacht von heute fehlt', () => {
+  const last = model.days[model.days.length - 1];
+  assert.ok(last.sleep, 'Demo hat eine Nacht');
+  assert.equal(needsNightWatch(model, at(7)), false); // Nacht ist da
+  const noNight = { ...model, days: [...model.days.slice(0, -1), { ...last, sleep: null }] };
+  assert.equal(needsNightWatch(noNight, at(7)), true);
+  assert.equal(needsNightWatch(noNight, at(3, 59)), false); // vor 4 Uhr
+  assert.equal(needsNightWatch(noNight, at(12, 30)), false); // nach 12:30
+  const yesterday = { ...model, days: model.days.slice(0, -1) };
+  assert.equal(needsNightWatch(yesterday, at(8)), true); // heute noch gar kein Tag
+  assert.equal(needsNightWatch(null, at(8)), true);
 });

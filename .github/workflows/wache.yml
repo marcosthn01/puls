@@ -1,0 +1,62 @@
+name: Puls Morgenwache
+
+# Wartet morgens auf deine neue Nacht bei Garmin und startet dann sofort den Abruf
+# (der veröffentlicht die Daten und schickt die Morgen-Benachrichtigung).
+#
+# Gestartet vom Abruf, wenn die Nacht morgens noch fehlt – egal ob der Abruf geplant war oder
+# von der App kam. Prüft alle 3 Minuten nur die Schlafdaten (eine kleine Garmin-Anfrage),
+# zwischen 04:00 und 12:30 Uhr. Meldet sich nur mit gespeicherten Tokens an, nie mit Passwort.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: puls-wache
+  cancel-in-progress: false
+
+jobs:
+  wache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: sync/requirements.txt
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r sync/requirements.txt
+
+      # Nur lesen: die Wache verändert die gespeicherten Daten nicht.
+      - name: Zwischenspeicher laden
+        uses: actions/cache/restore@v6
+        with:
+          path: .puls-cache
+          key: puls-wache-${{ github.run_id }}
+          restore-keys: puls-
+
+      - name: Auf die Nacht warten
+        id: wait
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          PULS_TIMEZONE: Europe/Berlin
+        run: python sync/wache.py --cache .puls-cache
+
+      - name: Abruf starten
+        if: steps.wait.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run sync.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}" -f source=wache
+
+      - name: An neue Wache übergeben
+        if: steps.wait.outputs.again == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run wache.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"

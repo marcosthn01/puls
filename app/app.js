@@ -6,7 +6,7 @@ import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 import * as Hud from './hud.js';
 
-const VERSION = '5.1.0';
+const VERSION = '5.2.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -85,6 +85,7 @@ const state = {
   onboarding: null,
   showAllInsights: false,
   chat: { busy: false, stream: null, status: '', error: '' },
+  sync: null, // { t0, stage } während eines Abrufs
 };
 
 const app = document.getElementById('app');
@@ -280,6 +281,10 @@ async function loadData({ silent = false } = {}) {
     if (!silent) toast(`Laden fehlgeschlagen (${res.status}).`);
     return;
   }
+  if (res.headers.get('x-puls-stale') === '1' && !silent) {
+    // Netz war zu langsam: erst den letzten Stand zeigen, dann gleich frisch nachladen
+    setTimeout(() => loadData({ silent: true }), 5000);
+  }
   const box = await res.json();
   if (state.store && state.box && state.box.iv === box.iv) {
     state.lastFetch = Date.now();
@@ -356,6 +361,44 @@ async function dispatch(inputs = {}) {
 }
 
 /** Startet den Garmin-Abruf und lädt nach, sobald neue Daten da sind. */
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+const SYNC_STAGES = [
+  ['Garmin-Daten holen', 'Garmin wird abgefragt'],
+  ['Benachrichtigungen', 'Wird ausgewertet'],
+  ['Morgenwache starten', 'Wird ausgewertet'],
+  ['Zwischenspeicher sichern', 'Wird bereitgestellt'],
+  ['Seite bauen', 'Wird bereitgestellt'],
+  ['upload-pages-artifact', 'Wird bereitgestellt'],
+  ['Veröffentlichen', 'Wird bereitgestellt'],
+];
+
+/** Den gerade gestarteten Abruf bei GitHub finden bzw. seinen Stand holen (nur kleine Antworten). */
+async function ghRun(gh, { since, id }) {
+  const base = `https://api.github.com/repos/${gh.repo}/actions`;
+  if (id) {
+    const res = await fetch(`${base}/runs/${id}`, { headers: ghHeaders(gh.token), cache: 'no-store' });
+    return res.ok ? res.json() : null;
+  }
+  const res = await fetch(`${base}/workflows/${WORKFLOW}/runs?event=workflow_dispatch&per_page=5`, { headers: ghHeaders(gh.token), cache: 'no-store' });
+  if (!res.ok) return null;
+  const runs = (await res.json()).workflow_runs || [];
+  return runs.find((r) => new Date(r.created_at).getTime() >= since - 20000) || null;
+}
+async function ghStage(gh, run) {
+  if (run.status !== 'in_progress') return 'GitHub startet den Abruf';
+  try {
+    const res = await fetch(`https://api.github.com/repos/${gh.repo}/actions/runs/${run.id}/jobs`, { headers: ghHeaders(gh.token), cache: 'no-store' });
+    const job = res.ok ? ((await res.json()).jobs || []).find((j) => j.name === 'sync') : null;
+    const step = job?.steps?.find((st) => st.status === 'in_progress');
+    if (!job || job.status === 'queued') return 'GitHub startet den Abruf';
+    const hit = step && SYNC_STAGES.find(([k]) => step.name.includes(k));
+    return hit ? hit[1] : 'Wird vorbereitet';
+  } catch {
+    return state.sync?.stage || 'Läuft';
+  }
+}
+
+/** Abruf starten und bis zum Ende verfolgen: Stufe und Sekunden sichtbar, Fehler werden gemeldet. */
 async function triggerSync(inputs = {}, { quiet = false } = {}) {
   if (state.demo || state.syncing) return;
   const gh = ghConfig();
@@ -364,31 +407,98 @@ async function triggerSync(inputs = {}, { quiet = false } = {}) {
     return;
   }
   state.syncing = true;
+  state.sync = { t0: Date.now(), stage: 'GitHub startet den Abruf' };
   ls.set(LS.lastTrigger, Date.now());
   renderChrome();
+  const ticker = setInterval(updateSyncBanner, 1000);
+  const before = state.store?.generated;
+  const arrived = () => state.store?.generated && state.store.generated !== before;
   try {
     await dispatch(inputs);
     if (!quiet) toast(inputs.mfa_code ? 'Code gesendet – Anmeldung läuft.' : 'Hole neue Daten von Garmin …');
-    const before = state.store?.generated;
-    for (let k = 0; k < 24; k++) {
-      await new Promise((r) => setTimeout(r, 10000));
-      await loadData({ silent: true });
-      if (state.store?.generated && state.store.generated !== before) {
-        const auth = state.store.status?.auth;
-        if (auth === 'mfa') toast('Garmin will einen Code – siehe Einstellungen.');
-        else if (auth === 'error') toast('Garmin meldet ein Anmeldeproblem.');
+    let run = null;
+    let apiOk = true;
+    for (let k = 0; k < 80 && !arrived(); k++) {
+      await sleepMs(k < 4 ? 2000 : 3000);
+      if (apiOk) {
+        try {
+          run = await ghRun(gh, run ? { id: run.id } : { since: state.sync.t0 });
+        } catch {
+          run = null;
+        }
+        if (!run && k >= 8) apiOk = false; // GitHub-API nicht erreichbar: nur noch nach Daten schauen
+      }
+      if (run?.status === 'completed') {
+        // Fertig: Daten holen (GitHub Pages braucht manchmal ein paar Sekunden)
+        state.sync.stage = 'Fast fertig';
+        updateSyncBanner();
+        for (let j = 0; j < 8 && !arrived(); j++) {
+          await loadData({ silent: true });
+          if (!arrived()) await sleepMs(3000);
+        }
+        if (run.conclusion !== 'success' && !arrived()) {
+          if (!quiet || run.conclusion === 'failure') toast('Der Abruf hat nicht geklappt – zieh nach unten, um es nochmal zu versuchen.');
+        } else if (run.conclusion !== 'success') {
+          toast('Garmin hat nicht alles geliefert – du siehst den letzten Stand.');
+        }
         break;
       }
+      if (run) {
+        state.sync.stage = await ghStage(gh, run);
+        updateSyncBanner();
+      }
+      // Ohne GitHub-API alle ~9 s nach Daten schauen, sonst nur alle ~30 s zur Sicherheit
+      if ((!apiOk && k % 3 === 2) || k % 10 === 9) await loadData({ silent: true });
+    }
+    if (arrived()) {
+      const auth = state.store.status?.auth;
+      if (auth === 'mfa') toast('Garmin will einen Code – siehe Einstellungen.');
+      else if (auth === 'error') toast('Garmin meldet ein Anmeldeproblem.');
     }
   } catch (e) {
     if (!quiet) toast(e.message || 'Sync konnte nicht gestartet werden.');
   } finally {
+    clearInterval(ticker);
     state.syncing = false;
+    state.sync = null;
     renderChrome();
   }
 }
 
-/** Beim Öffnen: frische Daten anfordern (es gibt keinen Zeitplan – die App ist der Auslöser). */
+/** Morgens, wenn die Nacht noch fehlt: auf den Abruf der Morgenwache achten und dann sofort laden. */
+let nightTimer = null;
+function nightMissing() {
+  const m = state.model;
+  if (state.demo || !m || m.empty || state.view !== 'main') return false;
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  if (mins < 4 * 60 || mins >= 12 * 60 + 30) return false;
+  const last = m.days[m.days.length - 1];
+  return !(last.date === todayIso() && last.sleep);
+}
+function watchNight() {
+  if (nightTimer) return;
+  let seen = null;
+  nightTimer = setInterval(async () => {
+    if (!nightMissing()) {
+      clearInterval(nightTimer);
+      nightTimer = null;
+      return;
+    }
+    if (document.visibilityState !== 'visible' || state.syncing) return;
+    const gh = ghConfig();
+    if (!gh.token) return loadData({ silent: true });
+    try {
+      const res = await fetch(`https://api.github.com/repos/${gh.repo}/actions/workflows/${WORKFLOW}/runs?per_page=1&status=completed`, { headers: ghHeaders(gh.token), cache: 'no-store' });
+      const run = res.ok ? ((await res.json()).workflow_runs || [])[0] : null;
+      if (run && seen && run.id !== seen) await loadData({ silent: true });
+      if (run) seen = run.id;
+    } catch {
+      /* nächstes Mal */
+    }
+  }, 30000);
+}
+
 function autoSync() {
   if (state.demo || state.view !== 'main' || state.syncing || !ghConfig().token) return;
   const age = Date.now() - new Date(state.store?.generated || 0).getTime();
@@ -540,13 +650,35 @@ function simpleHeader(title, back = false, right = null) {
   </header>`;
 }
 
+const syncLabel = () => `${state.sync?.stage || 'Hole neue Daten von Garmin'} …`;
+function syncSecs() {
+  const s = Math.max(0, Math.round((Date.now() - (state.sync?.t0 || Date.now())) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+/** Nur Text und Sekunden im Abruf-Hinweis auffrischen (ohne die Seite neu aufzubauen). */
+function updateSyncBanner() {
+  const el = document.getElementById('syncbanner');
+  if (!el || !state.sync) return;
+  el.querySelector('.sb-t').textContent = syncLabel();
+  el.querySelector('.sb-s').textContent = syncSecs();
+}
+
 function statusBanner() {
   if (state.demo) return '';
-  if (state.syncing) return `<div class="banner sync"><span class="spinner small"></span>Hole neue Daten von Garmin … (ca. 1 Min.)</div>`;
+  if (state.syncing) return `<div class="banner sync" id="syncbanner"><span class="spinner small"></span><span class="sb-t">${esc(syncLabel())}</span><span class="sb-s">${syncSecs()}</span></div>`;
   const st = state.store?.status || {};
   if (st.auth === 'mfa') return `<button class="banner warn" data-act="settings"><b>Garmin wartet auf einen Code.</b> Tippe hier, um ihn einzugeben.</button>`;
   if (st.auth === 'error') return `<button class="banner bad" data-act="settings"><b>Garmin-Anmeldung fehlgeschlagen.</b> Tippe für Hilfe.</button>`;
   const last = state.model.days[state.model.days.length - 1];
+  if (state.sel === state.model.days.length - 1 && nightMissing()) {
+    watchNight();
+    const auto = ghConfig().token
+      ? pushReady()
+        ? 'Puls schaut alle 3 Minuten nach und schickt dir eine Mitteilung, sobald sie da ist.'
+        : 'Puls schaut alle 3 Minuten nach – sie erscheint dann hier von selbst.'
+      : 'Zieh danach hier nach unten, um sie zu holen.';
+    return `<div class="banner night"><b>Deine Nacht ist noch nicht bei Garmin.</b> Die Uhr schickt sie meist kurz nach dem Aufwachen – schneller geht's, wenn du kurz Garmin Connect öffnest. ${auto}</div>`;
+  }
   if (state.sel === state.model.days.length - 1 && last.date < todayIso()) {
     return `<div class="banner warn">Noch keine Daten von heute. Öffne kurz Garmin Connect, damit die Uhr synchronisiert.</div>`;
   }

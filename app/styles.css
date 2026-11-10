@@ -976,6 +976,13 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
   .ringorb > .orb.inner, .ringtip, .rings.v4::before, .rings.v4::after { animation: none !important; }
 }
 
+/* ================= v5.2: Abruf-Fortschritt, Hinweis zur Nacht ================= */
+.banner.sync .sb-t { flex: 1; min-width: 0; }
+.banner.sync .sb-s { font-family: var(--display); font-size: 16px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.banner.night { position: relative; background: var(--card); border-left: 0; padding: 12px 14px 12px 20px; font-size: 13.5px; line-height: 1.5; color: #c9ced3; }
+.banner.night::before { content: ''; position: absolute; left: 8px; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--sleep); }
+.banner.night b { display: block; color: var(--text); font-size: 15px; margin-bottom: 2px; }
+
 /* ================= v5: Zukunft – HUD ================= */
 
 /* Bausteine, die nur zur Zukunfts-Darstellung gehören */
