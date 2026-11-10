@@ -146,9 +146,17 @@ Beide Schlüssel bleiben nur auf deinem iPhone gespeichert.
 
 ## Walking-Pad (PitPat) – optional
 
-Am Schreibtisch zählt die Uhr kaum Schritte, weil der Arm still bleibt. Puls übernimmt die Schritte
-vom Walking-Pad automatisch: **PitPat → Apple Health → iPhone-Kurzbefehl → Puls**. Die genaue
-Anleitung mit Kopier-Knöpfen steht in der App unter Einstellungen → **Walking-Pad (PitPat)**.
+Am Schreibtisch zählt die Uhr kaum Schritte, weil der Arm still bleibt. Zwei Wege:
+
+- **Von Hand (klappt immer):** Heute → **Laufband** → Kilometer und Minuten aus PitPat abtippen.
+  Puls rechnet mit deiner Schrittlänge in Schritte um – aus Garmins Tagesdistanz ÷ Schritten der
+  letzten 30 Tage, ans Tempo angepasst (langsamer = kürzere Schritte). Der Eintrag geht über den
+  Abruf ([`walkpad.py`](sync/walkpad.py)); bis er in den Daten steht, schickt die App ihn bei jedem
+  Abruf erneut mit.
+- **Automatisch:** PitPat → Apple Health → iPhone-Kurzbefehl → Puls. Geht nur, wenn PitPat in
+  Apple Health schreibt (Health → Profilbild → Apps → PitPat). Der Kurzbefehl kann Schritte oder
+  „Gehen- und Laufdistanz“ mit `km` schicken. Anleitung mit Kopier-Knöpfen: Einstellungen →
+  **Walking-Pad (PitPat)**.
 
 - Doppelt zählt nichts: Puls zieht ab, was die Uhr in derselben Zeit schon gezählt hat
   (aus Garmins 15-Minuten-Schritten), und addiert nur den Rest.

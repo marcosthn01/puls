@@ -192,6 +192,35 @@ function padInfo(raw) {
   return { total: p.total, added: isNum(p.add) ? p.add : p.total, minutes: p.min ?? null, units: p.units || [] };
 }
 
+/**
+ * Schrittlänge in Metern fürs Laufband (wie walkpad.personal_stride beim Abruf): Garmins Tagesdistanz ÷
+ * Uhr-Schritte der letzten 30 Tage – Garmin rechnet mit deiner Größe und Kalibrierung –, sonst 41,5 %
+ * der Körpergröße.
+ */
+export function padStride(model, height = null) {
+  let steps = 0;
+  let dist = 0;
+  for (const d of (model?.days || []).slice(-31)) {
+    const n = d.stats?.watchSteps ?? d.stats?.steps;
+    const m = d.stats?.dist;
+    if (isNum(n) && isNum(m) && n >= 2000 && m > 0) {
+      steps += n;
+      dist += m;
+    }
+  }
+  const clamp = (v) => Math.min(0.95, Math.max(0.5, v));
+  if (steps >= 20000) return { stride: clamp(dist / steps), from: 'garmin' };
+  if (isNum(height) && height >= 120 && height <= 230) return { stride: clamp(height * 0.00415), from: 'height' };
+  return { stride: 0.72, from: 'default' };
+}
+
+/** Kilometer → Schritte; langsamer gehen = kürzere Schritte (Schrittlänge ~ Tempo^0,5, Bezug 5 km/h). */
+export function padSteps(km, minutes, stride) {
+  let s = stride;
+  if (minutes > 0) s = stride * (Math.min(7, Math.max(2, km / (minutes / 60))) / 5) ** 0.5;
+  return Math.round((km * 1000) / s);
+}
+
 /** Schritte = Uhr + Walking-Pad (ohne Doppelzählung). Die Uhr-Schritte bleiben als watchSteps erhalten. */
 function withPad(raw) {
   const st = raw.stats || {};

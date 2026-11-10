@@ -106,8 +106,59 @@ def parse_steps(value: Any) -> int | None:
     return n if 0 < n <= MAX_STEPS else None
 
 
-def parse_input(text: Any, tz: ZoneInfo) -> list[dict[str, Any]]:
-    """Text oder JSON vom Kurzbefehl -> Liste von Einträgen {date, s, e, n} (Sekunden ab Mitternacht)."""
+_DIST = re.compile(r"^\s*(\d+(?:[.,]\d+)?)\s*(km|m|meter|metern)\s*$", re.I)
+
+
+def parse_km(value: Any) -> float | None:
+    """Strecke mit Einheit („2,4 km“, „850 m“) in Kilometern; ohne Einheit ist es keine Strecke."""
+    if not isinstance(value, str):
+        return None
+    m = _DIST.match(value.replace("\xa0", " "))
+    if not m:
+        return None
+    x = float(m.group(1).replace(",", "."))
+    km = x if m.group(2).lower() == "km" else x / 1000
+    return km if 0 < km <= 60 else None
+
+
+REF_SPEED = 5.0  # km/h: Garmins Tages-Schrittlänge stammt überwiegend aus normalem Gehen
+
+
+def personal_stride(store: dict, today: dt.date, days: int = 30) -> float:
+    """Schrittlänge in Metern: Garmins Tagesdistanz ÷ Tagesschritte der letzten Wochen
+    (Garmin rechnet mit deiner Größe und Kalibrierung), sonst 41,5 % der Körpergröße."""
+    steps = dist = 0.0
+    for date, rec in (store.get("days") or {}).items():
+        try:
+            age = (today - dt.date.fromisoformat(date)).days
+        except ValueError:
+            continue
+        st = (rec or {}).get("stats") or {}
+        n, d = st.get("steps"), st.get("dist")
+        if 0 <= age <= days and isinstance(n, (int, float)) and isinstance(d, (int, float)) and n >= 2000 and d > 0:
+            steps += n
+            dist += d
+    if steps >= 20000:
+        return min(0.95, max(0.5, dist / steps))
+    height = ((store.get("profile") or {}).get("height")) or 0
+    if isinstance(height, (int, float)) and 120 <= height <= 230:
+        return min(0.95, max(0.5, height * 0.00415))
+    return 0.72
+
+
+def steps_from_km(km: float, minutes: float | None, stride: float) -> int:
+    """Kilometer → Schritte. Langsamer gehen = kürzere Schritte (Schrittlänge ~ Tempo^0,5)."""
+    s = stride
+    if minutes and minutes > 0:
+        speed = min(7.0, max(2.0, km / (minutes / 60)))
+        s = stride * (speed / REF_SPEED) ** 0.5
+    return int(round(km * 1000 / s))
+
+
+def parse_input(text: Any, tz: ZoneInfo, stride: float = 0.72) -> list[dict[str, Any]]:
+    """Text oder JSON vom Kurzbefehl -> Liste von Einträgen {date, s, e, n} (Sekunden ab Mitternacht).
+    Der Wert ist eine Schrittzahl oder eine Strecke mit Einheit („2,4 km“) – die wird mit deiner
+    Schrittlänge umgerechnet (PitPat zeigt nur Kilometer)."""
     if not isinstance(text, str) or not text.strip():
         return []
     rows: list[tuple[Any, Any, Any]] = []
@@ -122,7 +173,9 @@ def parse_input(text: Any, tz: ZoneInfo) -> list[dict[str, Any]]:
         if isinstance(data, list):
             for item in data:
                 if isinstance(item, dict):
-                    rows.append((item.get("start"), item.get("end"), item.get("steps", item.get("value"))))
+                    km = item.get("km")
+                    value = f"{km} km" if isinstance(km, (int, float)) else item.get("steps", item.get("value"))
+                    rows.append((item.get("start"), item.get("end"), value))
     blocks = [b.strip() for b in re.split(r"##|[;|\t]", stripped)]
     if not rows and len(blocks) == 3 and any("\n" in b for b in blocks):
         # Kurzbefehl ohne Schleife: alle Startzeiten ; alle Endzeiten ; alle Werte (je eine Zeile pro Eintrag)
@@ -139,12 +192,20 @@ def parse_input(text: Any, tz: ZoneInfo) -> list[dict[str, Any]]:
     out = []
     for start_raw, end_raw, steps_raw in rows:
         start = parse_when(start_raw, tz)
-        n = parse_steps(steps_raw)
-        if start is None or n is None:
-            continue
-        end = parse_when(end_raw, tz) if end_raw else None
-        if end is None or end < start:
+        end = parse_when(end_raw, tz) if end_raw and start is not None else None
+        if start is not None and (end is None or end < start):
             end = start
+        km = parse_km(steps_raw)
+        if km is not None and start is not None:
+            minutes = (end - start).total_seconds() / 60 if end > start else None
+            n = steps_from_km(km, minutes, stride)
+            n = n if 0 < n <= MAX_STEPS else None
+        elif isinstance(steps_raw, str) and _DIST.match(steps_raw.replace("\xa0", " ")):
+            n = None  # Strecke, aber unplausibel: nicht als Schrittzahl lesen
+        else:
+            n = parse_steps(steps_raw)
+        if start is None or end is None or n is None:
+            continue
         day = start.date()
         midnight = dt.datetime.combine(day, dt.time(), tz)
         s = int((start - midnight).total_seconds())

@@ -253,7 +253,7 @@ def run(
     # Walking-Pad-Schritte vom iPhone-Kurzbefehl (werden auch gespeichert, wenn Garmin hakt)
     walk_raw = inputs.get("walk")
     if walk_raw:
-        samples = walkpad.parse_input(str(walk_raw), tz)
+        samples = walkpad.parse_input(str(walk_raw), tz, walkpad.personal_stride(store, today))
         changed = walkpad.merge(store, samples)
         log(f"Walking-Pad: {len(samples)} Einträge erkannt, {changed} Tag(e) aktualisiert.")
         if not samples and str(walk_raw).strip(" ;|#\n"):

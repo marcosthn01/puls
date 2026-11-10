@@ -106,3 +106,30 @@ def test_shortcut_without_loop_sends_three_lists():
     assert [(r["s"] // 60, r["e"] // 60, r["n"]) for r in one] == [(840, 885, 3600)]
     assert walkpad.parse_input(" ;  ; ", TZ) == []
     assert walkpad.describe_format("09.11.26, 14:05;x;12") == "20 Zeichen, Muster: 99.99.99, 99:99;x;99"
+
+
+def test_kilometers_from_pitpat_become_steps():
+    # PitPat zeigt nur Kilometer: 2,4 km in 40 Min. (3,6 km/h) bei 75 cm Schrittlänge
+    rows = walkpad.parse_input("2026-11-10T14:00:00+01:00;2026-11-10T14:40:00+01:00;2,4 km", TZ, 0.75)
+    assert len(rows) == 1
+    expected = round(2400 / (0.75 * (3.6 / 5) ** 0.5))
+    assert rows[0]["n"] == expected  # langsamer = kürzere Schritte → mehr Schritte als 2400/0,75
+    assert 3500 < expected < 3900
+    assert rows[0]["s"] == 14 * 3600 and rows[0]["e"] == 14 * 3600 + 40 * 60
+    # Ohne Dauer: Schrittlänge unverändert; Meter gehen auch; JSON mit „km“
+    assert walkpad.parse_input("10.11.26, 14:00;850 m", TZ, 0.85)[0]["n"] == 1000
+    js = '[{"start":"2026-11-10T09:00:00+01:00","end":"2026-11-10T10:00:00+01:00","km":5}]'
+    assert walkpad.parse_input(js, TZ, 0.75)[0]["n"] == round(5000 / 0.75)
+    # Eine Zahl ohne Einheit bleibt eine Schrittzahl
+    assert walkpad.parse_input("10.11.26, 14:00;10.11.26, 14:30;2400", TZ, 0.75)[0]["n"] == 2400
+    assert walkpad.parse_input("10.11.26, 14:00;99 km", TZ) == []  # unplausibel
+
+
+def test_personal_stride_from_garmin_days():
+    today = dt.date(2026, 11, 10)
+    days = {(today - dt.timedelta(days=k)).isoformat(): {"stats": {"steps": 8000, "dist": 5840}} for k in range(10)}
+    days["2026-01-01"] = {"stats": {"steps": 8000, "dist": 12000}}  # zu alt
+    days[today.isoformat()] = {"stats": {"steps": 900, "dist": 2000}}  # zu wenige Schritte
+    assert abs(walkpad.personal_stride({"days": days}, today) - 0.73) < 1e-9
+    assert abs(walkpad.personal_stride({"days": {}, "profile": {"height": 180}}, today) - 0.747) < 1e-9
+    assert walkpad.personal_stride({"days": {}}, today) == 0.72

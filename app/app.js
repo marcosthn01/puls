@@ -9,7 +9,7 @@ import * as T from './training.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.5.0';
+const VERSION = '5.5.1';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -32,6 +32,7 @@ const LS = {
   theme: Hud.THEME_KEY,
   splits: 'puls.splits',
   feel: 'puls.feel',
+  padPending: 'puls.padPending',
 };
 
 const PUSH_KINDS = [
@@ -226,7 +227,7 @@ const INFO = {
   stress: ['Stress & Body Battery', 'Garmin schätzt deinen Stress über den Tag aus der HRV (0–100). Body Battery ist deine Energiereserve: Schlaf lädt sie, Belastung und Stress leeren sie.'],
   age: ['Puls-Alter', 'Eine Schätzung, wie alt dein Körper wirkt – aus Fitness (VO₂max), Ruhepuls, Schlaf und Bewegung der letzten 30 Tage. Jeder Faktor zählt nur ein paar Jahre. Kein medizinischer Wert.'],
   load: ['Trainingslast', 'Deine Belastung der letzten 7 Tage im Vergleich zu den letzten 28. Zwischen 0,8 und 1,3 machst du Fortschritte, darüber steigt das Verletzungsrisiko.'],
-  pad: ['Walking-Pad', 'Schritte von deinem Walking-Pad (PitPat → Apple Health → Kurzbefehl). Wenn du am Schreibtisch läufst, zählt die Uhr kaum mit, weil der Arm still bleibt. Puls zieht ab, was die Uhr in der Zeit schon gezählt hat, und addiert nur den Rest. So zählt nichts doppelt.'],
+  pad: ['Walking-Pad', 'Schritte von deinem Walking-Pad – von Hand eingetragen (Kilometer aus PitPat, umgerechnet mit deiner Schrittlänge) oder über Apple Health und den Kurzbefehl. Wenn du am Schreibtisch läufst, zählt die Uhr kaum mit, weil der Arm still bleibt. Puls zieht ab, was die Uhr in der Zeit schon gezählt hat, und addiert nur den Rest. So zählt nichts doppelt.'],
   report: ['Dein Tagesbericht', 'Jeden Morgen schaut sich der KI-Coach (Claude) alle deine Werte an – wie ein Arzt, Trainer und Ernährungscoach zusammen: Recovery, Schlaf, Trends der letzten Wochen, deinen Morgen-Check und deine Angaben (Ziel, Gesundheit, Essen). Daraus wird ein persönlicher Plan für heute. Kostet ca. 5–15 Cent pro Bericht über deinen Claude-Schlüssel. Keine ärztliche Diagnose.'],
   nutrition: ['Ernährung heute', 'Dein Tagesbedarf aus deinem echten Garmin-Verbrauch der letzten 2 Wochen, angepasst an die Belastung von heute und dein Ziel. Eiweiß je nach Ziel 1,4–2,0 g pro kg, Kohlenhydrate 3–7 g pro kg je nach Strain (harte Tage brauchen mehr), Fett mindestens 0,8 g pro kg. Wasser: 35 ml pro kg plus 0,6 L pro Trainingsstunde. Richtwerte, keine Diät.'],
   health: ['Gesundheits-Check', 'Wie ein Arzt auf Trends schaut: Der Schnitt deiner letzten 7 Tage wird mit deinen eigenen Werten der 2 Monate davor verglichen – Ruhepuls, HRV, Atemfrequenz, Schlaf, Schlafrhythmus, Blutsauerstoff, Bewegung und VO₂max. Einzelne schlechte Nächte sind normal; wichtig sind Veränderungen über Tage. Bei Hinweisen der Stufe „Arzt“ bitte ärztlich abklären lassen.'],
@@ -267,6 +268,7 @@ function setStore(store, { animate = true } = {}) {
   const prevDate = state.model && !state.model.empty && state.sel != null ? state.model.days[state.sel]?.date : null;
   const wasLatest = !state.model || state.model.empty || state.sel === state.model.days.length - 1;
   state.store = store;
+  prunePadPending(store);
   state.model = E.analyze(store, ls.get(LS.settings, {}));
   state.lastFetch = Date.now();
   if (state.model.empty) {
@@ -372,6 +374,9 @@ async function dispatch(inputs = {}) {
   const gh = ghConfig();
   const own = ls.get(LS.splits, {});
   if (Object.keys(own).length && inputs.labels == null) inputs = { ...inputs, labels: JSON.stringify(own) };
+  // Laufband-Einträge, die noch nicht in den Daten sind, bei jedem Abruf mitschicken (doppelt schadet nicht)
+  const walks = [...new Set([...(inputs.walk ? [inputs.walk] : []), ...padPending().map((p) => p.walk)])];
+  if (walks.length) inputs = { ...inputs, walk: walks.join('\n') };
   const res = await fetch(`https://api.github.com/repos/${gh.repo}/actions/workflows/${WORKFLOW}/dispatches`, {
     method: 'POST',
     headers: ghHeaders(gh.token),
@@ -926,7 +931,7 @@ function viewToday(anim) {
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
   return `${setupCard()}${telemetry(d)}${dials(d, anim)}${dashTiles(m, i)}
-    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${isLatest ? lifestyleCard() : ''}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
+    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${isLatest ? lifestyleCard() + padLogRow(d) : ''}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
     <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
 }
 
@@ -987,6 +992,80 @@ function weekTrainingCard(m, i) {
 // ------------------------------------------------------------------ Lifestyle-Log (wie ein Tagebuch per Knopfdruck)
 
 const QUICK = ['koffein', 'alkohol', 'spaetessen', 'bildschirm', 'stress', 'sauna', 'meditation', 'kalt'];
+// ------------------------------------------------------------------ Laufband (Kilometer aus PitPat)
+
+/** Eingetragene Läufe, die noch nicht in den Daten angekommen sind: [{walk, date, s, t}]. */
+const padPending = () => ls.get(LS.padPending, []);
+
+function prunePadPending(store) {
+  const list = padPending();
+  if (!list.length) return;
+  const keep = list.filter((p) => {
+    const samples = store?.days?.[p.date]?.pad?.samples || [];
+    const arrived = samples.some((x) => Array.isArray(x) && x[0] === p.s);
+    return !arrived && Date.now() - p.t < 3 * 86400e3;
+  });
+  if (keep.length !== list.length) ls.set(LS.padPending, keep);
+}
+
+const padStrideNow = () => E.padStride(state.model, state.store?.profile?.height ?? profile().height ?? null);
+
+/** Eingaben im Blatt lesen: Kilometer, Minuten, Start und Ende. */
+function padForm() {
+  const num = (id) => Number(String(document.getElementById(id)?.value || '').replace(',', '.'));
+  const km = num('pad-km');
+  const min = Math.round(num('pad-min'));
+  const [h, m] = String(document.getElementById('pad-end')?.value || '').split(':').map(Number);
+  if (!(km >= 0.1 && km <= 30) || !(min >= 1 && min <= 600) || !Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const end = new Date();
+  end.setHours(h, m, 0, 0);
+  if (end.getTime() > Date.now() + 10 * 60e3) end.setDate(end.getDate() - 1); // „Fertig um 23:10“ kurz nach Mitternacht
+  const start = new Date(end.getTime() - min * 60e3);
+  return { km, min, start, end };
+}
+
+function padEstimate() {
+  const { stride, from } = padStrideNow();
+  const f = padForm();
+  const src = { garmin: 'aus deinen Garmin-Daten', height: 'aus deiner Größe', default: 'Durchschnitt' }[from];
+  if (!f) return `Deine Schrittlänge: ${Math.round(stride * 100)} cm (${src}).`;
+  const speed = f.km / (f.min / 60);
+  return `≈ <b>${int(E.padSteps(f.km, f.min, stride))} Schritte</b> · ${de1(speed)} km/h · Schrittlänge ${Math.round(stride * 100)} cm (${src}, ans Tempo angepasst)`;
+}
+
+async function sendPadLog() {
+  const f = padForm();
+  if (!f) return toast('Bitte Kilometer und Minuten eintragen.');
+  if (state.demo) return toast(`Demo: ≈ ${int(E.padSteps(f.km, f.min, padStrideNow().stride))} Schritte – übertragen wird nichts.`);
+  const gh = ghConfig();
+  if (!gh.token) {
+    closeSheet();
+    openSheet({ type: 'setup-sync' });
+    return toast('Zuerst „Automatisch aktualisieren“ einrichten – darüber kommt der Lauf zu Puls.');
+  }
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const date = `${f.start.getFullYear()}-${pad2(f.start.getMonth() + 1)}-${pad2(f.start.getDate())}`;
+  const s = f.start.getHours() * 3600 + f.start.getMinutes() * 60;
+  const walk = `${f.start.toISOString()};${f.end.toISOString()};${f.km} km`;
+  ls.set(LS.padPending, [...padPending().filter((p) => !(p.date === date && p.s === s)), { walk, date, s, t: Date.now() }]);
+  const steps = E.padSteps(f.km, f.min, padStrideNow().stride);
+  closeSheet();
+  render();
+  toast(`Laufband eingetragen: ≈ ${int(steps)} Schritte – in etwa einer Minute in deinem Tag.`);
+  if (state.syncing) {
+    dispatch({ walk }).catch(() => {}); // läuft schon ein Abruf: zusätzlich starten; sonst beim nächsten Abruf
+  } else {
+    ls.del(LS.lastTrigger);
+    triggerSync({ walk }, { quiet: true });
+  }
+}
+
+function padLogRow(d) {
+  const pend = padPending().filter((p) => p.date === d.date);
+  const sub = pend.length ? `${pend.length === 1 ? 'Eintrag wird' : `${pend.length} Einträge werden`} übertragen …` : d.pad ? `Heute ${int(d.pad.total)} Schritte · weiteren Lauf eintragen` : 'Kilometer aus PitPat eintragen';
+  return `<section class="card slim">${rowLink(I.walk, 'var(--strain)', 'Laufband', sub, 'data-act="pad-log"')}</section>`;
+}
+
 function lifestyleCard() {
   const date = Life.logDate();
   const e = journal()[date] || {};
@@ -2065,6 +2144,18 @@ function renderSheet() {
       <label class="field"><span>Essen</span><textarea data-profile="food" rows="2" placeholder="z. B. kein Fisch, Laktoseintoleranz, esse gern Pasta, wenig Zeit mittags">${esc(p.food || '')}</textarea></label>
       <label class="field"><span>Gesundheit (optional)</span><textarea data-profile="health" rows="2" placeholder="z. B. Bluthochdruck, Betablocker, Knieprobleme, Heuschnupfen">${esc(p.health || '')}</textarea></label>
       <button class="btn" data-act="profile-done" style="margin-top:12px">Fertig</button>`;
+  } else if (sh.type === 'pad-log') {
+    const now = new Date();
+    const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    body = `<h3>Laufband eintragen</h3>
+      <p class="muted small">Kilometer und Minuten aus PitPat abtippen. Puls rechnet mit deiner Schrittlänge in Schritte um und zieht ab, was die Uhr in der Zeit schon gezählt hat.</p>
+      <div class="fields2" style="margin-top:12px">
+        <label class="field"><span>Kilometer</span><input id="pad-km" type="number" inputmode="decimal" step="0.01" min="0.1" max="30" placeholder="z. B. 2,4"></label>
+        <label class="field"><span>Minuten</span><input id="pad-min" type="number" inputmode="numeric" step="1" min="1" max="600" placeholder="z. B. 40"></label>
+      </div>
+      <label class="field"><span>Fertig um</span><input id="pad-end" type="time" value="${hm}"></label>
+      <p class="small pad-est" id="pad-est">${padEstimate()}</p>
+      <button class="btn" data-act="pad-send" style="margin-top:12px">Eintragen</button>`;
   } else if (sh.type === 'setup-pad') {
     const gh = ghConfig();
     const url = `https://api.github.com/repos/${gh.repo || 'DEIN-NAME/puls'}/actions/workflows/${WORKFLOW}/dispatches`;
@@ -2072,12 +2163,14 @@ function renderSheet() {
     body = `<h3>Walking-Pad (PitPat)</h3>
       <p class="muted">Am Schreibtisch zählt die Uhr kaum mit, weil dein Arm still bleibt. So kommen die Schritte von PitPat automatisch in Puls. Einmal einrichten, ca. 5 Minuten.</p>
       ${gh.token ? '' : '<p class="small" style="margin:8px 0"><b>Zuerst:</b> „Automatisch aktualisieren“ einrichten – der Kurzbefehl nutzt denselben Schlüssel.</p>'}
+      <div class="padalt"><b>Am einfachsten:</b> Nach dem Laufen auf „Heute“ → <b>Laufband</b> antippen und Kilometer und Minuten aus PitPat abtippen. Das klappt immer, auch wenn PitPat nichts an Apple Health schickt.<button class="btn ghost" data-act="pad-log" style="margin-top:10px">Laufband jetzt eintragen</button></div>
+      <p class="muted small" style="margin-top:14px">Oder automatisch über Apple Health und einen Kurzbefehl:</p>
       <h4>1 · PitPat</h4>
-      <p class="small">In PitPat die Verbindung zu <b>Apple Health</b> einschalten und <b>Schritte</b> erlauben. Danach einmal kurz laufen, damit PitPat in Health auftaucht.</p>
+      <p class="small">In PitPat die Verbindung zu <b>Apple Health</b> einschalten und alles erlauben. Danach einmal laufen und die Einheit in PitPat beenden. Prüfen: Health-App → Profilbild → <b>Apps</b>: Steht dort <b>PitPat</b>? Erst dann taucht PitPat im Kurzbefehl als Quelle auf. Steht dort nichts, schickt PitPat keine Daten – dann nimm den Eintrag von Hand.</p>
       <h4>2 · Kurzbefehl bauen (2 Aktionen)</h4>
       <ol class="steps small">
         <li>App <b>Kurzbefehle</b> → <b>+</b>. Oben auf den Namen tippen → <b>Puls Walking-Pad</b>.</li>
-        <li>Aktion <b>Health-Messungen suchen</b>: Typ <b>Schritte</b>. Über <b>Filter hinzufügen</b>: <b>Quelle</b> ist <b>PitPat</b> und <b>Startdatum</b> ist <b>heute</b>.</li>
+        <li>Aktion <b>Health-Messungen suchen</b>: Typ <b>Schritte</b>. Über <b>Filter hinzufügen</b>: <b>Quelle</b> ist <b>PitPat</b> und <b>Startdatum</b> ist <b>heute</b>. Liefert PitPat nur Kilometer: Typ <b>Gehen- und Laufdistanz</b> nehmen und unten hinter <b>Wert</b> noch <b> km</b> tippen.</li>
         <li>Aktion <b>Inhalte von URL abrufen</b>. Ins URL-Feld die Adresse einfügen ↓ (steht dort „Health-Messungen“, vorher löschen).</li>
         <li>Pfeil <b>›</b> antippen: Methode <b>POST</b> · <b>Header hinzufügen</b>: Schlüssel <b>Authorization</b>, Text = Schlüssel ↓.</li>
         <li><b>Haupttext anfordern: JSON</b> → <b>Neues Feld hinzufügen</b> → Text: <b>ref</b> = <b>main</b>. Nochmal → Wörterbuch: <b>inputs</b> → darin Text: <b>walk</b>.</li>
@@ -2151,6 +2244,12 @@ function saveProfileFields() {
   });
   ls.set(LS.profile, p);
 }
+sheetEl.addEventListener('input', (e) => {
+  if (/^pad-/.test(e.target.id || '')) {
+    const est = document.getElementById('pad-est');
+    if (est) est.innerHTML = padEstimate();
+  }
+});
 sheetEl.addEventListener('change', (e) => {
   if (e.target.matches('[data-profile]')) saveProfileFields();
 });
@@ -2176,6 +2275,8 @@ sheetEl.addEventListener('click', async (e) => {
     render();
   }
   if (act === 'breath-start') startBreath();
+  if (act === 'pad-log') openSheet({ type: 'pad-log' });
+  if (act === 'pad-send') sendPadLog();
   if (act === 'goals-save') {
     const g = {};
     sheetEl.querySelectorAll('[data-goal]').forEach((el) => {
@@ -2562,6 +2663,9 @@ app.addEventListener('click', async (e) => {
       break;
     case 'profile':
       openSheet({ type: 'profile' });
+      break;
+    case 'pad-log':
+      openSheet({ type: 'pad-log' });
       break;
     case 'report-refresh':
       makeReport();

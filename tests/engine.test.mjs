@@ -301,3 +301,17 @@ test('Neue Funktionen: Tempo des Alterns, Monatsbericht, Rückblick, Ziele, Stre
   if (strength) assert.ok(E.muscleLoad(strength).score > 0);
   assert.equal(E.muscleLoad({ type: 'running', dur: 3600 }), null);
 });
+
+test('Laufband: Kilometer → Schritte wie beim Abruf (walkpad.py)', () => {
+  const days = Array.from({ length: 10 }, () => ({ stats: { steps: 8000, dist: 5840 } }));
+  assert.equal(E.padStride({ days }).from, 'garmin');
+  assert.ok(Math.abs(E.padStride({ days }).stride - 0.73) < 1e-9);
+  // Walking-Pad-Schritte zählen nicht in die Schrittlänge: watchSteps hat Vorrang
+  assert.ok(Math.abs(E.padStride({ days: days.map(() => ({ stats: { steps: 12000, watchSteps: 8000, dist: 5840 } })) }).stride - 0.73) < 1e-9);
+  assert.ok(Math.abs(E.padStride({ days: [] }, 180).stride - 0.747) < 1e-9);
+  assert.equal(E.padStride({ days: [] }).stride, 0.72);
+  // gleiche Werte wie test_kilometers_from_pitpat_become_steps
+  assert.equal(E.padSteps(2.4, 40, 0.75), Math.round(2400 / (0.75 * (3.6 / 5) ** 0.5)));
+  assert.equal(E.padSteps(0.85, 0, 0.85), 1000);
+  assert.equal(E.padSteps(5, 60, 0.75), Math.round(5000 / 0.75));
+});

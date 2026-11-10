@@ -1462,3 +1462,9 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 :root:not([data-theme="hud"]) .tabbar button[data-tab="coach"] { color: var(--green); }
 :root:not([data-theme="hud"]) .tabbar button[data-tab="coach"]::before { display: none; }
 :root:not([data-theme="hud"]) .toast { bottom: calc(var(--safe-bottom) + 78px); }
+
+/* v5.5.1 Laufband von Hand */
+.pad-est { margin-top: 10px; color: var(--muted); line-height: 1.45; }
+.pad-est b { color: var(--text); }
+.padalt { margin: 12px 0 4px; padding: 12px 14px; border-radius: var(--radius); background: var(--card2); font-size: 14px; line-height: 1.45; }
+.padalt .btn { width: 100%; }
