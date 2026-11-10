@@ -90,6 +90,24 @@ await browser.close();
   }
 }
 
+// Widget-Datei: erreichbar und mit dem Widget-Schlüssel lesbar? Nur Stand und Feldnamen ins Log.
+{
+  const { createHmac } = await import('node:crypto');
+  const { openWidgetBox } = await import('../app/widget.js');
+  const name = `w-${createHmac('sha256', pass).update('puls-widget-v1').digest('hex').slice(0, 24)}.json`;
+  const res = await fetch(new URL(name, url.endsWith('/') ? url : url + '/'), { cache: 'no-store' });
+  if (!res.ok) {
+    errors.push(`Widget-Datei nicht erreichbar (${res.status}).`);
+  } else {
+    try {
+      const w = openWidgetBox(await res.json(), createHmac('sha256', pass).update('puls-widget-key-v1').digest('hex'));
+      console.log(`Widget: lesbar, Stand ${w.date}, Felder ${Object.keys(w).filter((k) => w[k] != null).join(', ')}.`);
+    } catch (e) {
+      errors.push(`Widget-Datei nicht lesbar: ${e.message}`);
+    }
+  }
+}
+
 if (errors.length) {
   console.log(`\n${errors.length} Problem(e):`);
   for (const e of [...new Set(errors)]) console.log(' - ' + e);
