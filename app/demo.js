@@ -1,5 +1,5 @@
 // Erzeugt realistische Beispieldaten im selben Format wie der Garmin-Sync.
-// Enthält typische Muster: Trainingswoche, spätere Wochenenden, eine Erkältung,
+// Enthält typische Muster: Gym (Push/Pull) und Rad, spätere Wochenenden, eine Erkältung,
 // damit alle Auswertungen der App sichtbar werden.
 
 import { HR_BIN_START, HR_BIN_WIDTH, addDays } from './engine.js';
@@ -18,14 +18,14 @@ function rng(seed) {
 }
 
 const PLAN = {
-  // Wochentag (0 = So): Training
-  0: { type: 'cycling', name: 'Radtour', start: 10 * 60, dur: 90, hrr: 0.6 },
-  1: null,
-  2: { type: 'running', name: 'Intervalle', start: 18 * 60 + 15, dur: 50, hrr: 0.78 },
-  3: { type: 'strength_training', name: 'Krafttraining', start: 19 * 60, dur: 55, hrr: 0.45 },
-  4: { type: 'running', name: 'Tempolauf', start: 7 * 60, dur: 45, hrr: 0.74 },
-  5: null,
-  6: { type: 'running', name: 'Langer Lauf', start: 9 * 60 + 30, dur: 85, hrr: 0.66 },
+  // Wochentag (0 = So): Training – Gym im Push/Pull-Wechsel und Rad
+  0: { type: 'cycling', name: 'Lange Radtour', start: 10 * 60, dur: 95, hrr: 0.62 },
+  1: { type: 'strength_training', name: 'Push', start: 18 * 60 + 30, dur: 65, hrr: 0.42 },
+  2: { type: 'cycling', name: 'Rad', start: 18 * 60, dur: 50, hrr: 0.6 },
+  3: { type: 'strength_training', name: 'Pull', start: 18 * 60 + 30, dur: 65, hrr: 0.42 },
+  4: null,
+  5: { type: 'strength_training', name: 'Push', start: 17 * 60, dur: 65, hrr: 0.42 },
+  6: { type: 'cycling', name: 'Radtour', start: 9 * 60 + 30, dur: 75, hrr: 0.64 },
 };
 
 function localDate(now) {
@@ -196,7 +196,7 @@ export function makeDemoStore({ now = new Date(), days = 90, seed = 11 } = {}) {
       if (n > 1 && r() < 0.85) store.journal[date] = { _done: true, ...b };
     }
 
-    const steps = Math.round((isToday ? nowMin / 1440 : 1) * (7200 + gauss() * 1800 + (act?.type === 'running' ? act.dur * 160 : 0) - sick * 3000));
+    const steps = Math.round((isToday ? nowMin / 1440 : 1) * (7200 + gauss() * 1800 + (act?.type === 'cycling' ? 0 : act ? 900 : 0) - sick * 3000));
     store.days[date] = {
       sleep,
       hrv: { avg: hrv, weekly: hrvBase, low: 49, high: 66, status: 'BALANCED' },

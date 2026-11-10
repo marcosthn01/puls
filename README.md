@@ -10,6 +10,13 @@ und so auswertet wie Whoop:
   Hinweise, wann etwas ärztlich abgeklärt werden sollte.
 - **Ernährung heute:** Kalorien, Eiweiß, Kohlenhydrate, Fett und Wasser aus deinem echten
   Garmin-Verbrauch, angepasst an die Belastung des Tages und dein Ziel (abnehmen, Muskeln, Ausdauer …).
+- **Training heute:** Puls lernt aus deinen Garmin-Aktivitäten, was du trainierst (z. B. Gym im Push/Pull-Wechsel
+  und Rad), und sagt dir jeden Tag konkret, was dran ist: „Rad · 75 Min., Puls um 138“ oder „Gym · Pull,
+  −20 % Volumen, 2–3 Wdh. in Reserve“ – passend zu Recovery, HRV-Trend, Schlaf, Last und Infekt-Zeichen.
+  Keine Zone-4-Intervalle, wenn du so etwas nie trainierst.
+- **Infekt-Frühwarnung:** Ruhepuls, HRV, Atmung und Hauttemperatur gegen deine eigene Basis, über mehrere
+  Nächte. Bei Frühzeichen zeigt Puls nie „voll erholt“, rät zu Pause oder lockerer Bewegung und schickt
+  morgens eine Warnung. Mit „Ich fühle mich angeschlagen“ plant Puls sofort Ruhe ein.
 - **Gesundheits-Check:** deine letzten 7 Tage gegen deine eigenen 2 Monate davor (Ruhepuls, HRV,
   Atmung, Schlaf, Rhythmus, Blutsauerstoff, Bewegung, VO₂max) – wie ein Arzt auf Trends schaut.
 - **KI-Coach im Chat** (Claude): „Wie bin ich heute drauf?“, „Mach mir einen Trainingsplan“ – er kennt

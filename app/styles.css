@@ -983,6 +983,47 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 .banner.night::before { content: ''; position: absolute; left: 8px; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--sleep); }
 .banner.night b { display: block; color: var(--text); font-size: 15px; margin-bottom: 2px; }
 
+/* ================= v5.3: Training heute, Infekt-Frühwarnung ================= */
+.train .tr-main { display: flex; align-items: center; gap: 14px; }
+.tr-ic { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; flex: none; color: #fff; background: var(--card2); }
+.tr-ic svg { width: 26px; height: 26px; }
+.tr-ic.k-bike { background: linear-gradient(135deg, #1f7fe8, #1556a6); }
+.tr-ic.k-gym { background: linear-gradient(135deg, #e8913a, #a85a1c); }
+.tr-ic.k-rest { background: linear-gradient(135deg, #5e55c9, #3c3690); }
+.tr-ic.k-done { background: linear-gradient(135deg, #1ab27a, #11704d); }
+.tr-main b { display: block; font-family: var(--display); font-size: 28px; font-weight: 700; line-height: 1.05; }
+.tr-main > div > span { display: block; font-size: 14px; color: #c9ced3; margin-top: 3px; line-height: 1.35; }
+.tr-how { font-size: 13.5px; color: #c9ced3; margin: 10px 0 0; line-height: 1.5; }
+.tr-why { list-style: none; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); }
+.tr-why li { position: relative; padding-left: 14px; font-size: 13.5px; line-height: 1.45; color: #c9ced3; }
+.tr-why li + li { margin-top: 5px; }
+.tr-why li::before { content: ''; position: absolute; left: 2px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+.tr-alt { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.tr-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding: 10px 12px; background: var(--card2); border-radius: 14px; font-size: 13px; }
+.tr-ask span { flex-basis: 100%; color: #c9ced3; margin-bottom: 2px; }
+.tr-foot { margin-top: 12px; border-top: 1px solid var(--line); }
+.tr-foot .rowlink:first-child { border-top: 0; }
+.feelbtn { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 10px; padding: 11px 12px; border: 0; border-radius: 14px; background: var(--card2); color: var(--muted); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.feelbtn svg { width: 18px; height: 18px; flex: none; }
+.feelbtn.on { background: rgba(255, 81, 72, 0.12); color: #ff8a83; }
+.ill-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.ill-meter { display: flex; gap: 4px; flex: 1; }
+.ill-meter i { flex: 1; height: 8px; border-radius: 4px; background: var(--track); }
+.ill-meter i.on.t0 { background: var(--green); }
+.ill-meter i.on.t1 { background: var(--yellow); }
+.ill-meter i.on.t2 { background: #ff8a3d; }
+.ill-meter i.on.t3 { background: var(--red); }
+.ill-lvl { font-family: var(--display); font-size: 22px; font-weight: 700; }
+.ill-lvl.t0 { color: var(--green); }
+.ill-lvl.t1 { color: var(--yellow); }
+.ill-lvl.t2 { color: #ff8a3d; }
+.ill-lvl.t3 { color: var(--red); }
+.ill-sig { list-style: none; margin: 0; padding: 0; }
+.ill-sig li { display: flex; align-items: baseline; gap: 10px; font-size: 14px; padding: 4px 0; }
+.ill-sig i { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--yellow); }
+.ill-sig i.p2, .ill-sig i.p3 { background: var(--red); }
+.illcard .ntips { margin-top: 10px; }
+
 /* ================= v5: Zukunft – HUD ================= */
 
 /* Bausteine, die nur zur Zukunfts-Darstellung gehören */

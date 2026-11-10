@@ -54,7 +54,7 @@ test('Erkältung in den Demo-Daten wird als Warnsignal erkannt', () => {
 
 test('Harte Tage haben mehr Strain als Ruhetage', () => {
   const rest = model.days.filter((d) => !d.acts.length && d.strain != null).map((d) => d.strain);
-  const hard = model.days.filter((d) => d.acts.some((a) => a.name === 'Langer Lauf')).map((d) => d.strain);
+  const hard = model.days.filter((d) => d.acts.some((a) => a.name === 'Lange Radtour')).map((d) => d.strain);
   assert.ok(E.mean(hard) > E.mean(rest) + 4);
   assert.ok(E.mean(rest) > 3 && E.mean(rest) < 10);
 });

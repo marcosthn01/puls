@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { openBox } from '../app/crypto.js';
 import * as E from '../app/engine.js';
+import * as T from '../app/training.js';
 
 const tz = process.env.PULS_TIMEZONE || 'Europe/Berlin';
 const site = (process.env.PULS_SITE_URL || 'https://example.github.io/puls').replace(/\/$/, '') + '/';
@@ -159,14 +160,24 @@ export function dueMessages(model, now, sent = {}, prefs = {}) {
 
   // Morgen: Recovery, sobald die Nacht da ist
   if (want('morning') && d.recovery != null && sent.morning !== now.date && now.minutes >= 5 * 60 && now.minutes < 13 * 60) {
+    const ill = d.ill?.level ?? 0;
+    const plan = T.trainingPlan(model, i);
+    const sleep = d.sleepMin != null ? `Schlaf ${E.fmtDur(d.sleepMin)} Std. (${round(d.perf)} %)` : '';
+    let title;
     let body;
-    if (d.alarm) {
+    if (ill >= 2) {
+      const sig = (d.ill.signals || []).filter((x) => ['rhr', 'hrv', 'resp', 'temp'].includes(x.key)).slice(0, 2).map((x) => x.text).join(', ');
+      title = `⚠️ Infekt-Frühwarnung · ${E.ILL_LEVELS[ill]}`;
+      body = `${sig ? `${sig}. ` : ''}${ill >= 3 ? 'Heute Pause, viel trinken, früh schlafen.' : 'Heute nur locker – kein Gym-Volumen.'} Recovery ${d.recovery} %.`;
+    } else if (d.alarm) {
+      title = `⚠️ Recovery ${d.recovery} % · Warnsignale`;
       body = 'Mehrere Körperwerte auffällig – heute schonen, viel trinken, früh schlafen.';
     } else {
-      const sleep = d.sleepMin != null ? ` · Schlaf ${E.fmtDur(d.sleepMin)} Std. (${round(d.perf)} %)` : '';
-      body = `Ziel-Strain heute ${round(d.target.low)}–${round(d.target.high)}${sleep}. Tippe für deinen Plan und den Morgen-Check.`;
+      title = `Recovery ${d.recovery} % · ${zoneWord[d.zone]}`;
+      const line = T.planLine(plan);
+      body = `${line ? `Heute: ${line}.` : ''}${sleep ? ` ${sleep}.` : ''} Tippe für Details und den Morgen-Check.`.trim();
     }
-    out.push({ kind: 'morning', title: d.alarm ? `⚠️ Recovery ${d.recovery} % · Warnsignale` : `Recovery ${d.recovery} % · ${zoneWord[d.zone]}`, body, tag: 'morning' });
+    out.push({ kind: 'morning', title, body, tag: 'morning' });
   }
 
   // Mittag: Stress hoch? Sonst: zu wenig Bewegung?

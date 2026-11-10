@@ -200,6 +200,34 @@ function withPad(raw) {
   return { ...st, steps: (isNum(st.steps) ? st.steps : 0) + p.added, watchSteps: st.steps ?? null, padSteps: p.added };
 }
 
+/** Ziel-Strain aus Recovery, Trainingslast und Warnsignalen. */
+function setTarget(d) {
+  if (d.recovery != null) {
+    let c = 5.5 + 0.125 * d.recovery;
+    const notes = [];
+    const ratio = d.load?.ratio;
+    if (ratio > 1.5) {
+      c -= 2;
+      notes.push('spike');
+    } else if (ratio > 1.3) {
+      c -= 1;
+      notes.push('high');
+    } else if (ratio != null && ratio < 0.8 && d.recovery >= 50) {
+      c += 1;
+      notes.push('low');
+    }
+    if (d.alarm) {
+      c = Math.min(c, 7);
+      notes.push('alarm');
+    }
+    c = clamp(c, 4, 19);
+    d.target = { low: round1(c - 1.5), high: round1(c + 1.5), notes };
+  } else {
+    d.target = null;
+  }
+
+}
+
 function computeDay(i, date, raw, days, S) {
   const win = (n, f) => {
     const out = [];
@@ -324,30 +352,7 @@ function computeDay(i, date, raw, days, S) {
       ? { acute: mean(acute), chronic: mean(chronic), ratio: mean(acute) / mean(chronic) }
       : null;
 
-  // Zielbelastung für heute
-  if (d.recovery != null) {
-    let c = 5.5 + 0.125 * d.recovery;
-    const notes = [];
-    const ratio = d.load?.ratio;
-    if (ratio > 1.5) {
-      c -= 2;
-      notes.push('spike');
-    } else if (ratio > 1.3) {
-      c -= 1;
-      notes.push('high');
-    } else if (ratio != null && ratio < 0.8 && d.recovery >= 50) {
-      c += 1;
-      notes.push('low');
-    }
-    if (d.alarm) {
-      c = Math.min(c, 7);
-      notes.push('alarm');
-    }
-    c = clamp(c, 4, 19);
-    d.target = { low: round1(c - 1.5), high: round1(c + 1.5), notes };
-  } else {
-    d.target = null;
-  }
+  setTarget(d);
 
   // Trends inkl. heute
   const span = (n, f) => {
@@ -395,7 +400,134 @@ function computeDay(i, date, raw, days, S) {
     }
   }
   d.debt7 = counted >= 3 ? Math.max(0, debt) : null;
+
+  // Infekt-Frühwarnung: bei deutlichen Frühzeichen zeigt Puls nie „voll erholt“
+  d.ill = illnessScore(d, days, i);
+  if (d.recovery != null && d.ill.level >= 2) {
+    const cap = d.ill.level >= 3 ? 33 : 55;
+    if (d.recovery > cap) {
+      d.recoveryRaw = d.recovery;
+      d.recovery = cap;
+      d.zone = zoneOf(cap);
+      setTarget(d);
+    }
+  }
   return d;
+}
+
+// ---------------------------------------------------------------- Infekt-Frühwarnung
+
+export const ILL_LEVELS = ['unauffällig', 'beobachten', 'erhöht', 'hoch'];
+export const ILL_LABELS = { rhr: 'Ruhepuls', hrv: 'HRV', resp: 'Atemfrequenz', temp: 'Hauttemperatur', trend: 'HRV-Trend', persist: 'Mehrere Nächte', load: 'Last und Schlaf', feel: 'Dein Gefühl' };
+
+/**
+ * Frühzeichen eines Infekts aus der Nacht: Ruhepuls hoch, HRV tief, Atemfrequenz und Hauttemperatur
+ * hoch – jeweils gegen die eigene Basis (Tag −45 bis −3; die letzten 2 Tage zählen nicht mit, damit
+ * ein beginnender Infekt die Basis nicht verschiebt). Studien mit Wearables zeigen, dass Ruhepuls und
+ * Atemfrequenz oft 1–3 Tage vor den ersten Symptomen steigen (Mishra 2020, Radin 2020, Miller 2020).
+ * Punkte: je Signal 1 (leicht) oder 2 (deutlich); +1, wenn schon die Nacht davor auffällig war;
+ * +1 bei sehr hoher Trainingslast mit zu wenig Schlaf. Stufen: 0–1 unauffällig, 2–3 beobachten,
+ * 4–5 erhöht, ab 6 hoch.
+ */
+function illnessScore(d, days, i) {
+  const base = (f) => {
+    const out = [];
+    for (let k = Math.max(0, i - 45); k < i - 2; k++) {
+      const v = f(days[k]);
+      if (isNum(v)) out.push(v);
+    }
+    return out;
+  };
+  const signals = [];
+  const add = (key, pts, text, value) => {
+    if (pts > 0) signals.push({ key, label: ILL_LABELS[key], pts, text, value });
+  };
+  const rhrH = base((x) => x.rhr);
+  if (isNum(d.rhr) && rhrH.length >= 10) {
+    const delta = d.rhr - mean(rhrH);
+    const z = delta / Math.max(1.5, sd(rhrH));
+    add('rhr', delta >= 4 || z >= 2 ? 2 : delta >= 2 && z >= 1 ? 1 : 0, `Ruhepuls ${signed(delta)} bpm über deinem Normalwert`, delta);
+  }
+  const hrvH = base((x) => (x.hrv ? Math.log(x.hrv) : null));
+  if (isNum(d.hrv) && hrvH.length >= 10) {
+    const m = mean(hrvH);
+    const z = (Math.log(d.hrv) - m) / Math.max(0.06, sd(hrvH));
+    const pct = 100 * (d.hrv / Math.exp(m) - 1);
+    add('hrv', z <= -1.75 || pct <= -20 ? 2 : z <= -1 || pct <= -10 ? 1 : 0, `HRV ${signed(pct)} % gegenüber normal`, pct);
+  }
+  const respH = base((x) => x.resp);
+  if (isNum(d.resp) && respH.length >= 10) {
+    const delta = d.resp - mean(respH);
+    add('resp', delta >= 1 ? 2 : delta >= 0.5 ? 1 : 0, `Atemfrequenz ${signed(delta, 1)} Atemzüge/Min. über normal`, delta);
+  }
+  if (isNum(d.skinTemp)) add('temp', d.skinTemp >= 0.6 ? 2 : d.skinTemp >= 0.3 ? 1 : 0, `Hauttemperatur ${signed(d.skinTemp, 1)} °C über normal`, d.skinTemp);
+  const prevDay = days[i - 1];
+  if (d.hrvTrend === 'low' && isNum(prevDay?.hrv7) && isNum(d.hrv7) && d.hrv7 < prevDay.hrv7) {
+    add('trend', 1, 'HRV-Wochenschnitt sinkt und liegt unter deinem Normalbereich', d.hrv7);
+  }
+  const raw = signals.reduce((t, x) => t + x.pts, 0);
+  if (raw >= 1 && (prevDay?.ill?.raw ?? 0) >= 2) add('persist', 1, 'Schon die zweite auffällige Nacht in Folge', null);
+  if (d.load?.ratio > 1.5 && isNum(d.perf) && d.perf < 75) add('load', 1, 'Sehr hohe Trainingslast und zu wenig Schlaf schwächen das Immunsystem', d.load.ratio);
+  const score = signals.reduce((t, x) => t + x.pts, 0);
+  const level = score >= 6 ? 3 : score >= 4 ? 2 : score >= 2 ? 1 : 0;
+  return { raw, score, level, label: ILL_LEVELS[level], signals };
+}
+
+/**
+ * Infekt-Radar für einen Tag, inkl. deines Gefühls („angeschlagen“ zählt 3 Punkte) und eines Blicks in
+ * deine Vergangenheit: Wie oft gab es so ein Muster, welches Signal kam bei dir zuerst, und hast du
+ * danach „krank / angeschlagen“ im Morgen-Check eingetragen?
+ */
+export function illnessRisk(model, i = model.days.length - 1, { feel = null, journal = {} } = {}) {
+  const d = model.days[i];
+  const ill = d.ill || { score: 0, signals: [] };
+  const signals = [...ill.signals];
+  const yesterday = addDays(d.date, -1);
+  if (feel === 'sick' || journal?.[yesterday]?.krank) {
+    signals.push({ key: 'feel', label: ILL_LABELS.feel, pts: 3, text: feel === 'sick' ? 'Du fühlst dich angeschlagen' : 'Gestern im Morgen-Check: krank / angeschlagen', value: null });
+  }
+  const score = signals.reduce((t, x) => t + x.pts, 0);
+  const level = score >= 6 ? 3 : score >= 4 ? 2 : score >= 2 ? 1 : 0;
+  const alcohol = !!journal?.[yesterday]?.alkohol;
+
+  // Rückblick: Phasen mit „erhöht“ oder „hoch“ in den letzten 120 Tagen
+  const episodes = [];
+  for (let k = Math.max(1, i - 120); k < i - 1; k++) {
+    const x = model.days[k];
+    if ((x.ill?.level ?? 0) < 2 || (model.days[k - 1].ill?.level ?? 0) >= 2) continue;
+    // Welches Signal tauchte zuerst auf (bis zu 3 Tage vorher)?
+    let lead = null;
+    for (let back = 3; back >= 0 && !lead; back--) {
+      const y = model.days[k - back];
+      const first = y?.ill?.signals?.filter((sg) => ['rhr', 'hrv', 'resp', 'temp'].includes(sg.key)).sort((a, b) => b.pts - a.pts)[0];
+      if (first) lead = { key: first.key, daysBefore: back };
+    }
+    let sick = false;
+    for (let off = -1; off <= 4; off++) if (journal?.[addDays(x.date, off)]?.krank) sick = true;
+    episodes.push({ date: x.date, lead, sick });
+  }
+  const leads = {};
+  for (const e of episodes) if (e.lead) leads[e.lead.key] = (leads[e.lead.key] || 0) + 1;
+  const leadKey = Object.entries(leads).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  const early = episodes.filter((e) => e.lead?.daysBefore >= 1).length;
+  const history = {
+    episodes,
+    leadKey,
+    leadLabel: leadKey ? ILL_LABELS[leadKey] : null,
+    early,
+    sickLogged: episodes.filter((e) => e.sick).length,
+  };
+
+  const advice =
+    level >= 3
+      ? ['Heute kein Training – Ruhe ist jetzt das beste Training.', 'Viel trinken, früh ins Bett, Alkohol meiden.', 'Fieber, Atemnot oder Brustschmerz: ärztlich abklären. Erst 1–2 Tage nach den Symptomen wieder locker anfangen.']
+      : level >= 2
+        ? ['Heute höchstens locker bewegen (Rad oder Spaziergang, Puls niedrig) – kein Gym-Volumen.', 'Viel trinken, 30–60 Min. früher schlafen.', 'Morgen früh schaut Puls wieder nach.']
+        : level >= 1
+          ? ['Training ist okay, aber nicht ans Limit gehen.', 'Achte heute auf Schlaf und Flüssigkeit.']
+          : [];
+  const note = alcohol && signals.some((x) => x.key === 'rhr' || x.key === 'hrv') ? 'Gestern Alkohol – das erklärt einen erhöhten Ruhepuls und eine niedrige HRV oft. Bleibt es morgen so, ist ein Infekt wahrscheinlicher.' : null;
+  return { level, label: ILL_LEVELS[level], score, signals, advice, note, history, date: d.date };
 }
 
 // ---------------------------------------------------------------- Gesamtauswertung
@@ -1289,7 +1421,7 @@ export function healthTrends(model, i = model.days.length - 1) {
 const fmtN = (v, digits = 0) => (isNum(v) ? (digits ? v.toFixed(digits).replace('.', ',') : String(Math.round(v))) : '–');
 
 /** Kompakte Text-Zusammenfassung aller Daten für den Coach (ohne Rohdaten). */
-export function coachContext(model, journal = {}, i = model.days.length - 1, profile = {}) {
+export function coachContext(model, journal = {}, i = model.days.length - 1, profile = {}, training = '') {
   const S = model.settings;
   const d = model.days[i];
   const lines = [];
@@ -1330,8 +1462,10 @@ export function coachContext(model, journal = {}, i = model.days.length - 1, pro
     L('Recovery: noch keine Schlafdaten für heute.');
   }
   L(`Strain bisher ${fmtN(d.strain, 1)} von 21${d.acts.length ? `; Aktivitäten: ${d.acts.map((a) => `${a.name || a.type} ${a.start} ${Math.round(a.dur / 60)} Min. Ø${a.avgHr || '–'} bpm (Strain ${fmtN(a.strain, 1)})`).join('; ')}` : ''}.`);
-  const coach = buildCoach(model, i);
-  if (coach.plan) L(`App-Empfehlung Training: ${coach.plan} ${coach.remaining?.text || ''}`);
+  if (!training) {
+    const coach = buildCoach(model, i);
+    if (coach.plan) L(`App-Empfehlung Training: ${coach.plan} ${coach.remaining?.text || ''}`);
+  }
   const st = d.stats || {};
   L(`Tageswerte: Schritte ${fmtN(st.steps)}${st.padSteps ? ` (davon ${fmtN(st.padSteps)} vom Walking-Pad, das die Uhr nicht gezählt hat)` : ''}, Kalorien ${fmtN(st.kcal)}, Stress Ø ${fmtN(st.stress)}, Body Battery max ${fmtN(st.bbHigh)}${isNum(st.bbNow) ? ` jetzt ${st.bbNow}` : ''}.`);
   if (i === model.days.length - 1) {
@@ -1349,6 +1483,10 @@ export function coachContext(model, journal = {}, i = model.days.length - 1, pro
   const ins = buildInsights(model, i, journal);
   if (ins.length) L(`Hinweise der App: ${ins.map((x) => `${x.title} (${x.text})`).join(' | ')}`);
   L();
+  if (training) {
+    L(training);
+    L();
+  }
 
   const ht = healthTrends(model, i);
   if (ht.items.length) {

@@ -14,7 +14,7 @@ const sub = { subscription: { endpoint: 'https://x' } };
 
 test('Morgens kommt die Recovery-Nachricht genau einmal', () => {
   const m = dueMessages(model, at(7, 30), {}).find((x) => x.kind === 'morning');
-  assert.ok(m && /Recovery \d+ %/.test(m.title) && /Ziel-Strain/.test(m.body));
+  assert.ok(m && /Recovery \d+ %/.test(m.title) && /Heute: (Rad|Gym|Heute Pause)/.test(m.body), m?.body);
   assert.ok(!dueMessages(model, at(7, 30), { morning: today }).some((x) => x.kind === 'morning'));
   assert.ok(!dueMessages(model, at(15), {}).some((x) => x.kind === 'morning'));
   assert.deepEqual(dueMessages(model, at(8, 0, E.addDays(today, 1)), {}), []);
@@ -170,4 +170,14 @@ test('Morgenwache: startet nur morgens und nur, wenn die Nacht von heute fehlt',
   const yesterday = { ...model, days: model.days.slice(0, -1) };
   assert.equal(needsNightWatch(yesterday, at(8)), true); // heute noch gar kein Tag
   assert.equal(needsNightWatch(null, at(8)), true);
+});
+
+test('Morgens mit Infekt-Zeichen: Warnung statt Trainingsplan', () => {
+  const last = model.days[model.days.length - 1];
+  const ill = { level: 2, score: 4, raw: 4, signals: [{ key: 'rhr', pts: 2, text: 'Ruhepuls +5 bpm über deinem Normalwert' }, { key: 'resp', pts: 2, text: 'Atemfrequenz +1,1 Atemzüge/Min. über normal' }] };
+  const sickModel = { ...model, days: [...model.days.slice(0, -1), { ...last, ill }] };
+  const m = dueMessages(sickModel, at(7, 30), {}).find((x) => x.kind === 'morning');
+  assert.match(m.title, /Infekt-Frühwarnung · erhöht/);
+  assert.match(m.body, /Ruhepuls \+5 bpm/);
+  assert.match(m.body, /nur locker/);
 });

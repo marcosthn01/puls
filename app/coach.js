@@ -6,6 +6,11 @@
 // neue Daten kommen als zusätzliche System-Nachricht hinter die nächste Frage.
 
 import * as E from './engine.js';
+import * as T from './training.js';
+
+/** Daten für den Coach – inkl. Training und Infekt-Frühwarnung von Puls. */
+const context = (app, model = app.model(), profile = app.profile?.() || {}) =>
+  E.coachContext(model, app.journal(), model.days.length - 1, profile, T.trainingBlock(model, model.days.length - 1, { journal: app.journal(), ...(app.trainingOpts?.() || {}) }));
 import { esc } from './charts.js';
 
 const SDK_URL = './vendor/anthropic-sdk-1.3.0.mjs';
@@ -87,7 +92,7 @@ const PERSONA = `Du bist der Puls-Coach in der privaten iPhone-App „Puls“: e
 So antwortest du:
 - Persönlich statt pauschal: Jede Aussage stützt sich auf SEINE Werte und vergleicht sie mit SEINER Basis (z. B. „HRV 41 ms – 12 % unter deinem Schnitt von 47 ms“). Keine Allgemeinplätze, die für jeden gelten würden.
 - Zusammenhänge erklären: verbinde Schlaf, Belastung, Stress, Morgen-Check-Verhalten, Gesundheits-Check und seine eigenen Angaben (Ziel, Gesundheit, Essen, Training).
-- Training konkret: Sportart, Dauer, Pulsbereich in bpm (Zonen unten), Intensität – passend zu Recovery, Ziel-Strain, Ziel und Hauptsport. Wochenpläne als kurze Liste, ein Tag pro Zeile.
+- Training konkret und in SEINER Welt (siehe „## Training“: was er wirklich trainiert, z. B. Gym Push/Pull und Rad): Rad mit Dauer und Puls in bpm, Gym mit Split, Volumen und Wiederholungen in Reserve. Keine Trainingsformen, die er nicht macht (keine Intervalle oder Zone-4-Blöcke, wenn er die nie trainiert). Folge der Puls-Empfehlung oder begründe die Abweichung. Wochenpläne als kurze Liste, ein Tag pro Zeile.
 - Ernährung konkret: nutze die von Puls berechneten Tageswerte (kcal, Eiweiß, Kohlenhydrate, Fett, Wasser, Koffein-Grenze) statt eigener Zahlen; gib Mahlzeiten-Ideen passend zu Ernährungsform und Vorlieben und Timing ums Training.
 - Medizinisch verantwortungsvoll: keine Diagnosen. Ordne Auffälligkeiten ein (harmlos/beobachten/abklären). Bei Warnzeichen oder Beschwerden klar zum Arzt raten und sagen, was er dort ansprechen soll. Berücksichtige Angaben zu Vorerkrankungen und Medikamenten (z. B. Betablocker senken den Puls).
 - Kurz und klar: meist 2–6 Sätze oder eine knappe Liste. Fachbegriffe nur mit kurzer Erklärung. Formatierung: **fett** für Kernaussagen, Listen mit „- “. Keine Tabellen, keine Überschriften.
@@ -271,7 +276,7 @@ function newChat(app) {
   return {
     started: Date.now(),
     dataStamp: model.generated,
-    system: `${PERSONA}\n\n<daten>\n${E.coachContext(model, app.journal(), model.days.length - 1, app.profile?.() || {})}\n</daten>`,
+    system: `${PERSONA}\n\n<daten>\n${context(app, model)}\n</daten>`,
     messages: [],
   };
 }
@@ -288,7 +293,7 @@ export async function ask(text, app, ui) {
   let newStamp = null;
   if (chat.messages.length > 1 && model.generated && model.generated !== chat.dataStamp) {
     // Neue Daten seit Chatbeginn: als System-Nachricht anhängen (System-Prompt bleibt unverändert).
-    chat.messages.push({ role: 'system', content: `Neuer Datenstand (ersetzt die Werte für heute):\n${E.coachContext(model, app.journal(), model.days.length - 1, app.profile?.() || {}).split('\n## Woche')[0]}` });
+    chat.messages.push({ role: 'system', content: `Neuer Datenstand (ersetzt die Werte für heute):\n${context(app, model).split('\n## Gesundheits-Check')[0]}` });
     newStamp = model.generated;
   }
   saveChat(chat);
@@ -423,9 +428,10 @@ const REPORT_PERSONA = `Du schreibst den persönlichen Tagesbericht in der priva
 So schreibst du:
 - Persönlich: Jede Aussage stützt sich auf konkrete Werte aus <daten> und vergleicht sie mit SEINER Basis (z. B. „Ruhepuls 58 – 4 Schläge über deinem Schnitt“). Nichts, was für jeden gelten würde.
 - Ursachen statt Symptome: Verbinde Schlaf, Belastung der letzten Tage, Stress, Morgen-Check-Verhalten (Alkohol, spätes Essen …), Trends aus dem Gesundheits-Check und seine eigenen Angaben (Ziel, Training, Essen, Gesundheit).
-- Training: genau ein klarer Vorschlag für heute (Art, Dauer, Puls in bpm aus den Zonen, Intensität), passend zu Recovery, Ziel-Strain, Ziel und Hauptsport; wenn schon trainiert wurde, was jetzt noch sinnvoll ist.
+- Training: genau EIN konkreter Vorschlag für heute in seiner eigenen Trainingswelt (siehe „## Training“: was er wirklich trainiert, z. B. Gym im Push/Pull-Wechsel oder Rad). Rad: Dauer in Minuten und Puls in bpm. Gym: welcher Split und wie viel Volumen (z. B. „−20 % Volumen, 2–3 Wdh. in Reserve“ oder „volles Volumen + 1 Satz, Supersätze fürs Zubehör“). Folge der Puls-Empfehlung; weiche nur mit klarer Begründung ab. Schlage NIE Trainingsformen vor, die er nicht macht (keine Intervalle, keine Zone-4-Blöcke, kein Laufen, wenn er nie läuft). Bei Infekt-Frühwarnung „erhöht“/„hoch“ oder wenn er sich angeschlagen fühlt: klar zu Pause oder nur lockerer Bewegung raten und sagen, warum (z. B. „Ruhepuls +5, Atmung +1 – so fing es bei dir schon mal an“).
 - Ernährung: verwende exakt die von Puls berechneten Zielwerte (kcal, Eiweiß, Kohlenhydrate, Fett, Wasser, Koffein-Grenze); erfinde keine anderen Zahlen. Gib 2–3 konkrete Mahlzeiten-Ideen passend zu Ernährungsform und Vorlieben, mit Timing ums Training. Fehlt das Gewicht, sag es kurz.
 - Schlaf: konkrete Uhrzeit fürs Zubettgehen und was heute Abend am meisten hilft.
+- Infekt: Nutze die Infekt-Frühwarnung und seine Vorgeschichte; warne früh und konkret, wenn sich etwas anbahnt – lieber einen Tag zu vorsichtig.
 - Gesundheit: Auffälligkeiten aus Körper-Check und Gesundheits-Check ehrlich einordnen (harmlos / beobachten / ärztlich abklären). Keine Diagnosen, keine Medikamenten-Empfehlungen. Bei Warnzeichen klar zum Arzt raten und sagen, was dort anzusprechen ist. Berücksichtige Vorerkrankungen und Medikamente aus seinen Angaben.
 - Sprache: Deutsch, du-Form, warm, direkt, verständlich ohne Fachwissen.
 - SEHR KNAPP – der Bericht wird auf dem Handy in 20 Sekunden gelesen: Schlagzeile höchstens 8 Wörter. Einschätzung höchstens 2 kurze Sätze. Fokus 1 kurzer Satz. Jeder Abschnitt: 1 Satz plus höchstens 2 Stichpunkte mit je höchstens 8 Wörtern. Höchstens 2 Hinweise. Lieber weglassen als ausführen. Kein Markdown außer **fett** für die eine wichtigste Zahl.
@@ -470,12 +476,13 @@ export const REPORT_SCHEMA = {
 };
 
 /** Schlüssel, der sich nur ändert, wenn ein neuer Bericht sinnvoll ist (neue Nacht, anderes Profil). */
-export function reportKey(model, profile = {}) {
+export function reportKey(model, profile = {}, extra = '') {
   const d = model.days[model.days.length - 1];
   const p = [profile.goal, profile.weight, profile.height, profile.diet, profile.food, profile.health, profile.training].map((v) => v ?? '').join('|');
   let h = 0;
   for (const ch of p) h = (h * 31 + ch.charCodeAt(0)) | 0;
-  return `r2|${d.date}|${d.recovery ?? 'x'}|${h}`;
+  // r3: neue Regeln für Training und Infekt – heutiger Bericht wird einmal neu geschrieben
+  return `r3|${d.date}|${d.recovery ?? 'x'}|${h}${extra ? `|${extra}` : ''}`;
 }
 
 export const cachedReport = () => store.get(LS_REPORT, null);
@@ -490,7 +497,7 @@ export async function dailyReport(app) {
   const model = app.model();
   const profile = app.profile?.() || {};
   const d = model.days[model.days.length - 1];
-  const ctx = E.coachContext(model, app.journal(), model.days.length - 1, profile);
+  const ctx = context(app, model, profile);
   const { Anthropic, api } = await client();
   const cfg = coachConfig();
   const params = {
@@ -520,7 +527,7 @@ export async function dailyReport(app) {
     throw new Error('Der Bericht kam unvollständig an. Bitte nochmal versuchen.');
   }
   if (!validReport(report)) throw new Error('Der Bericht kam unvollständig an. Bitte nochmal versuchen.');
-  const entry = { key: reportKey(model, profile), date: d.date, at: Date.now(), model: message.model || cfg.model, report };
+  const entry = { key: reportKey(model, profile, app.reportExtra?.() || ''), date: d.date, at: Date.now(), model: message.model || cfg.model, report };
   store.set(LS_REPORT, entry);
   return entry;
 }

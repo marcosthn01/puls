@@ -5,8 +5,9 @@ import { arcGauge, bars, esc, hrCurve, hypnogram, innerOrb, lines, rangeBar, rin
 import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 import * as Hud from './hud.js';
+import * as T from './training.js';
 
-const VERSION = '5.2.0';
+const VERSION = '5.3.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -27,6 +28,8 @@ const LS = {
   goals: 'puls.goals',
   reportAuto: 'puls.reportAuto',
   theme: Hud.THEME_KEY,
+  splits: 'puls.splits',
+  feel: 'puls.feel',
 };
 
 const PUSH_KINDS = [
@@ -199,6 +202,8 @@ const ZONE_TEXT = {
 
 /** Kurze Erklärungen für die (i)-Knöpfe. */
 const INFO = {
+  training: ['Training heute', 'Puls lernt aus deinen Garmin-Aktivitäten der letzten 6 Wochen, was du trainierst (z. B. Gym im Push/Pull-Wechsel und Rad), wie lange du fährst und mit welchem Puls. Daraus und aus Recovery, HRV-Trend, Schlaf, Trainingslast und Infekt-Zeichen wird die Empfehlung: Rad mit Dauer und Puls, Gym mit Volumen und Wiederholungen in Reserve. Benenne deine Gym-Einheiten in Garmin „Push“ und „Pull“ – oder tippe es einmal hier an.'],
+  illness: ['Infekt-Frühwarnung', 'Vergleicht jede Nacht Ruhepuls, HRV, Atemfrequenz und Hauttemperatur mit deinem eigenen Normalwert der letzten 6 Wochen. Studien mit Wearables zeigen: Ruhepuls und Atmung steigen oft 1–3 Tage vor den ersten Symptomen. Mehrere auffällige Werte, zwei Nächte in Folge oder dein Gefühl „angeschlagen“ erhöhen die Stufe. Ab „erhöht“ zeigt Puls nie volle Recovery an. Eine Schätzung, keine Diagnose.'],
   recovery: ['Recovery', 'Wie erholt dein Körper heute ist (0–100 %). Grün = bereit für harte Belastung, Gelb = moderat, Rot = Erholung. Berechnet aus HRV, Ruhepuls und Schlaf – verglichen mit deinen letzten 30 Tagen.'],
   strain: ['Strain', 'Wie stark du Herz und Kreislauf heute belastest (0–21). Der äußere Bogen ist dein Tagesziel – passend zu deiner Recovery. Ab 14 ist ein harter Tag, ab 18 sehr hart.'],
   sleep: ['Schlaf', 'Wie viel deines Schlafbedarfs du geschafft hast. Dein Bedarf steigt nach harten Tagen und wenn dir Schlaf fehlt. Der Schlafplaner sagt dir, wann du ins Bett solltest.'],
@@ -228,6 +233,10 @@ function toast(text) {
 // ------------------------------------------------------------------ Journal (Morgen-Check)
 
 const profile = () => ls.get(LS.profile, {});
+const splitLabels = () => ls.get(LS.splits, {});
+const feelOn = (date) => (ls.get(LS.feel, {})?.date === date ? 'sick' : null);
+const reportExtra = () => (feelOn(state.model.days[state.model.days.length - 1].date) ? 'krank' : '');
+const planFor = (i) => T.trainingPlan(state.model, i, { labels: splitLabels(), feel: feelOn(state.model.days[i].date), journal: journal() });
 const questions = () => E.journalQuestions(ls.get(LS.customQ, []));
 const journal = () => (state.demo ? state.demoJournal : ls.get(LS.journal, {}));
 function saveJournal(date, answers) {
@@ -800,7 +809,7 @@ function dials(d, anim) {
   const caps = [
     cmp(d.perf, y?.perf, (v) => `${Math.round(v)}`),
     cmp(d.recovery, y?.recovery, (v) => `${Math.round(v)}`),
-    d.target ? `<span class="capsub muted">${esc(E.buildCoach(state.model, d.i).remaining?.short || '')}</span>` : '<span class="capsub">&nbsp;</span>',
+    d.target ? `<span class="capsub muted">${esc(shortPlan(planFor(d.i)))}</span>` : '<span class="capsub">&nbsp;</span>',
   ];
   const R = { size: 104, stroke: 8, labelSize: 30, anim };
   return `<section class="rings v4">
@@ -858,20 +867,8 @@ function viewToday(anim) {
   const plan = isLatest ? E.bedtimePlan(m, i) : null;
   const v = E.vitals(m, i);
 
-  // Plan des Tages: drei Zeilen statt Textblock
-  let planCard;
-  if (coach.state === 'nodata') {
-    planCard = card('', `<h3 class="headline">${esc(coach.headline)}</h3><p class="muted small">${esc(coach.text)}</p>${plan ? rowLink(I.bed, 'var(--sleep)', `Ins Bett um ${clockDE(plan.options[0].bed)}`, `${E.fmtDur(plan.need.total)} Std. Schlaf nötig`, 'data-tab="schlaf"') : ''}`, 'plan');
-  } else {
-    planCard = `<section class="card plan">
-      <h3 class="headline zone-${coach.state}">${esc(coach.headline)}</h3>
-      ${driversLine(d)}
-      ${coach.notes.length ? `<p class="small muted" style="margin:2px 0 8px">${esc(coach.notes[0])}</p>` : ''}
-      ${rowLink(I.strain, 'var(--strain)', `Ziel-Strain ${de1(d.target.low)}–${de1(d.target.high)}`, esc(coach.remaining.short || coach.remaining.text), 'data-tab="belastung"')}
-      ${plan ? rowLink(I.bed, 'var(--sleep)', `Ins Bett um ${clockDE(plan.options[0].bed)}`, `${E.fmtDur(plan.need.total)} Std. Schlaf · spätestens ${clockDE(plan.options[1].bed)}`, 'data-tab="schlaf"') : ''}
-      ${rowLink(I.coach, 'var(--green)', 'Coach fragen', 'z. B. „Was soll ich heute trainieren?“', 'data-tab="coach"')}
-    </section>`;
-  }
+  // Training heute (ersetzt den allgemeinen Tagesplan)
+  const planCard = trainingCard(m, i, plan);
 
   // Morgen-Check (eine Zeile)
   let journalRow = '';
@@ -910,8 +907,67 @@ function viewToday(anim) {
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
   return `${setupCard()}${telemetry(d)}${dials(d, anim)}${dashTiles(m, i)}
-    <h2 class="bighead">Mein Tag</h2>${planCard}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
+    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
     <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
+}
+
+// ------------------------------------------------------------------ Training heute, Infekt-Frühwarnung
+
+const shortPlan = (p) => (p.kind === 'rest' ? 'Heute Pause' : p.kind === 'done' ? 'Training erledigt' : p.kind === 'none' || p.kind === 'free' ? '' : p.kind === 'bike' ? `Rad ${p.min} Min.` : p.title.replace(' · ', ' '));
+const KIND_IC = { bike: () => I.bike, gym: () => I.lift, rest: () => I.bed, done: () => I.check, none: () => I.watch, free: () => I.act };
+
+function trainingCard(m, i, bed) {
+  const p = planFor(i);
+  const d = m.days[i];
+  const isToday = i === m.days.length - 1;
+  const sub = p.kind === 'gym' ? p.sub.split(' – ') : [p.sub];
+  const gym = p.profile.gym;
+  const ask =
+    isToday && gym?.unlabeled && !gym.lastSplit && (gym.splits?.length || 0) < 2
+      ? `<div class="tr-ask"><span>Dein letztes Gym (${esc(shortDate(gym.unlabeled.date))}) war …</span>${['push', 'pull', 'legs'].map((k) => `<button class="qchip" data-act="split" data-id="${esc(String(gym.unlabeled.id))}" data-split="${k}">${T.SPLITS[k]}</button>`).join('')}</div>`
+      : '';
+  const sick = feelOn(d.date) === 'sick';
+  return `<section class="card train lv-${p.level || p.kind}">
+    <h2>Training ${isToday ? 'heute' : 'an diesem Tag'}${infoBtn('training')}</h2>
+    <div class="tr-main"><span class="tr-ic k-${p.kind}">${KIND_IC[p.kind]?.() || I.act}</span><div><b>${esc(p.title)}</b>${sub[0] ? `<span>${esc(sub[0])}</span>` : ''}</div></div>
+    ${sub[1] ? `<p class="tr-how">${esc(sub[1])}</p>` : ''}
+    ${p.bullets.length ? `<ul class="tr-why">${p.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+    ${p.alt ? `<p class="tr-alt">${esc(p.alt)}</p>` : ''}
+    ${ask}
+    ${isToday ? `<div class="tr-foot">
+      ${bed ? rowLink(I.bed, 'var(--sleep)', `Ins Bett um ${clockDE(bed.options[0].bed)}`, `${E.fmtDur(bed.need.total)} Std. Schlaf · spätestens ${clockDE(bed.options[1].bed)}`, 'data-tab="schlaf"') : ''}
+      <button class="feelbtn ${sick ? 'on' : ''}" data-act="feel">${I.alert}<span>${sick ? 'Du fühlst dich angeschlagen – tippe, wenn es dir wieder gut geht' : 'Fühlst du dich angeschlagen?'}</span></button>
+    </div>` : ''}
+  </section>`;
+}
+
+const ILL_TONE = ['ok', 'watch', 'warn', 'bad'];
+function illnessRow(m, i) {
+  const r = E.illnessRisk(m, i, { feel: feelOn(m.days[i].date), journal: journal() });
+  if (r.level < 1) return '';
+  const top = r.signals.slice(0, 2).map((x) => x.label).join(' · ');
+  return `<section class="card slim ill-row tone-${ILL_TONE[r.level]}">${rowLink(I.alert, r.level >= 2 ? 'var(--red)' : 'var(--yellow)', `Infekt-Frühwarnung: ${r.label}`, esc(top), 'data-tab="recovery"')}</section>`;
+}
+
+function illnessCard(m, i) {
+  const r = E.illnessRisk(m, i, { feel: feelOn(m.days[i].date), journal: journal() });
+  const seg = [0, 1, 2, 3].map((k) => `<i class="${k <= r.level ? `on t${r.level}` : ''}"></i>`).join('');
+  const h = r.history;
+  const past = h.episodes.length
+    ? `In den letzten 4 Monaten gab es ${h.episodes.length === 1 ? 'eine solche Phase' : `${h.episodes.length} solche Phasen`} (zuletzt ${shortDate(h.episodes[h.episodes.length - 1].date)}).${h.leadLabel ? ` Bei dir zeigte sich zuerst meist: ${h.leadLabel}${h.early ? `, ${h.early === 1 ? 'einmal' : `${h.early}×`} schon 1–3 Tage vorher` : ''}.` : ''}${h.sickLogged ? ` ${h.sickLogged}× hast du danach „krank / angeschlagen“ eingetragen.` : ''}`
+    : 'In den letzten 4 Monaten gab es bei dir keine Phase mit erhöhtem Risiko.';
+  const sick = feelOn(m.days[i].date) === 'sick';
+  return card(
+    'Infekt-Frühwarnung',
+    `<div class="ill-top"><div class="ill-meter">${seg}</div><b class="ill-lvl t${r.level}">${esc(r.label[0].toUpperCase() + r.label.slice(1))}</b></div>
+    ${r.signals.length ? `<ul class="ill-sig">${r.signals.map((x) => `<li><i class="p${x.pts}"></i>${esc(x.text)}</li>`).join('')}</ul>` : '<p class="small muted">Ruhepuls, HRV, Atmung und Temperatur liegen in deinem Normalbereich.</p>'}
+    ${r.note ? `<p class="small" style="margin-top:8px">${esc(r.note)}</p>` : ''}
+    ${r.advice.length ? `<ul class="ntips">${r.advice.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${note(esc(past))}
+    ${i === m.days.length - 1 ? `<button class="feelbtn ${sick ? 'on' : ''}" data-act="feel">${I.alert}<span>${sick ? 'Du fühlst dich angeschlagen – tippe, wenn es dir wieder gut geht' : 'Ich fühle mich angeschlagen'}</span></button>` : ''}`,
+    'illcard',
+    'illness',
+  );
 }
 
 // ------------------------------------------------------------------ Tagesrückblick, Wochenziele
@@ -983,7 +1039,7 @@ function reportCard(m, i) {
     return `<section class="card slim">${rowLink(I.journal, 'var(--green)', 'Dein persönlicher Tagesbericht', 'Wie beim Arzt: jeden Morgen eine Einschätzung deiner Werte · KI-Coach einrichten', 'data-act="setup-coach"')}</section>`;
   }
   const cached = Coach.cachedReport();
-  const fresh = cached && cached.key === Coach.reportKey(m, profile());
+  const fresh = cached && cached.key === Coach.reportKey(m, profile(), reportExtra());
   const today = cached && cached.date === d.date ? cached : null;
   if (reportRun.busy && !today) {
     return `<section class="card report"><div class="rp-top"><span class="rp-badge">Dein Tagesbericht</span></div><div class="rp-wait"><span class="spinner small"></span><span>Dein Coach schaut sich deine Werte an … <span class="muted">(ca. 30–60 Sek.)</span></span></div></section>`;
@@ -1023,7 +1079,7 @@ function maybeReport() {
   if (!m || m.empty || state.sel !== m.days.length - 1) return;
   const d = m.days[m.days.length - 1];
   if (d.recovery == null || d.date !== todayIso() || !Coach.coachConfig().apiKey || ls.get(LS.reportAuto, true) === false) return;
-  const key = Coach.reportKey(m, profile());
+  const key = Coach.reportKey(m, profile(), reportExtra());
   const cached = Coach.cachedReport();
   if (cached?.key === key || reportRun.tried.has(key)) return;
   reportRun.tried.add(key);
@@ -1196,6 +1252,7 @@ function viewRecovery(anim) {
     ${driversLine(d)}
   </section>`);
   parts.push(factorsCard(d));
+  parts.push(illnessCard(m, i));
   parts.push(bodyCheckCard(E.vitals(m, i)));
   parts.push(healthTrendsCard(m, i));
   parts.push(stressCard(d));
@@ -1678,6 +1735,8 @@ function journalListCard(m) {
 const coachApp = {
   model: () => state.model,
   journal,
+  trainingOpts: () => ({ labels: splitLabels(), feel: feelOn(state.model.days[state.model.days.length - 1].date) }),
+  reportExtra,
   saveJournal: (date, answers) => saveJournal(date, answers),
   saveSettings: (patch) => {
     const user = { ...ls.get(LS.settings, {}), ...patch };
@@ -2153,6 +2212,8 @@ function viewSettings() {
   <section class="card"><h2>So rechnet Puls</h2>
     <details><summary>Recovery</summary><p>HRV 50 %, Ruhepuls 20 %, Schlaf 30 % – jeweils verglichen mit deinen letzten 30 Tagen. Abzüge bei erhöhter Atemfrequenz oder Hauttemperatur. Grün ab 67 %, Gelb ab 34 %.</p></details>
     <details><summary>Strain</summary><p>Herz-Kreislauf-Belastung aus deinem Tagespuls (Banister-TRIMP), logarithmisch von 0 bis 21. Ruhetag 4–8, Training 10–14, sehr hart ab 17.</p></details>
+    <details><summary>Training heute</summary><p>Puls schaut sich deine Garmin-Aktivitäten der letzten 6 Wochen an: was du trainierst (Gym, Rad …), wie oft, wie lange deine Fahrten sind und mit welchem Puls. Gym oder Rad hängt davon ab, was länger her ist als üblich und ob die Muskeln vom Vortag noch Ruhe brauchen (rund 48 Std.); bei Push/Pull kommt der jeweils andere Split. Die Dosis: Recovery unter 34 % locker, unter 50 % moderat, ab 80 % hart – eine Stufe weniger bei kurzer Nacht, HRV-Wochenschnitt unter normal oder stark gestiegener Last. Rad: Dauer aus deiner typischen Fahrt, passend zum Ziel-Strain, Puls aus deinen eigenen lockeren, normalen und zügigen Fahrten. Gym: −40 %, −20 %, volles Volumen oder +1 Satz, mit Wiederholungen in Reserve (HRV-gesteuertes Training, Autoregulation über RIR).</p></details>
+    <details><summary>Infekt-Frühwarnung</summary><p>Ruhepuls, HRV, Atemfrequenz und Hauttemperatur der Nacht gegen deinen eigenen Normalwert (Tag −45 bis −3). Je Signal 1 Punkt (leicht: Ruhepuls +2, HRV −10 %, Atmung +0,5, Temperatur +0,3) oder 2 Punkte (deutlich: +4 bpm, −20 %, +1,0, +0,6 °C), +1 für die zweite auffällige Nacht in Folge, +1 für sinkenden HRV-Wochenschnitt, +3 wenn du dich angeschlagen fühlst. Ab 2 Punkten „beobachten“, ab 4 „erhöht“ (Recovery höchstens 55 %, nur lockeres Training), ab 6 „hoch“ (Recovery höchstens 33 %, Pause). Puls zeigt außerdem, welches Signal bei dir früher zuerst auffiel.</p></details>
     <details><summary>Ziel-Strain</summary><p>Mitte = 5,5 + 0,125 × Recovery, Bereich ±1,5. Gesenkt, wenn deine Last stark steigt oder Warnsignale da sind.</p></details>
     <details><summary>Schlafbedarf</summary><p>Basis + 4 Min. je Strain-Punkt über 10 am Vortag + Teil der Schlafschuld (max. 60 Min.) + 15 Min. nach roter Recovery. Schlafenszeit = Weckzeit − Bedarf ÷ Schlafeffizienz − 10 Min.</p></details>
     <details><summary>Tagesbericht</summary><p>Jeden Morgen bekommt der KI-Coach (Claude) alle deine Werte: Recovery mit Bestandteilen, Schlaf, die letzten 14 Tage, den Gesundheits-Check, deinen Morgen-Check, die berechneten Ernährungsziele und deine Angaben (Ziel, Training, Essen, Gesundheit). Er schreibt daraus eine persönliche Einschätzung wie ein Sportarzt, Trainer und Ernährungscoach. Die Zahlen rechnet Puls selbst – der Coach erklärt und verknüpft sie.</p></details>
@@ -2233,6 +2294,21 @@ app.addEventListener('click', async (e) => {
     case 'journal':
       openSheet({ type: 'journal', date: t.dataset.date });
       break;
+    case 'feel': {
+      const date = state.model.days[state.model.days.length - 1].date;
+      const on = feelOn(date) === 'sick';
+      ls.set(LS.feel, on ? {} : { date });
+      toast(on ? 'Schön, dass es dir besser geht.' : 'Notiert – Puls plant heute Ruhe ein.');
+      render();
+      break;
+    }
+    case 'split': {
+      const labels = splitLabels();
+      labels[t.dataset.id] = t.dataset.split;
+      ls.set(LS.splits, labels);
+      render();
+      break;
+    }
     case 'more-insights':
       state.showAllInsights = !state.showAllInsights;
       render();
