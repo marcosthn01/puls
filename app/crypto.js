@@ -40,3 +40,12 @@ export async function openBox(box, passphrase, cache) {
     throw new Error('WRONG_PASSPHRASE');
   }
 }
+
+/** Verschlüsselt ein Objekt mit dem gespeicherten Schlüssel ({salt, iter, key}) – lesbar für sync/crypto_box.py. */
+export async function sealBox(obj, cache) {
+  if (!cache?.key) throw new Error('NO_KEY');
+  const key = await crypto.subtle.importKey('raw', b64(cache.key), 'AES-GCM', false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(obj)));
+  return { v: 1, alg: 'AES-256-GCM', kdf: 'PBKDF2-SHA256', iter: cache.iter, salt: cache.salt, iv: toB64(iv), data: toB64(data) };
+}

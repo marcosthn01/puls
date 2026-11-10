@@ -2,6 +2,8 @@
 // Reines Modul ohne DOM: läuft im Browser und in den Node-Tests (tests/engine.test.mjs).
 // Methodik in Kurzform steht in der App unter Einstellungen → "So rechnet Puls".
 
+import * as Infekt from './infekt.js';
+
 export const HR_BIN_START = 30;
 export const HR_BIN_WIDTH = 5;
 export const ZONE_LIMITS = { green: 67, yellow: 34 };
@@ -430,123 +432,51 @@ function computeDay(i, date, raw, days, S) {
   }
   d.debt7 = counted >= 3 ? Math.max(0, debt) : null;
 
-  // Infekt-Frühwarnung: bei deutlichen Frühzeichen zeigt Puls nie „voll erholt“
-  d.ill = illnessScore(d, days, i);
-  if (d.recovery != null && d.ill.level >= 2) {
-    const cap = d.ill.level >= 3 ? 33 : 55;
-    if (d.recovery > cap) {
-      d.recoveryRaw = d.recovery;
-      d.recovery = cap;
-      d.zone = zoneOf(cap);
-      setTarget(d);
-    }
-  }
   return d;
+}
+
+/** Infekt-Frühwarnung (zweiter Durchlauf, lernendes Modell): bei deutlichen Frühzeichen nie „voll erholt“. */
+function applyIllness(days, illness) {
+  const fit = Infekt.fitIllness(days, illness || {});
+  days.forEach((d, i) => {
+    d.ill = fit.days[i];
+    if (d.recovery != null && d.ill.level >= 2) {
+      const cap = d.ill.level >= 3 ? 33 : 55;
+      if (d.recovery > cap) {
+        d.recoveryRaw = d.recovery;
+        d.recovery = cap;
+        d.zone = zoneOf(cap);
+        setTarget(d);
+      }
+    }
+  });
+  return fit.model;
 }
 
 // ---------------------------------------------------------------- Infekt-Frühwarnung
 
-export const ILL_LEVELS = ['unauffällig', 'beobachten', 'erhöht', 'hoch'];
-export const ILL_LABELS = { rhr: 'Ruhepuls', hrv: 'HRV', resp: 'Atemfrequenz', temp: 'Hauttemperatur', trend: 'HRV-Trend', persist: 'Mehrere Nächte', load: 'Last und Schlaf', feel: 'Dein Gefühl' };
+export const ILL_LEVELS = Infekt.LEVEL_LABELS;
+export const ILL_LABELS = { rhr: 'Ruhepuls', hrv: 'HRV', resp: 'Atemfrequenz', temp: 'Hauttemperatur', spo2: 'Sauerstoffsättigung', feel: 'Dein Gefühl' };
+export { illnessBlock } from './infekt.js';
 
 /**
- * Frühzeichen eines Infekts aus der Nacht: Ruhepuls hoch, HRV tief, Atemfrequenz und Hauttemperatur
- * hoch – jeweils gegen die eigene Basis (Tag −45 bis −3; die letzten 2 Tage zählen nicht mit, damit
- * ein beginnender Infekt die Basis nicht verschiebt). Studien mit Wearables zeigen, dass Ruhepuls und
- * Atemfrequenz oft 1–3 Tage vor den ersten Symptomen steigen (Mishra 2020, Radin 2020, Miller 2020).
- * Punkte: je Signal 1 (leicht) oder 2 (deutlich); +1, wenn schon die Nacht davor auffällig war;
- * +1 bei sehr hoher Trainingslast mit zu wenig Schlaf. Stufen: 0–1 unauffällig, 2–3 beobachten,
- * 4–5 erhöht, ab 6 hoch.
- */
-function illnessScore(d, days, i) {
-  const base = (f) => {
-    const out = [];
-    for (let k = Math.max(0, i - 45); k < i - 2; k++) {
-      const v = f(days[k]);
-      if (isNum(v)) out.push(v);
-    }
-    return out;
-  };
-  const signals = [];
-  const add = (key, pts, text, value) => {
-    if (pts > 0) signals.push({ key, label: ILL_LABELS[key], pts, text, value });
-  };
-  const rhrH = base((x) => x.rhr);
-  if (isNum(d.rhr) && rhrH.length >= 10) {
-    const delta = d.rhr - mean(rhrH);
-    const z = delta / Math.max(1.5, sd(rhrH));
-    add('rhr', delta >= 4 || z >= 2 ? 2 : delta >= 2 && z >= 1 ? 1 : 0, `Ruhepuls ${signed(delta)} bpm über deinem Normalwert`, delta);
-  }
-  const hrvH = base((x) => (x.hrv ? Math.log(x.hrv) : null));
-  if (isNum(d.hrv) && hrvH.length >= 10) {
-    const m = mean(hrvH);
-    const z = (Math.log(d.hrv) - m) / Math.max(0.06, sd(hrvH));
-    const pct = 100 * (d.hrv / Math.exp(m) - 1);
-    add('hrv', z <= -1.75 || pct <= -20 ? 2 : z <= -1 || pct <= -10 ? 1 : 0, `HRV ${signed(pct)} % gegenüber normal`, pct);
-  }
-  const respH = base((x) => x.resp);
-  if (isNum(d.resp) && respH.length >= 10) {
-    const delta = d.resp - mean(respH);
-    add('resp', delta >= 1 ? 2 : delta >= 0.5 ? 1 : 0, `Atemfrequenz ${signed(delta, 1)} Atemzüge/Min. über normal`, delta);
-  }
-  if (isNum(d.skinTemp)) add('temp', d.skinTemp >= 0.6 ? 2 : d.skinTemp >= 0.3 ? 1 : 0, `Hauttemperatur ${signed(d.skinTemp, 1)} °C über normal`, d.skinTemp);
-  const prevDay = days[i - 1];
-  if (d.hrvTrend === 'low' && isNum(prevDay?.hrv7) && isNum(d.hrv7) && d.hrv7 < prevDay.hrv7) {
-    add('trend', 1, 'HRV-Wochenschnitt sinkt und liegt unter deinem Normalbereich', d.hrv7);
-  }
-  const raw = signals.reduce((t, x) => t + x.pts, 0);
-  if (raw >= 1 && (prevDay?.ill?.raw ?? 0) >= 2) add('persist', 1, 'Schon die zweite auffällige Nacht in Folge', null);
-  if (d.load?.ratio > 1.5 && isNum(d.perf) && d.perf < 75) add('load', 1, 'Sehr hohe Trainingslast und zu wenig Schlaf schwächen das Immunsystem', d.load.ratio);
-  const score = signals.reduce((t, x) => t + x.pts, 0);
-  const level = score >= 6 ? 3 : score >= 4 ? 2 : score >= 2 ? 1 : 0;
-  return { raw, score, level, label: ILL_LEVELS[level], signals };
-}
-
-/**
- * Infekt-Radar für einen Tag, inkl. deines Gefühls („angeschlagen“ zählt 3 Punkte) und eines Blicks in
- * deine Vergangenheit: Wie oft gab es so ein Muster, welches Signal kam bei dir zuerst, und hast du
- * danach „krank / angeschlagen“ im Morgen-Check eingetragen?
+ * Infekt-Radar für einen Tag: das lernende Modell (model.illness, d.ill) plus deine Angabe
+ * „angeschlagen“ (Gefühl heute oder „krank“ im Morgen-Check) – Symptome zählen wie in DETECT (Quer 2021)
+ * stark: Chance × 6.
  */
 export function illnessRisk(model, i = model.days.length - 1, { feel = null, journal = {} } = {}) {
   const d = model.days[i];
-  const ill = d.ill || { score: 0, signals: [] };
-  const signals = [...ill.signals];
+  const ill = d.ill || { p: null, level: 0, signals: [], against: [], confounders: [], modifiers: [], match: null };
+  const m = model.illness || null;
+  const th = m?.levels || [0.075, 0.15, 0.4];
   const yesterday = addDays(d.date, -1);
-  if (feel === 'sick' || journal?.[yesterday]?.krank) {
-    signals.push({ key: 'feel', label: ILL_LABELS.feel, pts: 3, text: feel === 'sick' ? 'Du fühlst dich angeschlagen' : 'Gestern im Morgen-Check: krank / angeschlagen', value: null });
-  }
-  const score = signals.reduce((t, x) => t + x.pts, 0);
-  const level = score >= 6 ? 3 : score >= 4 ? 2 : score >= 2 ? 1 : 0;
-  const alcohol = !!journal?.[yesterday]?.alkohol;
-
-  // Rückblick: Phasen mit „erhöht“ oder „hoch“ in den letzten 120 Tagen
-  const episodes = [];
-  for (let k = Math.max(1, i - 120); k < i - 1; k++) {
-    const x = model.days[k];
-    if ((x.ill?.level ?? 0) < 2 || (model.days[k - 1].ill?.level ?? 0) >= 2) continue;
-    // Welches Signal tauchte zuerst auf (bis zu 3 Tage vorher)?
-    let lead = null;
-    for (let back = 3; back >= 0 && !lead; back--) {
-      const y = model.days[k - back];
-      const first = y?.ill?.signals?.filter((sg) => ['rhr', 'hrv', 'resp', 'temp'].includes(sg.key)).sort((a, b) => b.pts - a.pts)[0];
-      if (first) lead = { key: first.key, daysBefore: back };
-    }
-    let sick = false;
-    for (let off = -1; off <= 4; off++) if (journal?.[addDays(x.date, off)]?.krank) sick = true;
-    episodes.push({ date: x.date, lead, sick });
-  }
-  const leads = {};
-  for (const e of episodes) if (e.lead) leads[e.lead.key] = (leads[e.lead.key] || 0) + 1;
-  const leadKey = Object.entries(leads).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-  const early = episodes.filter((e) => e.lead?.daysBefore >= 1).length;
-  const history = {
-    episodes,
-    leadKey,
-    leadLabel: leadKey ? ILL_LABELS[leadKey] : null,
-    early,
-    sickLogged: episodes.filter((e) => e.sick).length,
-  };
-
+  const symptoms = feel === 'sick' || !!journal?.[yesterday]?.krank || !!journal?.[d.date]?.krank;
+  let p = ill.p;
+  // Symptome: Chance × 6, mindestens „erhöht“ – wer sich krank fühlt, ist es meist auch
+  if (symptoms) p = Math.max(th[1], p == null ? 0.6 : 1 / (1 + Math.exp(-(Math.log(p / (1 - p)) + Math.log(6)))));
+  const level = p == null ? 0 : p >= th[2] ? 3 : p >= th[1] ? 2 : p >= th[0] ? 1 : 0;
+  const signals = [...(ill.signals || [])];
+  if (symptoms) signals.unshift({ key: 'feel', label: ILL_LABELS.feel, pts: 3, text: feel === 'sick' ? 'Du fühlst dich angeschlagen' : 'Im Morgen-Check: krank / angeschlagen', value: null });
   const advice =
     level >= 3
       ? ['Heute kein Training – Ruhe ist jetzt das beste Training.', 'Viel trinken, früh ins Bett, Alkohol meiden.', 'Fieber, Atemnot oder Brustschmerz: ärztlich abklären. Erst 1–2 Tage nach den Symptomen wieder locker anfangen.']
@@ -555,8 +485,25 @@ export function illnessRisk(model, i = model.days.length - 1, { feel = null, jou
         : level >= 1
           ? ['Training ist okay, aber nicht ans Limit gehen.', 'Achte heute auf Schlaf und Flüssigkeit.']
           : [];
-  const note = alcohol && signals.some((x) => x.key === 'rhr' || x.key === 'hrv') ? 'Gestern Alkohol – das erklärt einen erhöhten Ruhepuls und eine niedrige HRV oft. Bleibt es morgen so, ist ein Infekt wahrscheinlicher.' : null;
-  return { level, label: ILL_LEVELS[level], score, signals, advice, note, history, date: d.date };
+  const note = ill.confounders?.length ? `Herausgerechnet: ${ill.confounders.map((c) => c.text).join('; ')}.` : null;
+  return {
+    level,
+    label: ILL_LEVELS[level],
+    p,
+    rel: p != null && m ? p / m.base : null,
+    score: p == null ? 0 : Math.round(p * 100),
+    signals,
+    against: ill.against || [],
+    confounders: ill.confounders || [],
+    modifiers: ill.modifiers || [],
+    match: ill.match || null,
+    calibrating: ill.calibrating,
+    symptoms,
+    advice,
+    note,
+    history: m,
+    date: d.date,
+  };
 }
 
 // ---------------------------------------------------------------- Gesamtauswertung
@@ -570,10 +517,12 @@ export function analyze(store, userSettings = {}) {
   const S = resolveSettings(userSettings, store.profile || {}, raws, Number(dates[dates.length - 1].slice(0, 4)));
   const days = [];
   dates.forEach((date, i) => days.push(computeDay(i, date, raws[i], days, S)));
+  const illness = applyIllness(days, store.illness);
   return {
     empty: false,
     settings: S,
     days,
+    illness,
     index: Object.fromEntries(dates.map((d, i) => [d, i])),
     generated: store.generated || null,
     status: store.status || null,

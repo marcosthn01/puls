@@ -315,3 +315,25 @@ test('Laufband: Kilometer → Schritte wie beim Abruf (walkpad.py)', () => {
   assert.equal(E.padSteps(0.85, 0, 0.85), 1000);
   assert.equal(E.padSteps(5, 60, 0.75), Math.round(5000 / 0.75));
 });
+
+test('Infekt-Lernen: App verschlüsselt, Abruf (Python) entschlüsselt und säubert', async () => {
+  const { sealBox } = await import('../app/crypto.js');
+  const dir = mkdtempSync(join(tmpdir(), 'puls-'));
+  const py = process.env.PYTHON || 'python3';
+  // Schlüssel wie in der App: aus Passwort + Salt abgeleitet (hier mit wenigen Iterationen)
+  const { deriveRawKey } = await import('../app/crypto.js');
+  const salt = Buffer.from('0123456789abcdef').toString('base64');
+  const cache = { salt, iter: 1000, key: await deriveRawKey('test-passwort-123', salt, 1000) };
+  const labels = { pos: [{ s: '2026-10-04', src: 'journal' }, { s: 'kaputt' }], neg: ['2026-09-01'], conf: { '2026-11-01': { a: 2 }, '2026-11-02': { u: 1, x: 'egal' } } };
+  const box = await sealBox(labels, cache);
+  const file = join(dir, 'box.json');
+  writeFileSync(file, JSON.stringify(box));
+  const out = execFileSync(py, ['-c', `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(join(here, '..', 'sync'))})
+from crypto_box import decrypt_json
+from puls_sync import clean_illness
+print(json.dumps(clean_illness(decrypt_json(json.load(open(sys.argv[1])), "test-passwort-123"))))
+`, file]).toString();
+  assert.deepEqual(JSON.parse(out), { pos: [{ s: '2026-10-04', src: 'journal' }], neg: ['2026-09-01'], conf: { '2026-11-01': { a: 2 }, '2026-11-02': { u: 1 } } });
+});

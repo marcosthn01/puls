@@ -61,14 +61,18 @@ test('Angeschlagen oder Infekt: Pause; schlechte Tage: weniger Volumen', () => {
 });
 
 test('Infekt-Frühwarnung erkennt die Erkältung vor dem Höhepunkt und deckelt die Recovery', () => {
-  const peak = model.days.findIndex((d) => (d.ill?.level ?? 0) >= 3);
-  assert.ok(model.days[peak - 1].ill.level >= 1 || model.days[peak - 2].ill.level >= 1, 'Frühzeichen am Vortag');
+  const ps = model.days.map((d) => d.ill?.p ?? 0);
+  const peak = ps.indexOf(Math.max(...ps));
+  const first = model.days.findIndex((d) => (d.ill?.level ?? 0) >= 2);
+  assert.ok(first >= 0 && first < peak, 'Warnung vor dem Höhepunkt');
+  assert.ok(model.days[peak].ill.signals.some((x) => x.key === 'rhr'));
   for (const d of model.days) {
     if ((d.ill?.level ?? 0) >= 2 && d.recovery != null) assert.ok(d.recovery <= 55, d.date);
   }
+  // Ohne Infekt-Labels: die auffällige Phase wird als Frage zum Lernen angeboten
+  assert.equal(model.illness.candidates[0].date, model.days[first].date);
   const r = E.illnessRisk(model, last, { journal: store.journal });
-  assert.ok(r.history.episodes.length >= 1);
-  assert.equal(r.history.leadKey, 'rhr');
+  assert.ok(r.history && r.history.base > 0);
   assert.ok(E.illnessRisk(model, last, { feel: 'sick' }).level >= 1);
 });
 

@@ -44,6 +44,10 @@ on:
         description: "Nur für die App: Push/Pull-Markierungen deiner Gym-Einheiten (für den Trainingskalender)"
         required: false
         default: ""
+      illness:
+        description: "Nur für die App: deine Infekte und Antworten fürs Infekt-Lernen (verschlüsselt)"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths: ["app/**", "sync/**", ".github/workflows/sync.yml"]

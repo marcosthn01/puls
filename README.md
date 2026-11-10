@@ -34,9 +34,20 @@ und so auswertet wie Whoop:
   („Push“, „Pull“, „Cardio · Rad“) in einem abonnierbaren Kalender (geheimer Link unter Einstellungen →
   Trainingskalender, ohne Gesundheitswerte). Push/Pull: einmal in der App antippen, Puls ergänzt den Rest
   im Wechsel.
-- **Infekt-Frühwarnung:** Ruhepuls, HRV, Atmung und Hauttemperatur gegen deine eigene Basis, über mehrere
-  Nächte. Bei Frühzeichen zeigt Puls nie „voll erholt“, rät zu Pause oder lockerer Bewegung und schickt
-  morgens eine Warnung. Mit „Ich fühle mich angeschlagen“ plant Puls sofort Ruhe ein.
+- **Infekt-Frühwarnung, die dich kennenlernt** ([`infekt.js`](app/infekt.js)): Jede Nacht rechnet Puls
+  aus Ruhepuls, HRV, Atemfrequenz, Hauttemperatur und Sauerstoff (gegen deine robuste Basis, zwei Nächte
+  zusammen) die Wahrscheinlichkeit, dass in den nächsten 3 Tagen ein Infekt beginnt.
+  - **Startwissen aus Studien** (Alavi 2022, Mishra 2020, Grzesiak 2021, Natarajan 2020/21, Quer 2021;
+    Anfälligkeit: Prather 2015 Schlaf, Gabbett 2016 Lastspitzen) – als Bayes-Modell.
+  - **Lernt aus deinen Infekten** („krank“ im Morgen-Check, „Ich fühle mich angeschlagen“, nachgetragen
+    oder auf Nachfrage bestätigt): welche Signale bei *dir* wie stark anschlagen, wie oft du krank wirst.
+    Fragt nach auffälligen Phasen („Warst du da krank?“) – jedes Nein zeigt, was nur ein Ausreißer war.
+  - **Rechnet Störfaktoren heraus:** Alkohol, Reisen, harte Trainingstage – mit deiner gemessenen Wirkung.
+  - **Erinnert sich:** „So sah es einen Tag vor deinem Infekt im Oktober aus.“
+  - **Prüft sich selbst:** Rückblick ohne den jeweiligen Infekt (Treffer, Vorlauf, Fehlalarme) und eine
+    persönlich eingestellte Warnschwelle. Ab „erhöht“ nie „voll erholt“, morgens eine Warnung mit
+    Wahrscheinlichkeit. Deine Angaben gehen verschlüsselt zum Abruf, damit die Morgen-Push dasselbe
+    Modell nutzt. Eine Schätzung, keine Diagnose.
 - **Gesundheits-Check:** deine letzten 7 Tage gegen deine eigenen 2 Monate davor (Ruhepuls, HRV,
   Atmung, Schlaf, Rhythmus, Blutsauerstoff, Bewegung, VO₂max) – wie ein Arzt auf Trends schaut.
 - **KI-Coach im Chat** (Claude): „Wie bin ich heute drauf?“, „Mach mir einen Trainingsplan“ – er kennt

@@ -167,9 +167,11 @@ export function dueMessages(model, now, sent = {}, prefs = {}) {
     let title;
     let body;
     if (ill >= 2) {
-      const sig = (d.ill.signals || []).filter((x) => ['rhr', 'hrv', 'resp', 'temp'].includes(x.key)).slice(0, 2).map((x) => x.text).join(', ');
-      title = `⚠️ Infekt-Frühwarnung · ${E.ILL_LEVELS[ill]}`;
-      body = `${sig ? `${sig}. ` : ''}${ill >= 3 ? 'Heute Pause, viel trinken, früh schlafen.' : 'Heute nur locker – kein Gym-Volumen.'} Recovery ${d.recovery} %.`;
+      const sig = (d.ill.signals || []).filter((x) => ['rhr', 'hrv', 'resp', 'temp', 'spo2'].includes(x.key)).slice(0, 2).map((x) => x.text).join(', ');
+      const p = d.ill.p != null ? ` · ${Math.round(d.ill.p * 100)} %` : '';
+      const match = d.ill.match ? ` Sieht aus wie vor deinem Infekt am ${Number(d.ill.match.date.slice(8, 10))}.${Number(d.ill.match.date.slice(5, 7))}.` : '';
+      title = `⚠️ Infekt-Frühwarnung · ${E.ILL_LEVELS[ill]}${p}`;
+      body = `${sig ? `${sig}.` : ''}${match} ${ill >= 3 ? 'Heute Pause, viel trinken, früh schlafen.' : 'Heute nur locker – kein Gym-Volumen.'} Recovery ${d.recovery} %.`.trim();
     } else if (d.alarm) {
       title = `⚠️ Recovery ${d.recovery} % · Warnsignale`;
       body = 'Mehrere Körperwerte auffällig – heute schonen, viel trinken, früh schlafen.';

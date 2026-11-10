@@ -15,6 +15,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -205,6 +206,37 @@ def sync_activities(fetch: Fetcher, store: dict, days: list[dt.date]) -> int:
     return sum(len(v) for v in grouped.values())
 
 
+_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def clean_illness(data: Any) -> dict:
+    """Nur bekannte Felder und Datumsangaben übernehmen (Infekte, Antworten „nicht krank“, Störfaktoren)."""
+    if not isinstance(data, dict):
+        raise ValueError("kein Objekt")
+    pos = []
+    for x in data.get("pos") or []:
+        if isinstance(x, dict) and _DATE.match(str(x.get("s", ""))):
+            item = {"s": x["s"], "src": str(x.get("src") or "user")[:12]}
+            if _DATE.match(str(x.get("e", ""))):
+                item["e"] = x["e"]
+            pos.append(item)
+    neg = sorted({str(x) for x in data.get("neg") or [] if _DATE.match(str(x))})
+    conf = {}
+    raw_conf = data.get("conf") if isinstance(data.get("conf"), dict) else {}
+    for date in sorted(raw_conf)[-800:]:
+        c = raw_conf[date]
+        if not _DATE.match(str(date)) or not isinstance(c, dict):
+            continue
+        item = {}
+        if isinstance(c.get("a"), (int, float)) and 0 < c["a"] <= 20:
+            item["a"] = int(c["a"])
+        if c.get("u"):
+            item["u"] = 1
+        if item:
+            conf[date] = item
+    return {"pos": pos[-200:], "neg": neg[-400:], "conf": conf}
+
+
 def prune(store: dict, today: dt.date) -> None:
     days = store["days"]
     for key in list(days):
@@ -259,6 +291,14 @@ def run(
         if not samples and str(walk_raw).strip(" ;|#\n"):
             log(f"Walking-Pad: Format nicht erkannt ({walkpad.describe_format(str(walk_raw))}).")
     walkpad.refresh(store, today, DETAIL_DAYS)
+
+    # Infekt-Lernen: deine Infekte, Antworten und Störfaktoren aus der App (verschlüsselt geschickt)
+    if inputs.get("illness"):
+        try:
+            store["illness"] = clean_illness(decrypt_json(json.loads(str(inputs["illness"])), passphrase))
+            log("Infekt-Lernen: Angaben aus der App übernommen.")
+        except (CryptoError, ValueError, TypeError, AttributeError):
+            log("Infekt-Lernen: Angaben nicht lesbar – übersprungen.")
 
     # Push/Pull-Markierungen aus der App (für den Trainingskalender)
     if inputs.get("labels"):

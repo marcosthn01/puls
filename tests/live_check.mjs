@@ -27,6 +27,7 @@ const summary = await page.evaluate(() => window.__puls?.summary());
 console.log('Zusammenfassung:', JSON.stringify(summary));
 
 if (summary?.view === 'main') {
+  if (!(summary.illnessDays > 0)) errors.push('Infekt-Modell rechnet nicht (keine Tage mit Wahrscheinlichkeit).');
   // Wochenleiste Tag für Tag in eine Richtung durchklicken, bis es nicht weitergeht
   const walk = async (dir) => {
     let steps = 0;

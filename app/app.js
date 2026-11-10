@@ -2,14 +2,15 @@
 
 import * as E from './engine.js';
 import { arcGauge, bars, esc, hrCurve, hypnogram, innerOrb, lines, rangeBar, ring, sleepWindows, strainGauge, orb, startOrbs } from './charts.js';
-import { openBox } from './crypto.js';
+import { openBox, sealBox } from './crypto.js';
+import * as Inf from './infekt.js';
 import * as Coach from './coach.js';
 import * as Hud from './hud.js';
 import * as T from './training.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.6.1';
+const VERSION = '5.7.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -33,6 +34,9 @@ const LS = {
   splits: 'puls.splits',
   feel: 'puls.feel',
   padPending: 'puls.padPending',
+  illness: 'puls.illness',
+  illAsked: 'puls.illAsked',
+  illSent: 'puls.illSent',
 };
 
 const PUSH_KINDS = [
@@ -218,7 +222,7 @@ const ZONE_TEXT = {
 const INFO = {
   life: ['Lifestyle', 'Tippe ein Symbol an, wenn es passiert – Kaffee, Alkohol, spätes Essen, Sauna … Puls merkt sich die Uhrzeit und vergleicht deine Nächte danach: Recovery, HRV, Ruhepuls und Tiefschlaf mit gegen ohne. Ab 3 Nächten je Seite siehst du deinen persönlichen Effekt; bei Kaffee auch deine Uhrzeit-Grenze, bei Alkohol die Wirkung nach Menge. Alles bleibt auf deinem iPhone.'],
   training: ['Training heute', 'Puls lernt aus deinen Garmin-Aktivitäten der letzten 6 Wochen, was du trainierst (z. B. Gym im Push/Pull-Wechsel und Rad), wie lange du fährst und mit welchem Puls. Daraus und aus Recovery, HRV-Trend, Schlaf, Trainingslast und Infekt-Zeichen wird die Empfehlung: Rad mit Dauer und Puls, Gym mit Volumen und Wiederholungen in Reserve. Benenne deine Gym-Einheiten in Garmin „Push“ und „Pull“ – oder tippe es einmal hier an.'],
-  illness: ['Infekt-Frühwarnung', 'Vergleicht jede Nacht Ruhepuls, HRV, Atemfrequenz und Hauttemperatur mit deinem eigenen Normalwert der letzten 6 Wochen. Studien mit Wearables zeigen: Ruhepuls und Atmung steigen oft 1–3 Tage vor den ersten Symptomen. Mehrere auffällige Werte, zwei Nächte in Folge oder dein Gefühl „angeschlagen“ erhöhen die Stufe. Ab „erhöht“ zeigt Puls nie volle Recovery an. Eine Schätzung, keine Diagnose.'],
+  illness: ['Infekt-Frühwarnung', 'Ein lernendes Modell: Jede Nacht vergleicht Puls Ruhepuls, HRV, Atemfrequenz, Hauttemperatur und Sauerstoff mit deinem eigenen Normalwert und rechnet aus, wie wahrscheinlich in den nächsten 3 Tagen ein Infekt beginnt. Startwerte kommen aus Studien (Ruhepuls und Atmung steigen oft 1–3 Tage vor den Symptomen); mit jedem Infekt, den du erlebst, lernt Puls dein persönliches Muster. Alkohol, Reisen und harte Trainingstage rechnet es heraus. Ab „erhöht“ zeigt Puls nie volle Recovery an. Eine Schätzung, keine Diagnose.'],
   recovery: ['Recovery', 'Wie erholt dein Körper heute ist (0–100 %). Grün = bereit für harte Belastung, Gelb = moderat, Rot = Erholung. Berechnet aus HRV, Ruhepuls und Schlaf – verglichen mit deinen letzten 30 Tagen.'],
   strain: ['Strain', 'Wie stark du Herz und Kreislauf heute belastest (0–21). Der äußere Bogen ist dein Tagesziel – passend zu deiner Recovery. Ab 14 ist ein harter Tag, ab 18 sehr hart.'],
   sleep: ['Schlaf', 'Wie viel deines Schlafbedarfs du geschafft hast. Dein Bedarf steigt nach harten Tagen und wenn dir Schlaf fehlt. Der Schlafplaner sagt dir, wann du ins Bett solltest.'],
@@ -257,6 +261,41 @@ const reportExtra = () => (feelOn(state.model.days[state.model.days.length - 1].
 const planFor = (i) => T.trainingPlan(state.model, i, { labels: splitLabels(), feel: feelOn(state.model.days[i].date), journal: journal() });
 const questions = () => E.journalQuestions(ls.get(LS.customQ, []));
 const journal = () => (state.demo ? state.demoJournal : ls.get(LS.journal, {}));
+
+// ------------------------------------------------------------------ Infekt-Lernen: deine Angaben
+
+/** Eigene Angaben: { pos: [{s, e?, src}], neg: [Datum] } – Infekte und „war nicht krank“. */
+const illLocal = () => (state.demo ? state.demoIll || { pos: [], neg: [] } : ls.get(LS.illness, { pos: [], neg: [] }));
+function saveIll(v) {
+  if (state.demo) state.demoIll = v;
+  else ls.set(LS.illness, v);
+}
+/** Alles, was das Modell lernt: eigene Angaben + „krank“ aus dem Morgen-Check + Störfaktoren (Alkohol, unterwegs). */
+function illnessLabels() {
+  const own = illLocal();
+  const j = journal();
+  const pos = [...(own.pos || [])];
+  const conf = {};
+  const since = E.addDays(todayIso(), -400);
+  for (const [date, e] of Object.entries(j)) {
+    if (!e) continue;
+    if (e.krank) pos.push({ s: date, src: 'journal' });
+    if (date < since) continue;
+    const a = (e._t?.alkohol || []).length || (e.alkohol ? 1 : 0);
+    const c = {};
+    if (a) c.a = a;
+    if (e.unterwegs) c.u = 1;
+    if (Object.keys(c).length) conf[date] = c;
+  }
+  return { pos, neg: [...(own.neg || [])], conf };
+}
+function analyzeStore(store, settings) {
+  state.model = E.analyze({ ...store, illness: illnessLabels() }, settings);
+}
+function refreshModel() {
+  if (state.store) analyzeStore(state.store, ls.get(LS.settings, {}));
+  render();
+}
 function saveJournal(date, answers) {
   if (state.demo) state.demoJournal = { ...state.demoJournal, [date]: answers };
   else ls.set(LS.journal, { ...ls.get(LS.journal, {}), [date]: answers });
@@ -269,7 +308,11 @@ function setStore(store, { animate = true } = {}) {
   const wasLatest = !state.model || state.model.empty || state.sel === state.model.days.length - 1;
   state.store = store;
   prunePadPending(store);
-  state.model = E.analyze(store, ls.get(LS.settings, {}));
+  // Neues Gerät: gelernte Infekte aus den (verschlüsselten) Daten übernehmen
+  if (!state.demo && ls.get(LS.illness, null) == null && store.illness) {
+    ls.set(LS.illness, { pos: (store.illness.pos || []).filter((x) => x.src !== 'journal'), neg: store.illness.neg || [] });
+  }
+  analyzeStore(store, ls.get(LS.settings, {}));
   state.lastFetch = Date.now();
   if (state.model.empty) {
     state.view = 'nodata';
@@ -377,6 +420,19 @@ async function dispatch(inputs = {}) {
   // Laufband-Einträge, die noch nicht in den Daten sind, bei jedem Abruf mitschicken (doppelt schadet nicht)
   const walks = [...new Set([...(inputs.walk ? [inputs.walk] : []), ...padPending().map((p) => p.walk)])];
   if (walks.length) inputs = { ...inputs, walk: walks.join('\n') };
+  // Infekt-Lernen: deine Angaben verschlüsselt mitschicken, wenn sie sich geändert haben (für die Morgen-Push)
+  let illSent = null;
+  try {
+    const labels = illnessLabels();
+    const txt = JSON.stringify(labels);
+    const cache = ls.get(LS.key);
+    if ((labels.pos.length || labels.neg.length || Object.keys(labels.conf).length) && txt !== ls.get(LS.illSent, '') && cache?.key) {
+      inputs = { ...inputs, illness: JSON.stringify(await sealBox(labels, cache)) };
+      illSent = txt;
+    }
+  } catch {
+    illSent = null;
+  }
   const res = await fetch(`https://api.github.com/repos/${gh.repo}/actions/workflows/${WORKFLOW}/dispatches`, {
     method: 'POST',
     headers: ghHeaders(gh.token),
@@ -391,6 +447,7 @@ async function dispatch(inputs = {}) {
     }[res.status];
     throw new Error(msg || `GitHub antwortet mit ${res.status}.`);
   }
+  if (illSent) ls.set(LS.illSent, illSent);
 }
 
 /** Startet den Garmin-Abruf und lädt nach, sobald neue Daten da sind. */
@@ -931,7 +988,7 @@ function viewToday(anim) {
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
   return `${setupCard()}${telemetry(d)}${dials(d, anim)}${dashTiles(m, i)}
-    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${isLatest ? lifestyleCard() + padLogRow(d) : ''}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
+    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${isLatest ? lifestyleCard() + padLogRow(d) : ''}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${isLatest ? illQuestionCard(m) : ''}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
     <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
 }
 
@@ -1145,32 +1202,100 @@ function lifeInsightsCard() {
 }
 
 const ILL_TONE = ['ok', 'watch', 'warn', 'bad'];
+const pct0 = (p) => `${Math.round(p * 100)} %`;
+const matchText = (mt) => (mt ? `So sah es ${mt.before > 0 ? `${mt.before === 1 ? 'einen Tag' : `${mt.before} Tage`} vor` : mt.before === 0 ? 'zu Beginn' : 'im Verlauf'} deines Infekts am ${shortDate(mt.date)} aus (Ähnlichkeit ${Math.round(mt.sim * 100)} %).` : '');
+
 function illnessRow(m, i) {
   const r = E.illnessRisk(m, i, { feel: feelOn(m.days[i].date), journal: journal() });
   if (r.level < 1) return '';
   const top = r.signals.slice(0, 2).map((x) => x.label).join(' · ');
-  return `<section class="card slim ill-row tone-${ILL_TONE[r.level]}">${rowLink(I.alert, r.level >= 2 ? 'var(--red)' : 'var(--yellow)', `Infekt-Frühwarnung: ${r.label}`, esc(top), 'data-tab="recovery"')}</section>`;
+  const sub = [top, r.match ? `wie vor deinem Infekt am ${shortDate(r.match.date)}` : ''].filter(Boolean).join(' · ');
+  return `<section class="card slim ill-row tone-${ILL_TONE[r.level]}">${rowLink(I.alert, r.level >= 2 ? 'var(--red)' : 'var(--yellow)', `Infekt-Risiko ${r.p != null ? pct0(r.p) : ''} · ${r.label}`, esc(sub), 'data-tab="recovery"')}</section>`;
 }
 
 function illnessCard(m, i) {
   const r = E.illnessRisk(m, i, { feel: feelOn(m.days[i].date), journal: journal() });
   const seg = [0, 1, 2, 3].map((k) => `<i class="${k <= r.level ? `on t${r.level}` : ''}"></i>`).join('');
-  const h = r.history;
-  const past = h.episodes.length
-    ? `In den letzten 4 Monaten gab es ${h.episodes.length === 1 ? 'eine solche Phase' : `${h.episodes.length} solche Phasen`} (zuletzt ${shortDate(h.episodes[h.episodes.length - 1].date)}).${h.leadLabel ? ` Bei dir zeigte sich zuerst meist: ${h.leadLabel}${h.early ? `, ${h.early === 1 ? 'einmal' : `${h.early}×`} schon 1–3 Tage vorher` : ''}.` : ''}${h.sickLogged ? ` ${h.sickLogged}× hast du danach „krank / angeschlagen“ eingetragen.` : ''}`
-    : 'In den letzten 4 Monaten gab es bei dir keine Phase mit erhöhtem Risiko.';
   const sick = feelOn(m.days[i].date) === 'sick';
+  const rel = r.rel != null ? (r.rel >= 1.5 ? `${de1(r.rel)}× dein Normal` : r.rel <= 0.7 ? 'unter deinem Normal' : 'wie sonst') : '';
+  const body = r.calibrating
+    ? '<p class="small muted">Puls lernt noch deine Normalwerte – nach etwa 10 Nächten mit Ruhepuls und HRV geht es los.</p>'
+    : r.signals.length
+      ? `<ul class="ill-sig">${r.signals.map((x) => `<li><i class="p${Math.min(3, x.pts || 1)}"></i>${esc(x.text)}</li>`).join('')}</ul>`
+      : '<p class="small muted">Ruhepuls, HRV, Atmung und Temperatur liegen in deinem Normalbereich.</p>';
   return card(
     'Infekt-Frühwarnung',
-    `<div class="ill-top"><div class="ill-meter">${seg}</div><b class="ill-lvl t${r.level}">${esc(r.label[0].toUpperCase() + r.label.slice(1))}</b></div>
-    ${r.signals.length ? `<ul class="ill-sig">${r.signals.map((x) => `<li><i class="p${x.pts}"></i>${esc(x.text)}</li>`).join('')}</ul>` : '<p class="small muted">Ruhepuls, HRV, Atmung und Temperatur liegen in deinem Normalbereich.</p>'}
+    `<div class="ill-top"><div class="ill-meter">${seg}</div><b class="ill-lvl t${r.level}">${esc(r.label[0].toUpperCase() + r.label.slice(1))}</b>${r.p != null ? `<span class="ill-p"><b>${pct0(r.p)}</b><small>Risiko 3 Tage${rel ? ` · ${rel}` : ''}</small></span>` : ''}</div>
+    ${body}
+    ${r.match ? `<p class="ill-match">${I.trends}<span>${esc(matchText(r.match))}</span></p>` : ''}
+    ${r.against.length && r.level >= 1 ? `<p class="small muted" style="margin-top:6px">Spricht dagegen: ${esc(r.against.join(', '))}.</p>` : ''}
     ${r.note ? `<p class="small" style="margin-top:8px">${esc(r.note)}</p>` : ''}
+    ${r.modifiers.length ? `<p class="small" style="margin-top:6px"><b>Anfälliger gerade:</b> ${esc(r.modifiers.map((x) => x.text).join(' · '))}</p>` : ''}
     ${r.advice.length ? `<ul class="ntips">${r.advice.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
-    ${note(esc(past))}
     ${i === m.days.length - 1 ? `<button class="feelbtn ${sick ? 'on' : ''}" data-act="feel">${I.alert}<span>${sick ? 'Du fühlst dich angeschlagen – tippe, wenn es dir wieder gut geht' : 'Ich fühle mich angeschlagen'}</span></button>` : ''}`,
     'illcard',
     'illness',
   );
+}
+
+/** Was Puls über deine Infekte gelernt hat – und wie gut es dich bisher kennt. */
+function illModelCard(m) {
+  const h = m.illness;
+  if (!h) return '';
+  const n = h.episodes.length;
+  const bt = h.backtest;
+  const t = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>`;
+  const tiles = `<div class="grid ilm-grid">
+    ${t('Gelernt', String(n), n === 1 ? 'Infekt' : 'Infekte')}
+    ${t('Erkannt', n ? `${bt.hits}/${bt.n}` : '–', 'vorher, im Rückblick')}
+    ${t('Vorlauf', bt.lead != null ? `${de1(bt.lead)}` : '–', 'Tage vor Beginn')}
+    ${t('Fehlalarme', de1(bt.faMonth), 'pro Monat')}</div>`;
+  const maxMu = Math.max(1.5, ...Inf.FEATURES.map((f) => h.mu[f.key]?.post || 0));
+  const weights = Inf.FEATURES.map((f) => {
+    const w = h.mu[f.key];
+    if (!w) return '';
+    const changed = w.n > 0 && Math.abs(w.post - w.prior) >= 0.1;
+    return `<div class="ilm-w"><span>${esc(f.label)}</span><div class="ilm-bar"><i class="prior" style="left:${(100 * w.prior) / maxMu}%"></i><b style="width:${(100 * w.post) / maxMu}%"></b></div><em>${changed ? (w.post > w.prior ? 'bei dir stärker' : 'bei dir schwächer') : w.n ? 'wie in Studien' : 'Studienwert'}</em></div>`;
+  }).join('');
+  const early = h.earliest.filter((e) => e.hits).slice(0, 2);
+  const lines = [];
+  if (early.length) lines.push(`Bei dir schlägt zuerst an: ${early.map((e) => `${e.label} (${e.hits} von ${e.of}${e.lead != null ? `, Ø ${de1(e.lead)} Tage vorher` : ''})`).join(', ')}.`);
+  for (const tr of h.triggers) if (tr.yes && tr.share != null) lines.push(`${tr.yes} von ${tr.of} Infekten kamen nach: ${tr.label} (sonst nur in ${Math.round(tr.share * 100)} % der Wochen).`);
+  for (const c of Inf.CONFOUNDERS) {
+    const e = h.confEffect?.[c.key]?.hrv;
+    const sdv = h.scale?.hrv;
+    if (e?.n >= 3 && e.post >= 0.3 && sdv) lines.push(`${c.label}: senkt deine HRV am Morgen danach um etwa ${Math.round(100 * (1 - Math.exp(-e.post * sdv)))} % (${e.n} Nächte gemessen) – Puls rechnet das heraus, damit es nicht falsch warnt.`);
+  }
+  const list = h.episodes
+    .slice()
+    .reverse()
+    .slice(0, 8)
+    .map((e) => `<span class="ilm-ep">${shortDate(e.s)}${e.e && e.e !== e.s ? `–${shortDate(e.e)}` : ''}${e.src === 'journal' ? ' · Morgen-Check' : e.src === 'feel' ? ' · angeschlagen' : ''}${e.src !== 'journal' ? `<button data-act="ill-del" data-date="${e.s}" aria-label="Entfernen">×</button>` : ''}</span>`)
+    .join('');
+  return card(
+    'Dein Infekt-Modell',
+    `<p class="small">${n ? `Puls hat aus ${n === 1 ? 'deinem Infekt' : `${n} Infekten`} gelernt, wie sich ein Infekt bei <b>dir</b> ankündigt. Jeder weitere macht es genauer.` : 'Noch kein Infekt gelernt – Puls warnt mit Werten aus Studien. Trag frühere Infekte nach, dann lernt es dein Muster.'} Warnschwelle: ${pct0(h.threshold)} (${h.tuned ? 'für dich eingestellt' : 'Standard'}).</p>
+    ${n ? tiles : ''}
+    <p class="ilm-h">Gewicht der Signale <small>Strich = Studien · Balken = bei dir</small></p>${weights}
+    ${lines.length ? `<ul class="ntips">${lines.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${list ? `<div class="ilm-list">${list}</div>` : ''}
+    <div class="ilm-btns"><button class="btn ghost" data-act="ill-add">Infekt nachtragen</button><button class="linkbtn" data-act="ill-method">So funktioniert’s</button></div>`,
+    'ilmcard',
+  );
+}
+
+/** Puls fragt nach auffälligen Phasen, damit es lernen kann (eine Frage auf einmal). */
+function illQuestionCard(m) {
+  const h = m.illness;
+  if (!h || state.demo) return '';
+  const asked = new Set(ls.get(LS.illAsked, []));
+  const c = h.candidates.find((x) => !asked.has(x.date));
+  if (!c) return '';
+  return `<section class="card illq"><h2>Puls lernt dich kennen</h2>
+    <p>Um den <b>${esc(longDate(c.date))}</b> waren ${esc(c.signals.join(' und ') || 'mehrere Werte')} auffällig${c.days > 1 ? ` (${c.days} Tage)` : ''} – typisch für einen beginnenden Infekt. Warst du da krank oder angeschlagen?</p>
+    <div class="illq-btns"><button class="btn" data-act="ill-yes" data-date="${c.date}">Ja, war krank</button><button class="btn ghost" data-act="ill-no" data-date="${c.date}">Nein</button></div>
+    <button class="linkbtn" data-act="ill-skip" data-date="${c.date}">Weiß ich nicht mehr</button>
+    <p class="note">Jede Antwort macht deine Frühwarnung genauer: Puls lernt, wie sich ein Infekt bei dir ankündigt – und was nur ein Ausreißer war.</p></section>`;
 }
 
 // ------------------------------------------------------------------ Tagesrückblick, Wochenziele
@@ -1456,6 +1581,7 @@ function viewRecovery(anim) {
   </section>`);
   parts.push(factorsCard(d));
   parts.push(illnessCard(m, i));
+  if (i === m.days.length - 1) parts.push(illModelCard(m));
   parts.push(bodyCheckCard(E.vitals(m, i)));
   parts.push(healthTrendsCard(m, i));
   parts.push(stressCard(d));
@@ -1947,7 +2073,7 @@ const coachApp = {
   saveSettings: (patch) => {
     const user = { ...ls.get(LS.settings, {}), ...patch };
     ls.set(LS.settings, user);
-    state.model = E.analyze(state.store, user);
+    analyzeStore(state.store, user);
   },
   profile,
   saveProfile: (patch) => {
@@ -2144,6 +2270,38 @@ function renderSheet() {
       <label class="field"><span>Essen</span><textarea data-profile="food" rows="2" placeholder="z. B. kein Fisch, Laktoseintoleranz, esse gern Pasta, wenig Zeit mittags">${esc(p.food || '')}</textarea></label>
       <label class="field"><span>Gesundheit (optional)</span><textarea data-profile="health" rows="2" placeholder="z. B. Bluthochdruck, Betablocker, Knieprobleme, Heuschnupfen">${esc(p.health || '')}</textarea></label>
       <button class="btn" data-act="profile-done" style="margin-top:12px">Fertig</button>`;
+  } else if (sh.type === 'ill-add') {
+    const first = state.model?.days?.[0]?.date || '';
+    body = `<h3>Infekt nachtragen</h3>
+      <p class="muted small">Wann ging es los – der erste Tag mit Symptomen (Halskratzen, Schnupfen, Fieber …)? Je mehr Infekte Puls kennt, desto früher und genauer warnt es dich. Puls kennt deine Werte ab ${first ? esc(longDate(first)) : 'dem ersten Abruf'}.</p>
+      <div class="fields2" style="margin-top:12px">
+        <label class="field"><span>Erster Tag</span><input id="ill-s" type="date" min="${first}" max="${todayIso()}"></label>
+        <label class="field"><span>Wieder gesund (optional)</span><input id="ill-e" type="date" min="${first}" max="${todayIso()}"></label>
+      </div>
+      <button class="btn" data-act="ill-save" style="margin-top:12px">Speichern</button>`;
+  } else if (sh.type === 'ill-method') {
+    body = `<h3>So lernt deine Infekt-Frühwarnung</h3>
+      <ol class="steps small">
+        <li><b>Dein Normal:</b> Für jedes Signal (Ruhepuls, HRV, Atemfrequenz, Hauttemperatur, Sauerstoff) rechnet Puls deinen Normalbereich aus den letzten 2 Monaten – ohne Krankheitstage, robust gegen Ausreißer.</li>
+        <li><b>Abweichung:</b> Jede Nacht: Wie weit liegt der Wert daneben? Zwei Nächte zählen zusammen – Infekte zeigen sich über mehrere Nächte, Ausreißer nur in einer.</li>
+        <li><b>Störfaktoren:</b> Alkohol, Reisen und harte Trainingstage senken die HRV auch ohne Infekt. Puls misst, wie stark bei dir, und rechnet es heraus.</li>
+        <li><b>Wahrscheinlichkeit:</b> Startwissen aus Studien + dein Muster → Wie wahrscheinlich beginnt in 3 Tagen ein Infekt? Schlafmangel und Lastspitzen erhöhen die Anfälligkeit.</li>
+        <li><b>Lernen:</b> Jeder Infekt (Morgen-Check „krank“, „Ich fühle mich angeschlagen“, nachgetragen oder auf Nachfrage bestätigt) zeigt Puls, welche Signale <i>bei dir</i> zuerst anschlagen. Jedes „Nein“ zeigt, was nur ein Ausreißer war.</li>
+        <li><b>Selbstkontrolle:</b> Im Rückblick prüft Puls, ob es deine Infekte vorher erkannt hätte – ohne den jeweiligen Infekt zu kennen – und stellt die Warnschwelle so ein, dass es möglichst viele erkennt und selten falsch warnt.</li>
+      </ol>
+      <h4>Studien, auf denen das Startwissen beruht</h4>
+      <ul class="steps small">
+        <li>Alavi et al. 2022, <i>Nature Medicine</i>: Ruhepuls-Alarm per Smartwatch – 80 % der COVID-Fälle erkannt, im Median 3 Tage vor Symptombeginn.</li>
+        <li>Mishra et al. 2020, <i>Nature Biomedical Engineering</i>: Ruhepuls steigt bei vielen schon vor den Symptomen.</li>
+        <li>Grzesiak et al. 2021, <i>JAMA Network Open</i>: Grippe und Erkältung (Rhinovirus) per Handgelenk-Sensor vor Symptombeginn erkennbar (Ruhepuls, HRV, Temperatur).</li>
+        <li>Natarajan et al. 2020/2021, <i>npj Digital Medicine</i>: Atemfrequenz, Puls und HRV verändern sich bei Infekten messbar.</li>
+        <li>Quer et al. 2021, <i>Nature Medicine</i> (DETECT): Sensorwerte plus Symptome zusammen erkennen am besten.</li>
+        <li>Prather et al. 2015, <i>Sleep</i>: Wer ≤ 6 Std. schläft, erkältet sich nach Virus-Kontakt etwa 4× so oft.</li>
+        <li>Gabbett 2016, <i>Br J Sports Med</i>; Nieman (Sport-Immunologie): Lastspitzen und sehr harte Einheiten erhöhen das Infektrisiko.</li>
+        <li>Pietilä et al. 2018, <i>JMIR Mental Health</i>: Alkohol senkt die nächtliche HRV dosisabhängig.</li>
+      </ul>
+      <p class="muted small">Eine Schätzung, keine Diagnose. Bei Fieber, Atemnot oder Brustschmerz: ärztlich abklären.</p>
+      <button class="btn" data-act="sheet-close" style="margin-top:12px">Fertig</button>`;
   } else if (sh.type === 'pad-log') {
     const now = new Date();
     const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -2276,6 +2434,16 @@ sheetEl.addEventListener('click', async (e) => {
   }
   if (act === 'breath-start') startBreath();
   if (act === 'pad-log') openSheet({ type: 'pad-log' });
+  if (act === 'ill-save') {
+    const sDate = document.getElementById('ill-s')?.value;
+    const eDate = document.getElementById('ill-e')?.value;
+    if (!sDate) return toast('Bitte den ersten Tag wählen.');
+    const own = illLocal();
+    saveIll({ ...own, pos: [...(own.pos || []).filter((x) => x.s !== sDate), { s: sDate, ...(eDate && eDate >= sDate ? { e: eDate } : {}), src: 'user' }] });
+    closeSheet();
+    toast('Gespeichert – Puls lernt daraus.');
+    refreshModel();
+  }
   if (act === 'pad-send') sendPadLog();
   if (act === 'goals-save') {
     const g = {};
@@ -2590,7 +2758,7 @@ function saveSetting(el) {
   } else if (v) user[key] = v;
   else delete user[key];
   ls.set(LS.settings, user);
-  if (state.store) state.model = E.analyze(state.store, user);
+  if (state.store) analyzeStore(state.store, user);
   render();
   toast('Gespeichert.');
 }
@@ -2653,6 +2821,11 @@ app.addEventListener('click', async (e) => {
       const date = state.model.days[state.model.days.length - 1].date;
       const on = feelOn(date) === 'sick';
       ls.set(LS.feel, on ? {} : { date });
+      const own = illLocal();
+      const pos = (own.pos || []).filter((x) => !(x.src === 'feel' && x.s === date));
+      if (!on && !pos.some((x) => x.s <= date && (x.e || E.addDays(x.s, 3)) >= date)) pos.push({ s: date, src: 'feel' });
+      saveIll({ ...own, pos });
+      if (state.store) analyzeStore(state.store, ls.get(LS.settings, {}));
       toast(on ? 'Schön, dass es dir besser geht.' : 'Notiert – Puls plant heute Ruhe ein.');
       render();
       break;
@@ -2679,6 +2852,30 @@ app.addEventListener('click', async (e) => {
       break;
     case 'pad-log':
       openSheet({ type: 'pad-log' });
+      break;
+    case 'ill-yes':
+    case 'ill-no':
+    case 'ill-skip': {
+      const date = t.dataset.date;
+      ls.set(LS.illAsked, [...new Set([...ls.get(LS.illAsked, []), date])].slice(-200));
+      const own = illLocal();
+      if (act === 'ill-yes') saveIll({ ...own, pos: [...(own.pos || []), { s: E.addDays(date, 1), src: 'answer' }] });
+      if (act === 'ill-no') saveIll({ ...own, neg: [...new Set([...(own.neg || []), date])] });
+      toast(act === 'ill-yes' ? 'Danke – Puls lernt dein Infekt-Muster.' : act === 'ill-no' ? 'Danke – Puls merkt sich, dass das kein Infekt war.' : 'Okay, Puls fragt dazu nicht mehr.');
+      refreshModel();
+      break;
+    }
+    case 'ill-del': {
+      const own = illLocal();
+      saveIll({ ...own, pos: (own.pos || []).filter((x) => x.s !== t.dataset.date) });
+      refreshModel();
+      break;
+    }
+    case 'ill-add':
+      openSheet({ type: 'ill-add' });
+      break;
+    case 'ill-method':
+      openSheet({ type: 'ill-method' });
       break;
     case 'report-refresh':
       makeReport();
@@ -2991,6 +3188,8 @@ window.__puls = {
         return { kinds, types: [...new Set(acts.map((a) => a.type))], gymWithSplit: gymActs.filter((a) => T.splitOf(a)).length, planKind: T.trainingPlan(m, m.days.length - 1).kind };
       })(),
       coachContextChars: E.coachContext(m, journal()).length,
+      // Infekt-Modell: läuft es? (nur Anzahl der Tage mit Wahrscheinlichkeit, keine Infekte)
+      illnessDays: m.days.filter((d) => d.ill?.p != null).length,
     };
   },
   skipOnboarding() {

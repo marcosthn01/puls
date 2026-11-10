@@ -363,8 +363,7 @@ export function trainingBlock(model, i = model.days.length - 1, opts = {}) {
     L(`Puls-Empfehlung heute: ${p.title}${p.sub ? ` – ${p.sub}` : ''}.${p.bullets.length ? ` Gründe: ${p.bullets.join(' ')}` : ''}${p.alt ? ` Alternative: ${p.alt}` : ''}`);
   }
   L(`Infekt-Frühwarnung: ${ill.label}${ill.signals.length ? ` (${ill.signals.map((x) => x.text).join('; ')})` : ''}.${ill.note ? ` ${ill.note}` : ''}`);
-  const h = ill.history;
-  if (h.episodes.length) L(`Früher: ${h.episodes.length} Phase(n) mit erhöhtem Infekt-Risiko in 4 Monaten (${h.episodes.map((e) => e.date).join(', ')}); zuerst auffällig meist: ${h.leadLabel || '–'}; danach „krank“ eingetragen: ${h.sickLogged}×.`);
+  if (ill.p != null) L(`Infekt-Risiko nächste 3 Tage: ${Math.round(ill.p * 100)} %${ill.rel ? ` (${ill.rel.toFixed(1).replace('.', ',')}× seine Basis)` : ''}.`);
   if (opts.feel === 'sick') L('Er hat heute angegeben, dass er sich angeschlagen fühlt.');
   return out.join('\n');
 }

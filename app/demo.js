@@ -190,7 +190,7 @@ export function makeDemoStore({ now = new Date(), days = 90, seed = 11 } = {}) {
       if (r() < 0.45) b.bildschirm = true;
       if (wd >= 1 && wd <= 5 && r() < 0.25) b.stress = true;
       if (r() < 0.2) b.meditation = true;
-      if (sick > 0.2) b.krank = true;
+      if (sick > 0.2 && n <= 36) b.krank = true; // Symptome ab dem Höhepunkt – Körper-Signale kommen 1–2 Tage früher (wie in Studien)
       prevB = b;
       // gestern bleibt offen, damit der Morgen-Check in der Demo erscheint
       if (n > 1 && r() < 0.85) store.journal[date] = { _done: true, ...b };
