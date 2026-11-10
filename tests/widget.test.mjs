@@ -105,8 +105,23 @@ test('Widget läuft mit der echten Scriptable-API: alle Größen, Sperrbildschir
   assert.equal(JSON.parse(no.files['/docs/puls-widget-settings.json']).open, 'run');
 
   // Vorschau groß aus dem Menü
-  const prev = await run({ runsInWidget: false, alerts: [1, -1] });
+  const prev = await run({ runsInWidget: false, alerts: [2, -1] });
   assert.deepEqual(prev.presented, ['large']);
+
+  // Vom Widget getippt (Puls geht nicht direkt auf): sofort große Ansicht, kein Menü
+  const tap = await run({ runsInWidget: false, query: { from: 'widget', tab: 'schlaf' } });
+  assert.deepEqual(tap.presented, ['large']);
+  assert.deepEqual(tap.alerts, []);
+
+  // Zweiter Weg: Kurzbefehl „Puls öffnen“ → gespeichert, danach führen alle Tipps dorthin
+  const sc = await run({ runsInWidget: false, alerts: [1, 0, 0, 0, -1] });
+  assert.deepEqual(sc.opened, ['shortcuts://run-shortcut?name=Puls%20%C3%B6ffnen']);
+  assert.equal(JSON.parse(sc.files['/docs/puls-widget-settings.json']).open, 'shortcut');
+  const log3 = installScriptable({ fetchJSON: async () => JSON.parse(JSON.stringify(box)), family: 'large' });
+  Object.assign(log3.files, sc.files);
+  await new AsyncFunction(code)();
+  assert.ok(log3.urls.length && log3.urls.every((u) => u === 'shortcuts://run-shortcut?name=Puls%20%C3%B6ffnen'));
+  assert.ok(!log3.texts.length || !log3.urls.some((u) => /log=/.test(u)));
 
   // Alte Widget-Datei (v1, ohne neue Felder) zeigt trotzdem etwas
   const old = { v: 1, date: payload.date, recovery: 70, zone: 'green', sleep: 80, strain: 9.5, plan: { title: 'Gym · Push', sub: 'volles Volumen', short: 'Gym Push' }, ill: { level: 0, label: '' }, week: '2 Trainings' };

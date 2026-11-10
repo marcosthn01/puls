@@ -9,7 +9,7 @@ import * as T from './training.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.6.0';
+const VERSION = '5.6.1';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -2454,8 +2454,13 @@ function widgetCard() {
       <li>Widget lange drücken → <b>Widget bearbeiten</b> → Script: <b>Puls</b>.</li>
     </ol>
     <button class="btn" data-act="widget-copy">Widget-Code kopieren</button>
-    <h4 style="margin-top:14px">Direkt in Puls springen</h4>
-    <p class="small">In Scriptable einmal das Script <b>Puls</b> antippen → <b>„Puls direkt öffnen – testen“</b>. Klappt es auf deinem iPhone, öffnet ein Tippen aufs Widget Puls wie eine richtige App: die Ringe springen zu Schlaf, Recovery oder Strain, und im großen Widget erscheinen die Lifestyle-Knöpfe (Kaffee, Alkohol, Essen … und Laufband) – ein Tippen trägt direkt ein. Klappt es nicht, erlaubt iOS das nicht – dann öffnet das Widget Scriptable.</p>
+    <h4 style="margin-top:14px">Puls aus dem Widget öffnen</h4>
+    <p class="small">iOS lässt Widgets anderer Apps eigentlich keine Web-App öffnen. Zwei Wege zum Ausprobieren – in Scriptable das Script <b>Puls</b> antippen:</p>
+    <ul class="steps small">
+      <li><b>„Puls direkt öffnen – testen“:</b> Klappt es, springen die Ringe zu Schlaf, Recovery oder Strain, und im großen Widget erscheinen Lifestyle-Knöpfe, die direkt eintragen.</li>
+      <li><b>„Über Kurzbefehl öffnen – testen“:</b> vorher in Kurzbefehle einen Kurzbefehl <b>Puls öffnen</b> mit der Aktion <b>App öffnen → Puls</b> anlegen. Findet „App öffnen“ Puls nicht, geht dieser Weg nicht.</li>
+    </ul>
+    <p class="muted small">Klappt beides nicht, zeigt ein Tippen die große Ansicht in Scriptable – leg dann das Puls-Symbol direkt neben das Widget.</p>
     <h4 style="margin-top:14px">Sperrbildschirm</h4>
     <p class="small">Sperrbildschirm lange drücken → <b>Anpassen</b> → <b>Sperrbildschirm</b> → Widget-Feld → <b>Scriptable</b> → antippen → Script: <b>Puls</b>. Über <b>Parameter</b> wählst du, was es zeigt:</p>
     <ul class="steps small">

@@ -565,11 +565,13 @@ function settings() {
 }
 
 /** Wohin ein Tippen führt: direkt in die Puls-App (falls dein iOS das kann) oder in dieses Script. */
+const SHORTCUT = 'Puls öffnen';
 function makeLink(s) {
   const base = APP.replace(/\\/?$/, '/');
   return (q) => {
     if (s.open === 'webapp') return (s.variant === 'b' ? 'webapp://' + base : 'webapp://' + base.replace(/^https?:\\/\\//, '')) + (q ? '?' + q : '');
-    return 'scriptable:///run/' + encodeURIComponent(Script.name()) + (q ? '?' + q : '');
+    if (s.open === 'shortcut') return 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT);
+    return 'scriptable:///run/' + encodeURIComponent(Script.name()) + '?from=widget' + (q ? '&' + q : '');
   };
 }
 
@@ -619,21 +621,43 @@ async function testDirect(s) {
       return;
     }
   }
-  fm.writeString(SETTINGS, JSON.stringify({ ...s, open: 'run' }));
-  await ask('Geht auf deinem iPhone nicht', 'iOS lässt Widgets anderer Apps keine Web-App vom Homebildschirm öffnen. Tippen aufs Widget öffnet dann dieses Script. Tipp: Leg das Puls-Symbol direkt neben das Widget.', ['OK'], null);
+  if (s.open !== 'shortcut') fm.writeString(SETTINGS, JSON.stringify({ ...s, open: 'run' }));
+  await ask('Geht auf deinem iPhone nicht', 'Dieser Weg klappt bei dir nicht. Probier im Menü noch „Über Kurzbefehl öffnen“. Sonst öffnet ein Tippen aufs Widget die große Ansicht hier in Scriptable.', ['OK'], null);
+}
+
+/** Zweiter Weg: Kurzbefehl „Puls öffnen“ mit der Aktion „App öffnen → Puls“ (falls iOS die Web-App dort anbietet). */
+async function testShortcut(s) {
+  const go = await ask(
+    'Über Kurzbefehl öffnen',
+    \`Leg zuerst in der App Kurzbefehle einen Kurzbefehl „\${SHORTCUT}“ an: + → Aktion „App öffnen“ → bei „App“ nach Puls suchen. Taucht Puls dort nicht auf, geht dieser Weg auf deinem iPhone nicht. Fertig angelegt?\`,
+    ['Ja, jetzt testen'],
+    'Abbrechen',
+  );
+  if (go === -1) return;
+  Safari.open(makeLink({ open: 'shortcut' })(''));
+  await wait(1500);
+  const ok = await ask('Hat sich Puls geöffnet?', 'Kurzbefehle blitzt dabei kurz auf – das ist normal.', ['Ja, Puls ging auf', 'Nein'], null);
+  if (ok === 0) {
+    fm.writeString(SETTINGS, JSON.stringify({ ...s, open: 'shortcut' }));
+    await ask('Klappt!', 'Ab jetzt öffnet ein Tippen aufs Widget Puls über den Kurzbefehl. (Direkt in einen Bereich springen oder Lifestyle-Knöpfe gehen auf diesem Weg nicht – iOS gibt keine Adresse an die Web-App weiter.)', ['OK'], null);
+  }
 }
 
 async function inApp(data, s) {
   const q = args.queryParameters || {};
-  if ((q.log || q.open || q.tab) && s.open !== 'webapp') {
-    await ask('Puls direkt öffnen', 'Dafür muss dein iPhone Puls direkt aus dem Widget öffnen können. Teste es jetzt.', ['Testen'], 'Später');
-  }
   const env = (fam) => ({ fam, param: '', link: makeLink(s), life: s.open === 'webapp' });
+  // Vom Widget aus getippt (Puls lässt sich nicht direkt öffnen): gleich die große Ansicht, kein Menü
+  if (q.from === 'widget') {
+    await render(data, env('large')).presentLarge();
+    return;
+  }
   for (;;) {
     const a = new Alert();
     a.title = 'Puls-Widget';
-    a.message = s.open === 'webapp' ? 'Tippen aufs Widget öffnet Puls direkt.' : 'Tippen aufs Widget öffnet im Moment Scriptable. Teste, ob dein iPhone Puls direkt öffnen kann.';
+    a.message =
+      s.open === 'webapp' ? 'Tippen aufs Widget öffnet Puls direkt.' : s.open === 'shortcut' ? \`Tippen aufs Widget öffnet Puls über den Kurzbefehl „\${SHORTCUT}“.\` : 'Tippen aufs Widget zeigt im Moment die große Ansicht hier in Scriptable. Teste, ob dein iPhone Puls direkt öffnen kann.';
     a.addAction('Puls direkt öffnen – testen');
+    a.addAction('Über Kurzbefehl öffnen – testen');
     a.addAction('Vorschau groß');
     a.addAction('Vorschau mittel');
     a.addAction('Vorschau klein');
@@ -642,9 +666,12 @@ async function inApp(data, s) {
     if (i === 0) {
       await testDirect(s);
       s = settings();
-    } else if (i === 1) await render(data, env('large')).presentLarge();
-    else if (i === 2) await render(data, env('medium')).presentMedium();
-    else if (i === 3) await render(data, env('small')).presentSmall();
+    } else if (i === 1) {
+      await testShortcut(s);
+      s = settings();
+    } else if (i === 2) await render(data, env('large')).presentLarge();
+    else if (i === 3) await render(data, env('medium')).presentMedium();
+    else if (i === 4) await render(data, env('small')).presentSmall();
     else return;
   }
 }

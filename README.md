@@ -21,9 +21,10 @@ und so auswertet wie Whoop:
 - **iPhone-Widgets** (Home- und Sperrbildschirm) über die kostenlose App Scriptable. Das große Widget
   zeigt alles auf einen Blick (drei Ringe, HRV, Ruhepuls, Schritte, Body Battery, Training, Schlafenszeit,
   Woche Mo–So); der Sperrbildschirm zeigt runde Ringe (Parameter `recovery`/`schlaf`/`strain`) oder alle
-  drei nebeneinander. Ein eingebauter Test prüft, ob ein Tippen Puls direkt öffnen kann (inoffizieller
-  `webapp://`-Weg von iOS); dann springen die Ringe in die Bereiche und Lifestyle-Knöpfe tragen direkt ein
-  (`?tab=`, `?log=`, `?open=laufband`).
+  drei nebeneinander. Eingebaute Tests prüfen, ob ein Tippen Puls öffnen kann: direkt (inoffizieller
+  `webapp://`-Weg von iOS – dann springen die Ringe in die Bereiche und Lifestyle-Knöpfe tragen direkt ein,
+  `?tab=`, `?log=`, `?open=laufband`) oder über einen Kurzbefehl „Puls öffnen“ (App öffnen → Puls).
+  Sonst zeigt ein Tippen die große Ansicht in Scriptable.
   Die Widget-Datei ist verschlüsselt (Schlüssel aus deinem Daten-Passwort); Code zum Kopieren und
   Anleitung unter Einstellungen → iPhone-Widgets.
 - **Trainingswoche & Kalender:** Auf „Heute“ siehst du Mo–So, an welchen Tagen du was trainiert hast
