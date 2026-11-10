@@ -10,7 +10,7 @@ import * as T from './training.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.8.0';
+const VERSION = '5.8.1';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -35,7 +35,7 @@ const LS = {
   feel: 'puls.feel',
   padPending: 'puls.padPending',
   illness: 'puls.illness',
-  illAsked: 'puls.illAsked',
+  illAsked: 'puls.illAsked2',
   illSent: 'puls.illSent',
   ics: 'puls.ics',
 };
@@ -74,6 +74,8 @@ const ls = {
     }
   },
 };
+// Bis 5.8.0 wurden Rückfragen beim Antippen als erledigt gemerkt, ohne die Antwort zu speichern
+ls.del('puls.illAsked');
 
 // Darstellung: „Premium“ (Standard) oder „Sci-Fi“
 document.documentElement.dataset.theme = Hud.themeFor(ls.get(LS.theme, 'premium'));
@@ -266,6 +268,12 @@ const journal = () => (state.demo ? state.demoJournal : ls.get(LS.journal, {}));
 // ------------------------------------------------------------------ Infekt-Lernen: deine Angaben
 
 /** Eigene Angaben: { pos: [{s, e?, src}], neg: [Datum] } – Infekte und „war nicht krank“. */
+/** Schon beantwortete Rückfragen (Demo nur im Speicher, damit nichts hängen bleibt). */
+const illAsked = () => (state.demo ? state.demoAsked || [] : ls.get(LS.illAsked, []));
+function setIllAsked(v) {
+  if (state.demo) state.demoAsked = v;
+  else ls.set(LS.illAsked, v);
+}
 const illLocal = () => (state.demo ? state.demoIll || { pos: [], neg: [] } : ls.get(LS.illness, { pos: [], neg: [] }));
 function saveIll(v) {
   if (state.demo) state.demoIll = v;
@@ -1293,8 +1301,8 @@ function illModelCard(m) {
 /** Puls fragt nach auffälligen Phasen, damit es lernen kann (eine Frage auf einmal). */
 function illQuestionCard(m) {
   const h = m.illness;
-  if (!h || state.demo) return '';
-  const asked = new Set(ls.get(LS.illAsked, []));
+  if (!h) return '';
+  const asked = new Set(illAsked());
   const c = h.candidates.find((x) => !asked.has(x.date));
   if (!c) return '';
   return `<section class="card illq"><h2>Puls lernt dich kennen</h2>
@@ -2887,8 +2895,9 @@ app.addEventListener('click', async (e) => {
     case 'ill-yes':
     case 'ill-no':
     case 'ill-skip': {
+      const act = t.dataset.act;
       const date = t.dataset.date;
-      ls.set(LS.illAsked, [...new Set([...ls.get(LS.illAsked, []), date])].slice(-200));
+      setIllAsked([...new Set([...illAsked(), date])].slice(-200));
       const own = illLocal();
       if (act === 'ill-yes') saveIll({ ...own, pos: [...(own.pos || []), { s: E.addDays(date, 1), src: 'answer' }] });
       if (act === 'ill-no') saveIll({ ...own, neg: [...new Set([...(own.neg || []), date])] });

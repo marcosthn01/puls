@@ -59,6 +59,17 @@ if (summary?.view === 'main') {
   await page.click('[data-act=settings]');
   await page.click('[data-act=back]');
   await page.click('#tabbar [data-tab=heute]');
+  // Rückfrage „Puls lernt dich kennen“: Antwort-Knopf muss reagieren (im Test-Browser nur „Weiß ich nicht mehr“)
+  const askDate = await page.evaluate(() => document.querySelector('.illq [data-act=ill-skip]')?.dataset.date || null);
+  if (askDate) {
+    await page.click('.illq [data-act=ill-skip]');
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => document.querySelector('.illq [data-act=ill-skip]')?.dataset.date || null);
+    console.log('Rückfrage: ' + (after === askDate ? 'Knopf reagiert nicht' : 'Antwort angenommen'));
+    if (after === askDate) errors.push('Rückfrage „Puls lernt dich kennen“: Knopf reagiert nicht.');
+  } else {
+    console.log('Rückfrage: gerade keine offen');
+  }
   const cta = await page.$('[data-act=journal]');
   if (cta) {
     await cta.click();
