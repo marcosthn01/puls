@@ -38,6 +38,44 @@ export function splitOf(a, labels = {}) {
   return null;
 }
 
+/**
+ * Push/Pull usw. für alle Gym-Einheiten: aus deiner Markierung oder dem Namen – dazwischen im Wechsel
+ * ergänzt (Push → Pull → Push …), vorwärts und rückwärts ab der nächsten bekannten Einheit.
+ * Ergebnis: { map: { id: split }, inferred: Set(ids) }. Ohne eine bekannte Einheit bleibt alles offen.
+ */
+const effCache = new WeakMap();
+export function effectiveLabels(model, labels = {}) {
+  const key = JSON.stringify(labels || {});
+  const hit = effCache.get(model);
+  if (hit && hit.key === key) return hit.value;
+  const seq = [];
+  for (const d of model.days || []) for (const a of d.acts || []) if (activityKind(a) === 'gym' && (a.dur || 0) >= 600 && a.id != null) seq.push(a);
+  const split = seq.map((a) => splitOf(a, labels));
+  const kinds = new Set(split.filter(Boolean));
+  const order = kinds.has('legs') ? ['push', 'pull', 'legs'] : kinds.has('upper') || kinds.has('lower') ? ['upper', 'lower'] : ['push', 'pull'];
+  const inferred = new Set();
+  const step = (sp, dir) => (order.includes(sp) ? order[(order.indexOf(sp) + dir + order.length) % order.length] : null);
+  for (let k = 1; k < seq.length; k++) {
+    if (!split[k] && split[k - 1]) {
+      split[k] = step(split[k - 1], 1);
+      if (split[k]) inferred.add(seq[k].id);
+    }
+  }
+  for (let k = seq.length - 2; k >= 0; k--) {
+    if (!split[k] && split[k + 1]) {
+      split[k] = step(split[k + 1], -1);
+      if (split[k]) inferred.add(seq[k].id);
+    }
+  }
+  const map = { ...labels };
+  seq.forEach((a, k) => {
+    if (split[k]) map[a.id] = split[k];
+  });
+  const value = { map, inferred };
+  effCache.set(model, { key, value });
+  return value;
+}
+
 const quant = (arr, q) => {
   const a = arr.filter(isNum).sort((x, y) => x - y);
   if (!a.length) return null;
@@ -50,6 +88,9 @@ const round15 = (m) => Math.max(30, Math.round(m / 15) * 15);
 /** Was und wie du trainierst – aus den letzten 6 Wochen (ohne heute). */
 export function trainingProfile(model, i = model.days.length - 1, { labels = {}, weeks = 6 } = {}) {
   const S = model.settings;
+  const eff = effectiveLabels(model, labels);
+  const raw = labels;
+  labels = eff.map;
   const sessions = [];
   for (let k = Math.max(0, i - weeks * 7); k <= i; k++) {
     const d = model.days[k];
@@ -99,7 +140,9 @@ export function trainingProfile(model, i = model.days.length - 1, { labels = {},
     const splits = past.filter((x) => x.kind === 'gym').map((x) => x.split);
     gym.splits = [...new Set(splits.filter(Boolean))];
     gym.lastSplit = gym.last.split;
-    gym.unlabeled = !gym.last.split ? gym.last : null;
+    // Zum Antippen: letzte Einheit ohne eigene Angabe (unbekannt oder nur im Wechsel ergänzt)
+    gym.unlabeled = !splitOf(gym.last, raw) || eff.inferred.has(gym.last.id) ? gym.last : null;
+    gym.guess = gym.unlabeled ? gym.last.split : null;
   }
   // Trainingstage in Folge bis gestern
   let streak = 0;
@@ -324,4 +367,54 @@ export function trainingBlock(model, i = model.days.length - 1, opts = {}) {
   if (h.episodes.length) L(`Früher: ${h.episodes.length} Phase(n) mit erhöhtem Infekt-Risiko in 4 Monaten (${h.episodes.map((e) => e.date).join(', ')}); zuerst auffällig meist: ${h.leadLabel || '–'}; danach „krank“ eingetragen: ${h.sickLogged}×.`);
   if (opts.feel === 'sick') L('Er hat heute angegeben, dass er sich angeschlagen fühlt.');
   return out.join('\n');
+}
+
+/** Kurzname einer Einheit für Wochenübersicht und Kalender: „Push“, „Pull“, „Rad“ … */
+export function sessionLabel(a, labels = {}) {
+  const kind = activityKind(a);
+  if (kind === 'gym') {
+    const sp = splitOf(a, labels);
+    return sp ? SPLITS[sp] : 'Gym';
+  }
+  if (kind === 'bike') return 'Rad';
+  if (kind === 'run') return 'Laufen';
+  const n = String(a?.name || a?.type || 'Training').trim();
+  return n.length > 14 ? `${n.slice(0, 13)}…` : n;
+}
+
+/** Trainings pro Tag (nur Einheiten ab 10 Min.): [{ kind, label, min }] */
+export function sessionsOn(day, labels = {}) {
+  return (day?.acts || [])
+    .filter((a) => (a.dur || 0) >= 600)
+    .map((a) => ({ kind: activityKind(a), label: sessionLabel(a, labels), min: Math.round((a.dur || 0) / 60), id: a.id ?? null }));
+}
+
+/** Trainingswoche Mo–So um den Tag ``i``: Tage, Anzahl und Vergleich mit der Vorwoche. */
+export function trainingWeek(model, i = model.days.length - 1, labels = {}) {
+  labels = effectiveLabels(model, labels).map;
+  const date = model.days[i].date;
+  const monday = (iso) => {
+    const wdn = (new Date(iso + 'T12:00:00Z').getUTCDay() + 6) % 7;
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() - wdn);
+    return d.toISOString().slice(0, 10);
+  };
+  const shift = (iso, n) => {
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const build = (start) =>
+    Array.from({ length: 7 }, (_, k) => {
+      const iso = shift(start, k);
+      const idx = model.index[iso];
+      return { date: iso, future: iso > model.days[model.days.length - 1].date, sessions: idx == null ? [] : sessionsOn(model.days[idx], labels) };
+    });
+  const start = monday(date);
+  const days = build(start);
+  const prev = build(shift(start, -7));
+  const count = (ds) => ds.reduce((t, d) => t + d.sessions.length, 0);
+  const byLabel = {};
+  for (const d of days) for (const s of d.sessions) byLabel[s.label] = (byLabel[s.label] || 0) + 1;
+  return { start, days, count: count(days), trainingDays: days.filter((d) => d.sessions.length).length, prevCount: count(prev), byLabel };
 }

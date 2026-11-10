@@ -7,7 +7,7 @@ import * as Coach from './coach.js';
 import * as Hud from './hud.js';
 import * as T from './training.js';
 
-const VERSION = '5.3.0';
+const VERSION = '5.4.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -233,7 +233,7 @@ function toast(text) {
 // ------------------------------------------------------------------ Journal (Morgen-Check)
 
 const profile = () => ls.get(LS.profile, {});
-const splitLabels = () => ls.get(LS.splits, {});
+const splitLabels = () => ({ ...(state.store?.labels || {}), ...ls.get(LS.splits, {}) });
 const feelOn = (date) => (ls.get(LS.feel, {})?.date === date ? 'sick' : null);
 const reportExtra = () => (feelOn(state.model.days[state.model.days.length - 1].date) ? 'krank' : '');
 const planFor = (i) => T.trainingPlan(state.model, i, { labels: splitLabels(), feel: feelOn(state.model.days[i].date), journal: journal() });
@@ -353,6 +353,8 @@ const ghHeaders = (token) => ({ Authorization: `Bearer ${token}`, Accept: 'appli
 
 async function dispatch(inputs = {}) {
   const gh = ghConfig();
+  const own = ls.get(LS.splits, {});
+  if (Object.keys(own).length && inputs.labels == null) inputs = { ...inputs, labels: JSON.stringify(own) };
   const res = await fetch(`https://api.github.com/repos/${gh.repo}/actions/workflows/${WORKFLOW}/dispatches`, {
     method: 'POST',
     headers: ghHeaders(gh.token),
@@ -907,7 +909,7 @@ function viewToday(anim) {
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
   return `${setupCard()}${telemetry(d)}${dials(d, anim)}${dashTiles(m, i)}
-    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
+    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
     <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
 }
 
@@ -923,8 +925,8 @@ function trainingCard(m, i, bed) {
   const sub = p.kind === 'gym' ? p.sub.split(' – ') : [p.sub];
   const gym = p.profile.gym;
   const ask =
-    isToday && gym?.unlabeled && !gym.lastSplit && (gym.splits?.length || 0) < 2
-      ? `<div class="tr-ask"><span>Dein letztes Gym (${esc(shortDate(gym.unlabeled.date))}) war …</span>${['push', 'pull', 'legs'].map((k) => `<button class="qchip" data-act="split" data-id="${esc(String(gym.unlabeled.id))}" data-split="${k}">${T.SPLITS[k]}</button>`).join('')}</div>`
+    isToday && gym?.unlabeled && gym.unlabeled.id != null
+      ? `<div class="tr-ask"><span>${gym.guess ? `Letztes Gym (${esc(shortDate(gym.unlabeled.date))}) als <b>${T.SPLITS[gym.guess]}</b> gezählt – stimmt das?` : `Dein letztes Gym (${esc(shortDate(gym.unlabeled.date))}) war …`}</span>${['push', 'pull', 'legs'].map((k) => `<button class="qchip ${gym.guess === k ? 'on' : ''}" data-act="split" data-id="${esc(String(gym.unlabeled.id))}" data-split="${k}">${T.SPLITS[k]}</button>`).join('')}</div>`
       : '';
   const sick = feelOn(d.date) === 'sick';
   return `<section class="card train lv-${p.level || p.kind}">
@@ -939,6 +941,30 @@ function trainingCard(m, i, bed) {
       <button class="feelbtn ${sick ? 'on' : ''}" data-act="feel">${I.alert}<span>${sick ? 'Du fühlst dich angeschlagen – tippe, wenn es dir wieder gut geht' : 'Fühlst du dich angeschlagen?'}</span></button>
     </div>` : ''}
   </section>`;
+}
+
+/** Trainingswoche Mo–So: was an welchem Tag (wie im eigenen Kalender), Anzahl und Vorwoche. */
+function weekTrainingCard(m, i) {
+  const w = T.trainingWeek(m, i, splitLabels());
+  const sel = m.days[i].date;
+  const cells = w.days
+    .map((d) => {
+      const wd = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][(E.weekday(d.date) + 6) % 7];
+      const chips = d.sessions.length
+        ? d.sessions.slice(0, 2).map((x) => `<i class="wk-chip k-${x.kind}">${esc(x.label)}</i>`).join('')
+        : `<i class="wk-chip k-none">${d.future ? '' : '–'}</i>`;
+      const idx = m.index[d.date];
+      return `<button class="wk-day ${d.date === sel ? 'on' : ''} ${d.future ? 'future' : ''}" ${idx != null ? `data-goto="${idx}"` : 'disabled'}><span>${wd}</span>${chips}</button>`;
+    })
+    .join('');
+  const parts = Object.entries(w.byLabel).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}× ${esc(k)}`);
+  const diff = w.count - w.prevCount;
+  return card(
+    `Trainingswoche<span class="wk-count">${w.count} ${w.count === 1 ? 'Training' : 'Trainings'}</span>`,
+    `<div class="wk-grid">${cells}</div>
+    <p class="note">${parts.length ? parts.join(' · ') : 'Noch kein Training diese Woche'} · Vorwoche ${w.prevCount}${diff ? ` (${diff > 0 ? '+' : '−'}${Math.abs(diff)})` : ''}</p>`,
+    'wkcard',
+  );
 }
 
 const ILL_TONE = ['ok', 'watch', 'warn', 'bad'];
@@ -1712,9 +1738,11 @@ function calendarCard(m) {
       continue;
     }
     const d = m.days[idx];
-    cells.push(`<button class="cal ${d.zone ? 'z' : 'none'} ${idx === state.sel ? 'on' : ''}" data-goto="${idx}"${d.zone ? ` style="--z:${zoneColor(d.zone)}"` : ''}><span>${Number(date.slice(8))}</span>${d.recovery != null ? `<small>${d.recovery}</small>` : ''}</button>`);
+    const tr = T.sessionsOn(d, T.effectiveLabels(m, splitLabels()).map);
+    const mark = tr.length ? `<em class="k-${tr[0].kind}">${esc(tr[0].label)}${tr.length > 1 ? '+' : ''}</em>` : '';
+    cells.push(`<button class="cal ${d.zone ? 'z' : 'none'} ${idx === state.sel ? 'on' : ''}" data-goto="${idx}"${d.zone ? ` style="--z:${zoneColor(d.zone)}"` : ''}><span>${Number(date.slice(8))}</span>${d.recovery != null ? `<small>${d.recovery}</small>` : ''}${mark}</button>`);
   }
-  return card('Kalender', `<div class="calgrid">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((x) => `<span class="calh">${x}</span>`).join('')}${cells.join('')}</div>`);
+  return card('Kalender · Recovery und Training', `<div class="calgrid">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((x) => `<span class="calh">${x}</span>`).join('')}${cells.join('')}</div>`);
 }
 
 function journalListCard(m) {
@@ -2155,6 +2183,41 @@ document.addEventListener('click', (e) => {
 
 // ------------------------------------------------------------------ Einstellungen (Unterseite)
 
+/** Geheimer Link zum Trainingskalender: kal-<HMAC(Passwort)>.ics – derselbe Name wie im Abruf. */
+async function calendarUrl() {
+  const pass = ls.get(LS.pass);
+  if (!pass || !crypto?.subtle) return null;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(pass), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode('puls-kalender-v1')));
+  const hex = [...sig].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 24);
+  return new URL(`kal-${hex}.ics`, location.href.split('#')[0].split('?')[0]).href;
+}
+
+function calSubscribeCard() {
+  if (state.demo) return '';
+  if (state.calUrl === undefined) {
+    state.calUrl = null;
+    calendarUrl()
+      .then((u) => {
+        state.calUrl = u || '';
+        if (state.tab === 'settings') render();
+      })
+      .catch(() => (state.calUrl = ''));
+  }
+  const url = state.calUrl;
+  if (!url) return '';
+  const webcal = url.replace(/^https:/, 'webcal:');
+  return `<section class="card"><h2>Trainingskalender</h2>
+    <p class="small">Jedes Training als ganztägiges Ereignis – „Push“, „Pull“, „Cardio · Rad“ – in deinem Kalender. Neue Trainings kommen automatisch dazu.</p>
+    <div class="calurl"><code>${esc(url)}</code></div>
+    <button class="btn" data-act="cal-copy">Link kopieren</button>
+    <details style="margin-top:10px"><summary>In Google Kalender abonnieren</summary><p>1. Am Computer <b>calendar.google.com</b> öffnen (in der Google-App auf dem iPhone geht das Abonnieren nicht).<br>2. Links bei „Weitere Kalender“ auf <b>+</b> → <b>Per URL</b>.<br>3. Link einfügen → <b>Kalender hinzufügen</b>. Fertig – „Puls Training“ erscheint auch in der Google-App. Google lädt Abos alle paar Stunden neu.</p></details>
+    <details><summary>In Apple Kalender abonnieren</summary><p>Auf dem iPhone hier tippen: <a href="${esc(webcal)}">Kalender abonnieren</a> → <b>Abonnieren</b>. Unter Einstellungen → Kalender → Accounts → Abrufen kannst du „Alle 15 Minuten“ wählen.</p></details>
+    <p class="muted small" style="margin-top:8px">Der Link ist geheim: Wer ihn kennt, sieht nur Datum und Art deiner Trainings – keine Gesundheitswerte. Push/Pull: Tippe in „Training heute“ einmal an, was dein letztes Gym war – Puls ergänzt den Rest im Wechsel.</p>
+  </section>`;
+}
+
 function viewSettings() {
   const m = state.model;
   const S = m && !m.empty ? m.settings : E.resolveSettings(ls.get(LS.settings, {}), state.store?.profile || {}, []);
@@ -2185,6 +2248,8 @@ function viewSettings() {
   ${setup.push ? `<section class="card"><h2>Benachrichtigungen</h2>
     ${PUSH_KINDS.map(([k, label, sub]) => `<label class="toggle"><span><b>${label}</b><small>${sub}</small></span><input type="checkbox" data-pushpref="${k}" ${ls.get(LS.pushPrefs, {})[k] === false ? '' : 'checked'}><i></i></label>`).join('')}
   </section>` : ''}
+
+  ${calSubscribeCard()}
 
   <section class="card"><h2>Garmin</h2>
     <p class="small">Letzter Abruf: <b>${state.demo ? 'Demo' : ago(state.store?.generated)}</b> · Garmin: <b>${authText}</b></p>
@@ -2396,6 +2461,14 @@ app.addEventListener('click', async (e) => {
       }
       break;
     }
+    case 'cal-copy':
+      if (state.calUrl) {
+        navigator.clipboard?.writeText(state.calUrl).then(
+          () => toast('Link kopiert.'),
+          () => toast('Kopieren ging nicht – Link bitte markieren.'),
+        );
+      }
+      break;
     case 'logout':
       if (confirm('Passwort und Schlüssel auf diesem Gerät löschen? Morgen-Check-Antworten bleiben.')) {
         [LS.pass, LS.key, LS.demo].forEach(ls.del);

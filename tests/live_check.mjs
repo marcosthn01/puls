@@ -74,6 +74,22 @@ if (summary?.view === 'main') {
 }
 
 await browser.close();
+
+// Trainingskalender unter dem geheimen Link: erreichbar? Nur Anzahlen ins Log.
+{
+  const { createHmac } = await import('node:crypto');
+  const token = createHmac('sha256', pass).update('puls-kalender-v1').digest('hex').slice(0, 24);
+  const res = await fetch(new URL(`kal-${token}.ics`, url.endsWith('/') ? url : url + '/'), { cache: 'no-store' });
+  if (!res.ok) {
+    errors.push(`Trainingskalender nicht erreichbar (${res.status}).`);
+  } else {
+    const ics = await res.text();
+    const n = (re) => (ics.match(re) || []).length;
+    console.log(`Trainingskalender: ${n(/BEGIN:VEVENT/g)} Einträge (Push ${n(/SUMMARY:Push/g)}, Pull ${n(/SUMMARY:Pull/g)}, Gym ohne Split ${n(/SUMMARY:Gym/g)}, Cardio ${n(/SUMMARY:Cardio/g)}).`);
+    if (!ics.startsWith('BEGIN:VCALENDAR')) errors.push('Trainingskalender: Datei ist kein Kalender.');
+  }
+}
+
 if (errors.length) {
   console.log(`\n${errors.length} Problem(e):`);
   for (const e of [...new Set(errors)]) console.log(' - ' + e);

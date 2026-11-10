@@ -14,6 +14,13 @@ und so auswertet wie Whoop:
   und Rad), und sagt dir jeden Tag konkret, was dran ist: „Rad · 75 Min., Puls um 138“ oder „Gym · Pull,
   −20 % Volumen, 2–3 Wdh. in Reserve“ – passend zu Recovery, HRV-Trend, Schlaf, Last und Infekt-Zeichen.
   Keine Zone-4-Intervalle, wenn du so etwas nie trainierst.
+- **Trainingswoche & Kalender:** Auf „Heute“ siehst du Mo–So, an welchen Tagen du was trainiert hast
+  (Push, Pull, Rad …) und wie viele Trainings es diese Woche sind; der Monatskalender unter Trends
+  zeigt Recovery und Training zusammen.
+- **Trainingskalender für Google/Apple:** Jedes Training landet automatisch als ganztägiges Ereignis
+  („Push“, „Pull“, „Cardio · Rad“) in einem abonnierbaren Kalender (geheimer Link unter Einstellungen →
+  Trainingskalender, ohne Gesundheitswerte). Push/Pull: einmal in der App antippen, Puls ergänzt den Rest
+  im Wechsel.
 - **Infekt-Frühwarnung:** Ruhepuls, HRV, Atmung und Hauttemperatur gegen deine eigene Basis, über mehrere
   Nächte. Bei Frühzeichen zeigt Puls nie „voll erholt“, rät zu Pause oder lockerer Bewegung und schickt
   morgens eine Warnung. Mit „Ich fühle mich angeschlagen“ plant Puls sofort Ruhe ein.

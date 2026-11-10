@@ -40,6 +40,10 @@ on:
         description: "Nur intern: wer den Abruf startet (z. B. die Morgenwache)"
         required: false
         default: ""
+      labels:
+        description: "Nur für die App: Push/Pull-Markierungen deiner Gym-Einheiten (für den Trainingskalender)"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths: ["app/**", "sync/**", ".github/workflows/sync.yml"]
@@ -161,6 +165,7 @@ jobs:
           cp -r app/. _site/
           if [ -f .puls-cache/data.enc.json ]; then cp .puls-cache/data.enc.json _site/; fi
           if [ -f .puls-cache/push-public.json ]; then cp .puls-cache/push-public.json _site/push.json; fi
+          cp .puls-cache/kal-*.ics _site/ 2>/dev/null || true
 
       - uses: actions/upload-pages-artifact@v5
         with:

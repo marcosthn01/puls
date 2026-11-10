@@ -1024,6 +1024,32 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 .ill-sig i.p2, .ill-sig i.p3 { background: var(--red); }
 .illcard .ntips { margin-top: 10px; }
 
+/* ================= v5.4: Trainingswoche und Kalender ================= */
+.wkcard h2 { display: flex; align-items: center; }
+.wk-count { margin-left: auto; font-family: var(--display); font-size: 15px; font-weight: 700; letter-spacing: 0.02em; text-transform: none; color: var(--text); }
+.wk-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.wk-day { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; padding: 8px 3px; border: 0; border-radius: 12px; background: var(--card2); color: var(--muted); font: inherit; cursor: pointer; }
+.wk-day > span { font-family: var(--display); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.wk-day.on { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35); }
+.wk-day.future { background: transparent; box-shadow: inset 0 0 0 1px var(--line); cursor: default; }
+.wk-chip { display: block; width: 100%; min-height: 22px; padding: 4px 0; border-radius: 7px; font-style: normal; text-align: center; font-family: var(--display); font-size: 12.5px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wk-chip.k-gym { background: linear-gradient(135deg, #e8913a, #a85a1c); }
+.wk-chip.k-bike { background: linear-gradient(135deg, #1f7fe8, #1556a6); }
+.wk-chip.k-run { background: linear-gradient(135deg, #1ab27a, #11704d); }
+.wk-chip.k-other { background: #3a3f44; }
+.wk-chip.k-none { color: var(--muted); background: none; font-weight: 600; }
+.wk-chip + .wk-chip { margin-top: -1px; }
+.wkcard .note { margin-top: 10px; }
+.cal em { max-width: 92%; margin-top: 2px; padding: 1px 3px; border-radius: 3px; font-style: normal; font-family: var(--display); font-size: 9.5px; font-weight: 700; line-height: 1.1; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal em.k-gym { background: #c7742c; }
+.cal em.k-bike { background: #1f6fd0; }
+.cal em.k-run { background: #15936a; }
+.cal em.k-other { background: #4a4f55; }
+.calgrid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal { min-width: 0; overflow: hidden; aspect-ratio: auto; min-height: 50px; padding: 5px 0 6px; }
+.calurl { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--card2); }
+.calurl code { display: block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; line-height: 1.45; color: #c9ced3; word-break: break-all; user-select: all; -webkit-user-select: all; }
+
 /* ================= v5: Zukunft – HUD ================= */
 
 /* Bausteine, die nur zur Zukunfts-Darstellung gehören */

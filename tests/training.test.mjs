@@ -86,3 +86,19 @@ test('Coach bekommt Profil, Empfehlung und Frühwarnung', () => {
   assert.match(ctx, /## Training/);
   assert.doesNotMatch(ctx, /App-Empfehlung Training/);
 });
+
+test('Push/Pull wird ab einer Markierung im Wechsel ergänzt – wie im Kalender', () => {
+  const days = ['2026-11-02', '2026-11-04', '2026-11-06', '2026-11-09'].map((date, k) => ({
+    date,
+    acts: [{ id: 101 + 2 * k, type: 'strength_training', name: 'Krafttraining', dur: 3900 }],
+  }));
+  const m = { days };
+  const eff = T.effectiveLabels(m, { 105: 'pull' });
+  assert.deepEqual(eff.map, { 101: 'pull', 103: 'push', 105: 'pull', 107: 'push' });
+  assert.deepEqual([...eff.inferred].sort(), [101, 103, 107]);
+  assert.deepEqual(T.effectiveLabels(m, {}).map, {});
+  const week = T.trainingWeek({ ...m, index: Object.fromEntries(days.map((d, k) => [d.date, k])) }, 3, { 105: 'pull' });
+  assert.equal(week.count, 1); // Woche ab Mo 9.11.: nur das Push vom Montag
+  assert.equal(week.days[0].sessions[0].label, 'Push');
+  assert.equal(week.prevCount, 3);
+});

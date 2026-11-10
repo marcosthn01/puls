@@ -38,6 +38,7 @@ from garmin_data import (  # noqa: E402
     normalize_steps,
     strip_details,
 )
+import kalender  # noqa: E402
 import walkpad  # noqa: E402
 
 STORE_VERSION = 1
@@ -259,6 +260,10 @@ def run(
             log(f"Walking-Pad: Format nicht erkannt ({walkpad.describe_format(str(walk_raw))}).")
     walkpad.refresh(store, today, DETAIL_DAYS)
 
+    # Push/Pull-Markierungen aus der App (für den Trainingskalender)
+    if inputs.get("labels"):
+        store["labels"] = kalender.merge_labels(store.get("labels"), inputs.get("labels"))
+
     try:
         api = connect(
             garmin_module.Garmin,
@@ -315,6 +320,11 @@ def run(
     store["generated"] = now.isoformat(timespec="seconds")
     store["status"] = {"auth": "ok", "sync": status, "checked": store["generated"]}
     write_store(store, cache_dir, passphrase, salt, out_dir)
+    try:
+        kalender.write_calendar(store, cache_dir, passphrase, now)
+        log("Trainingskalender aktualisiert.")
+    except Exception as e:  # der Kalender darf den Abruf nie stören
+        log(f"Trainingskalender nicht geschrieben ({type(e).__name__}).")
     return 0
 
 
