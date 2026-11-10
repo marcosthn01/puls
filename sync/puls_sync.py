@@ -49,6 +49,8 @@ MAX_DAYS = 730
 REFRESH_DAYS = 3
 REPAIR_WINDOW = 30
 REPAIR_MAX = 15
+HISTORY_CHUNK = 60  # ältere Tage je Lauf beim Nachladen des Verlaufs
+HISTORY_EMPTY_STOP = 21  # so viele Tage ohne Uhr-Daten am Stück = Anfang erreicht
 PAUSE_S = 0.35
 
 FAILED = object()
@@ -121,6 +123,55 @@ def dates_to_fetch(store: dict, today: dt.date, backfill: int, full: bool) -> li
     ]
     wanted.update(missing[:REPAIR_MAX])
     return sorted(wanted)
+
+
+def has_watch_data(record: dict | None) -> bool:
+    """Hat die Uhr an dem Tag etwas gemessen (Schlaf, HRV, Schritte, Ruhepuls, Puls)?"""
+    if not isinstance(record, dict):
+        return False
+    stats = record.get("stats") or {}
+    return bool(record.get("sleep") or record.get("hrv") or record.get("hr") or (stats.get("steps") or 0) > 0 or stats.get("rhr"))
+
+
+def history_batch(store: dict, today: dt.date, chunk: int) -> list[dt.date]:
+    """Nächste ältere Tage für den Verlauf (neueste zuerst), bis der erste Tag deiner Uhr erreicht ist."""
+    h = store.get("history") or {}
+    if h.get("done"):
+        return []
+    if h.get("next"):
+        start = dt.date.fromisoformat(h["next"])
+    else:
+        keys = sorted(k for k, v in (store.get("days") or {}).items() if has_watch_data(v))
+        start = dt.date.fromisoformat(keys[0]) if keys else today
+    limit = today - dt.timedelta(days=MAX_DAYS)
+    out = []
+    for i in range(1, max(1, chunk) + 1):
+        day = start - dt.timedelta(days=i)
+        if day <= limit:
+            break
+        out.append(day)
+    return out
+
+
+def advance_history(store: dict, day: dt.date, today: dt.date) -> None:
+    """Fortschritt nach einem geholten Tag: nächster Starttag, Leerlauf-Zähler, Anfang erreicht?"""
+    h = store.setdefault("history", {})
+    if has_watch_data(store["days"].get(day.isoformat())):
+        h["empty"] = 0
+        h["first"] = day.isoformat()
+    else:
+        h["empty"] = int(h.get("empty") or 0) + 1
+        store["days"].pop(day.isoformat(), None)
+    h["next"] = day.isoformat()
+    if h["empty"] >= HISTORY_EMPTY_STOP or day - dt.timedelta(days=1) <= today - dt.timedelta(days=MAX_DAYS):
+        h["done"] = True
+
+
+def set_output(key: str, value: str) -> None:
+    path = os.environ.get("GITHUB_OUTPUT")
+    if path:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{key}={value}\n")
 
 
 class Fetcher:
@@ -351,6 +402,31 @@ def run(
     except garmin_module.GarminConnectAuthenticationError:
         log("WARNUNG: Garmin hat die Anmeldung während des Abrufs abgelehnt.")
         status = "partial"
+
+    # Verlauf nachladen: ältere Tage in Etappen, bis der erste Tag deiner Uhr erreicht ist
+    want_history = str(inputs.get("history") or "").strip().lower()
+    if status == "ok" and want_history and want_history not in ("0", "false", "nein"):
+        chunk = int(want_history) if want_history.isdigit() else HISTORY_CHUNK
+        batch = history_batch(store, today, min(chunk, 120))
+        done_days: list[dt.date] = []
+        try:
+            for day in batch:
+                sync_days(fetch, store, [day], today, tz)
+                advance_history(store, day, today)
+                done_days.append(day)
+                if store["history"].get("done"):
+                    break
+            if done_days:
+                sync_activities(fetch, store, done_days)
+        except garmin_module.GarminConnectTooManyRequestsError:
+            log("Verlauf: Garmin bremst – geht beim nächsten Mal weiter, wo es aufgehört hat.")
+            status = "partial"
+        h = store.get("history") or {}
+        if h.get("done"):
+            log(f"Verlauf vollständig: deine Daten reichen zurück bis {h.get('first') or '–'}.")
+        elif done_days:
+            log(f"Verlauf: ältere Tage bis {h.get('next')} geladen – es geht weiter.")
+        set_output("history_more", "true" if not h.get("done") and status == "ok" and done_days else "false")
 
     save_tokens(api, cache_dir, passphrase)
     walkpad.refresh(store, today, DETAIL_DAYS)

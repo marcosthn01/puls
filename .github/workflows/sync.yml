@@ -48,6 +48,10 @@ on:
         description: "Nur für die App: deine Infekte und Antworten fürs Infekt-Lernen (verschlüsselt)"
         required: false
         default: ""
+      history:
+        description: "Verlauf nachladen: ältere Tage pro Lauf (z. B. 60) – läuft von selbst weiter bis zum ersten Tag deiner Uhr"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths: ["app/**", "sync/**", ".github/workflows/sync.yml"]
@@ -179,6 +183,15 @@ jobs:
       - name: Veröffentlichen
         id: deploy
         uses: actions/deploy-pages@v5
+
+      - name: Verlauf weiter nachladen
+        if: steps.sync.outputs.history_more == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run sync.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}" -f history="${{ inputs.history }}" -f source=verlauf
+          echo "Nächste Etappe des Verlaufs gestartet."
 
       - name: Ergebnis prüfen
         if: steps.sync.outcome == 'failure'

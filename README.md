@@ -184,6 +184,11 @@ Am Schreibtisch zählt die Uhr kaum Schritte, weil der Arm still bleibt. Zwei We
 
 ## Gut zu wissen
 
+- **Dein ganzer Verlauf seit Tag 1:** Der erste Abruf holt 90 Tage. Ältere Tage lädt ein Start von
+  „Puls Sync“ mit `history` (z. B. 60) in Etappen nach – jede Etappe wird veröffentlicht und startet die
+  nächste, bis 3 Wochen am Stück keine Uhr-Daten mehr kommen (= erster Tag deiner Uhr). Gespeichert
+  werden bis zu 2 Jahre; ältere Tage kompakt (Schlaf, HRV, Ruhepuls, Tageswerte, Aktivitäten).
+
 - **Daten kommen über die Garmin-Connect-App in die Cloud.**
   - Die Uhr synchronisiert im Hintergrund.
   - Morgens hilft es, Garmin Connect kurz zu öffnen.
