@@ -2574,6 +2574,14 @@ window.__puls = {
       recovery: count((d) => d.recovery != null),
       zones: { green: count((d) => d.zone === 'green'), yellow: count((d) => d.zone === 'yellow'), red: count((d) => d.zone === 'red') },
       healthAge: !!E.healthAge(m),
+      training: (() => {
+        // Nur Anzahlen und Garmin-Typen (keine Werte): greift die Erkennung Gym/Rad?
+        const acts = m.days.slice(-42).flatMap((d) => d.acts);
+        const kinds = { gym: 0, bike: 0, run: 0, other: 0 };
+        for (const a of acts) kinds[T.activityKind(a)]++;
+        const gymActs = acts.filter((a) => T.activityKind(a) === 'gym');
+        return { kinds, types: [...new Set(acts.map((a) => a.type))], gymWithSplit: gymActs.filter((a) => T.splitOf(a)).length, planKind: T.trainingPlan(m, m.days.length - 1).kind };
+      })(),
       coachContextChars: E.coachContext(m, journal()).length,
     };
   },
