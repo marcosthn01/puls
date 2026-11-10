@@ -7,10 +7,11 @@
 
 import * as E from './engine.js';
 import * as T from './training.js';
+import * as Life from './lifestyle.js';
 
 /** Daten für den Coach – inkl. Training und Infekt-Frühwarnung von Puls. */
 const context = (app, model = app.model(), profile = app.profile?.() || {}) =>
-  E.coachContext(model, app.journal(), model.days.length - 1, profile, T.trainingBlock(model, model.days.length - 1, { journal: app.journal(), ...(app.trainingOpts?.() || {}) }));
+  E.coachContext(model, app.journal(), model.days.length - 1, profile, `${T.trainingBlock(model, model.days.length - 1, { journal: app.journal(), ...(app.trainingOpts?.() || {}) })}\n\n${Life.lifestyleBlock(model, app.journal())}`);
 import { esc } from './charts.js';
 
 const SDK_URL = './vendor/anthropic-sdk-1.3.0.mjs';
@@ -431,6 +432,7 @@ So schreibst du:
 - Training: genau EIN konkreter Vorschlag für heute in seiner eigenen Trainingswelt (siehe „## Training“: was er wirklich trainiert, z. B. Gym im Push/Pull-Wechsel oder Rad). Rad: Dauer in Minuten und Puls in bpm. Gym: welcher Split und wie viel Volumen (z. B. „−20 % Volumen, 2–3 Wdh. in Reserve“ oder „volles Volumen + 1 Satz, Supersätze fürs Zubehör“). Folge der Puls-Empfehlung; weiche nur mit klarer Begründung ab. Schlage NIE Trainingsformen vor, die er nicht macht (keine Intervalle, keine Zone-4-Blöcke, kein Laufen, wenn er nie läuft). Bei Infekt-Frühwarnung „erhöht“/„hoch“ oder wenn er sich angeschlagen fühlt: klar zu Pause oder nur lockerer Bewegung raten und sagen, warum (z. B. „Ruhepuls +5, Atmung +1 – so fing es bei dir schon mal an“).
 - Ernährung: verwende exakt die von Puls berechneten Zielwerte (kcal, Eiweiß, Kohlenhydrate, Fett, Wasser, Koffein-Grenze); erfinde keine anderen Zahlen. Gib 2–3 konkrete Mahlzeiten-Ideen passend zu Ernährungsform und Vorlieben, mit Timing ums Training. Fehlt das Gewicht, sag es kurz.
 - Schlaf: konkrete Uhrzeit fürs Zubettgehen und was heute Abend am meisten hilft.
+- Lifestyle: Nutze den Lifestyle-Log mit Uhrzeiten und seine persönlichen Einflüsse (z. B. Koffein-Grenze, Alkohol nach Menge). Verknüpfe konkret: „Gestern Kaffee um 18:05 – bei dir kostet Kaffee nach 15 Uhr 9 % Recovery; heute letzte Tasse bis 15 Uhr.“ Erfinde keine Effekte, die nicht in den Daten stehen; bei zu wenig Daten nenne die allgemeine Regel und sag, dass Puls es für ihn noch lernt.
 - Infekt: Nutze die Infekt-Frühwarnung und seine Vorgeschichte; warne früh und konkret, wenn sich etwas anbahnt – lieber einen Tag zu vorsichtig.
 - Gesundheit: Auffälligkeiten aus Körper-Check und Gesundheits-Check ehrlich einordnen (harmlos / beobachten / ärztlich abklären). Keine Diagnosen, keine Medikamenten-Empfehlungen. Bei Warnzeichen klar zum Arzt raten und sagen, was dort anzusprechen ist. Berücksichtige Vorerkrankungen und Medikamente aus seinen Angaben.
 - Sprache: Deutsch, du-Form, warm, direkt, verständlich ohne Fachwissen.

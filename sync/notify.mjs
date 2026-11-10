@@ -14,6 +14,7 @@
 // Schlüssel, Abo und Versandstatus liegen verschlüsselt im Zwischenspeicher (push.enc.json).
 // Im Log stehen keine Gesundheitswerte.
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { openBox } from '../app/crypto.js';
@@ -276,11 +277,66 @@ async function loadState(cacheDir, pass) {
   }
 }
 
+// ---------------------------------------------------------------- Widget-Datei (für Scriptable)
+
+/** Name der Widget-Datei: w-<HMAC(Passwort)>.json – die App rechnet denselben Namen aus. */
+export const widgetFileName = (pass) => `w-${crypto.createHmac('sha256', pass).update('puls-widget-v1').digest('hex').slice(0, 24)}.json`;
+
+/** Verschlüsseln wie in app/widget.js beschrieben (HMAC-SHA256-Schlüsselstrom + MAC). */
+export function sealWidget(obj, pass) {
+  const key = crypto.createHmac('sha256', pass).update('puls-widget-key-v1').digest();
+  const iv = crypto.randomBytes(16);
+  const pt = Buffer.from(JSON.stringify(obj), 'utf8');
+  const ct = Buffer.alloc(pt.length);
+  for (let blk = 0; blk * 32 < pt.length; blk++) {
+    const seed = Buffer.concat([iv, Buffer.from([(blk >>> 24) & 255, (blk >>> 16) & 255, (blk >>> 8) & 255, blk & 255])]);
+    const ks = crypto.createHmac('sha256', key).update(seed).digest();
+    for (let j = 0; j < 32 && blk * 32 + j < pt.length; j++) ct[blk * 32 + j] = pt[blk * 32 + j] ^ ks[j];
+  }
+  const mac = crypto.createHmac('sha256', key).update(Buffer.concat([iv, ct])).digest();
+  return { v: 1, iv: iv.toString('base64'), ct: ct.toString('base64'), mac: mac.toString('base64') };
+}
+
+/** Was das Widget zeigt: Recovery, Schlaf, Strain, Training heute, Infekt-Stufe, Schlafenszeit, Woche. */
+export function widgetPayload(model) {
+  const i = model.days.length - 1;
+  const d = model.days[i];
+  const labels = model.labels || {};
+  const plan = T.trainingPlan(model, i, { labels });
+  const wk = T.trainingWeek(model, i, labels);
+  const bed = d.recovery != null ? E.bedtimePlan(model, i)?.options?.[0]?.bed : null;
+  const short = plan.kind === 'rest' ? 'Pause' : plan.kind === 'bike' ? `Rad ${plan.min} Min.` : plan.kind === 'gym' ? plan.title.replace(' · ', ' ') : plan.kind === 'done' ? 'Training erledigt' : '';
+  const sub = plan.kind === 'bike' ? plan.sub.replace(', längere Anstiege gern kräftig', '') : plan.kind === 'gym' ? plan.volume : (plan.sub || '').split(' – ')[0];
+  const lvl = d.ill?.level ?? 0;
+  return {
+    v: 1,
+    date: d.date,
+    at: model.generated,
+    recovery: d.recovery,
+    zone: d.zone,
+    sleep: d.perf == null ? null : Math.round(d.perf),
+    strain: d.strain == null ? null : Math.round(d.strain * 10) / 10,
+    plan: plan.kind === 'none' || plan.kind === 'free' ? null : { title: plan.title, sub, short },
+    ill: { level: lvl, label: E.ILL_LEVELS[lvl] },
+    bed: bed != null ? E.fmtClock(bed) : null,
+    week: `${wk.count} ${wk.count === 1 ? 'Training' : 'Trainings'}${Object.keys(wk.byLabel).length ? ` (${Object.entries(wk.byLabel).map(([k, n]) => `${n}× ${k}`).join(', ')})` : ''}`,
+  };
+}
+
+function writeWidget(cacheDir, pass, model) {
+  const name = widgetFileName(pass);
+  for (const f of fs.readdirSync(cacheDir)) if (/^w-[0-9a-f]+\.json$/.test(f) && f !== name) fs.unlinkSync(path.join(cacheDir, f));
+  fs.writeFileSync(path.join(cacheDir, name), JSON.stringify(sealWidget(widgetPayload(model), pass)));
+  log('Widget-Datei aktualisiert.');
+}
+
 async function loadModel(cacheDir, pass, settings) {
   const file = path.join(cacheDir, 'data.enc.json');
   if (!fs.existsSync(file)) return null;
   const { data } = await openBox(JSON.parse(fs.readFileSync(file, 'utf8')), pass, null);
-  return E.analyze(data, settings || {});
+  const model = E.analyze(data, settings || {});
+  if (!model.empty) model.labels = data.labels || {};
+  return model;
 }
 
 function setOutput(key, value) {
@@ -374,6 +430,13 @@ async function send(cacheDir, pass) {
         const ok = state.subscription ? await push(msg) : true;
         if (ok) state.padSeen = { [now.date]: msg.total };
         if (ok && state.subscription && inWin(now.minutes, WINDOWS.steps)) state.sent.steps = now.date;
+      }
+    }
+    if (model && !model.empty) {
+      try {
+        writeWidget(cacheDir, pass, model);
+      } catch (err) {
+        log(`Widget-Datei nicht geschrieben (${err?.name || 'Fehler'}).`);
       }
     }
     for (const msg of walkRun ? [] : dueMessages(model, now, state.sent, state.prefs)) {

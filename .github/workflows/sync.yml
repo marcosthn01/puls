@@ -166,6 +166,7 @@ jobs:
           if [ -f .puls-cache/data.enc.json ]; then cp .puls-cache/data.enc.json _site/; fi
           if [ -f .puls-cache/push-public.json ]; then cp .puls-cache/push-public.json _site/push.json; fi
           cp .puls-cache/kal-*.ics _site/ 2>/dev/null || true
+          cp .puls-cache/w-*.json _site/ 2>/dev/null || true
 
       - uses: actions/upload-pages-artifact@v5
         with:

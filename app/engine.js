@@ -954,6 +954,7 @@ export const JOURNAL_QUESTIONS = [
   { id: 'kalt', label: 'Kalte Dusche / Eisbad' },
   { id: 'meditation', label: 'Meditation / Atemübung' },
   { id: 'magnesium', label: 'Magnesium' },
+  { id: 'nickerchen', label: 'Nickerchen' },
   { id: 'unterwegs', label: 'Unterwegs / fremdes Bett' },
   { id: 'sex', label: 'Sex' },
 ];

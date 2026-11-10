@@ -14,6 +14,13 @@ und so auswertet wie Whoop:
   und Rad), und sagt dir jeden Tag konkret, was dran ist: „Rad · 75 Min., Puls um 138“ oder „Gym · Pull,
   −20 % Volumen, 2–3 Wdh. in Reserve“ – passend zu Recovery, HRV-Trend, Schlaf, Last und Infekt-Zeichen.
   Keine Zone-4-Intervalle, wenn du so etwas nie trainierst.
+- **Lifestyle-Log wie ein Tagebuch:** Symbol-Knöpfe auf „Heute“ (Kaffee, Alkohol, spätes Essen, Handy im Bett,
+  Stress, Sauna, Meditation, Kälte …) – antippen, wenn es passiert, Puls merkt sich die Uhrzeit. Danach zeigt
+  Puls, wie jedes Verhalten deine Nacht verändert (Recovery, HRV, Ruhepuls, Tiefschlaf), deine persönliche
+  Koffein-Grenze und Alkohol nach Menge – und sagt beim Loggen direkt, was das für heute Nacht bedeutet.
+- **iPhone-Widgets** (Home- und Sperrbildschirm) über die kostenlose App Scriptable: Schlaf, Recovery, Strain
+  und dein Training heute. Die Widget-Datei ist verschlüsselt (Schlüssel aus deinem Daten-Passwort);
+  Code zum Kopieren unter Einstellungen → iPhone-Widgets.
 - **Trainingswoche & Kalender:** Auf „Heute“ siehst du Mo–So, an welchen Tagen du was trainiert hast
   (Push, Pull, Rad …) und wie viele Trainings es diese Woche sind; der Monatskalender unter Trends
   zeigt Recovery und Training zusammen.

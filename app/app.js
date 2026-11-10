@@ -6,8 +6,10 @@ import { openBox } from './crypto.js';
 import * as Coach from './coach.js';
 import * as Hud from './hud.js';
 import * as T from './training.js';
+import * as Life from './lifestyle.js';
+import { widgetScript } from './widget.js';
 
-const VERSION = '5.4.0';
+const VERSION = '5.5.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -135,6 +137,17 @@ const I = {
   steps: svg('<path d="M7 16c-1.6 0-2.5-1.3-2.5-3.2S5.6 7 7.4 7 9.6 9.3 9.4 11.4 8.6 16 7 16z"/><path d="M5.3 18.5h3.4"/><path d="M16.6 13c1.6 0 2.5-1.3 2.5-3.2S18 4 16.2 4 14 6.3 14.2 8.4 15 13 16.6 13z"/><path d="M14.9 15.5h3.4"/>'),
   stress: svg('<path d="M4 15a8 8 0 1 1 16 0"/><path d="M12 15l3.5-4.5"/><path d="M4 19h16"/>'),
   flame: svg('<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.4-5.2 3.4-8.3.9 1.8 2 2.8 3.1 3.3.4-2.3 1.4-4.4 3.5-6.3.4 3.3 3 5.5 3 10.3 0 4-2.9 7.2-6.5 7.2z"/>'),
+  wine: svg('<path d="M8 3h8l-.4 5.2a3.6 3.6 0 0 1-7.2 0z"/><path d="M12 11.8V20"/><path d="M8.5 20.5h7"/>'),
+  phone: svg('<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>'),
+  sauna: svg('<path d="M3 20h18"/><path d="M5 20v-4h14v4"/><path d="M8 12.5c-1.2-1.3 1.2-2.4 0-3.8M12 12.5c-1.2-1.3 1.2-2.4 0-3.8M16 12.5c-1.2-1.3 1.2-2.4 0-3.8"/>'),
+  cold: svg('<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.6 4.6 12 7l2.4-2.4M9.6 19.4 12 17l2.4 2.4"/>'),
+  lotus: svg('<circle cx="12" cy="5.5" r="2"/><path d="M12 8.5v5"/><path d="M7 13.5l5-2 5 2"/><path d="M4.5 18.5c2.4-1 4.8-1.6 7.5-1.6s5.1.6 7.5 1.6"/>'),
+  nap: svg('<path d="M3 19v-5.5h18V19"/><path d="M3 13.5V9.5"/><path d="M7 13.5a2 2 0 1 1 0-.1"/><path d="M13.5 4h4l-4 4.5h4"/>'),
+  pill: svg('<path d="M10.2 20.3a4.5 4.5 0 0 1-6.4-6.4l10-10a4.5 4.5 0 0 1 6.4 6.4z"/><path d="M8.8 8.8l6.4 6.4"/>'),
+  bag: svg('<rect x="3.5" y="7" width="17" height="12.5" rx="2.2"/><path d="M9 7V5h6v2"/><path d="M3.5 12.5h17"/>'),
+  thermo: svg('<path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 9.5v6"/>'),
+  meal: svg('<path d="M7 3v8a2 2 0 0 0 2 2v8"/><path d="M11 3v8a2 2 0 0 1-2 2"/><path d="M15.5 21v-8.5"/><path d="M15.5 3c2.2 1.2 3 3.5 3 6s-1 3.5-3 3.5"/>'),
+  custom: svg('<circle cx="12" cy="12" r="7.5"/><path d="M12 8.5v7M8.5 12h7"/>'),
   lungs: svg('<path d="M12 4v8"/><path d="M12 12c-1.5-1-3-1-3 1v5c0 1.7-1.6 2.5-3 1.8C4.7 19.2 4 17.8 4 16v-3.5C4 9 6 7 8 7c1.6 0 2.5 1.6 2.5 3"/><path d="M12 12c1.5-1 3-1 3 1v5c0 1.7 1.6 2.5 3 1.8 1.3-.6 2-2 2-3.8v-3.5C20 9 18 7 16 7c-1.6 0-2.5 1.6-2.5 3"/>'),
 };
 const actIcon = (type = '') => {
@@ -174,8 +187,8 @@ function ago(ts) {
   return `vor ${Math.round(min / 1440)} Tg.`;
 }
 const zoneColor = (z) => ({ green: 'var(--green)', yellow: 'var(--yellow)', red: 'var(--red)' })[z] || 'var(--muted)';
-const zoneHex = (z) => ({ green: '#1ee08e', yellow: '#ffd03d', red: '#ff5148' })[z] || '#8b9198';
-const HEX = { sleep: '#8d84ff', strain: '#2f8eff' };
+const zoneHex = (z) => ({ green: '#16ec06', yellow: '#ffde00', red: '#ff0026' })[z] || '#8b9198';
+const HEX = { sleep: '#7ba1bb', strain: '#0093e7' };
 /** Ring mit schwebender Kugel im Inneren. */
 const orbRing = (ringSvg, hex, px = 120, co = null) => {
   const core = `<div class="ringorb">${Hud.hudDeco(hex)}${innerOrb(hex, px)}${ringSvg}</div>`;
@@ -202,6 +215,7 @@ const ZONE_TEXT = {
 
 /** Kurze Erklärungen für die (i)-Knöpfe. */
 const INFO = {
+  life: ['Lifestyle', 'Tippe ein Symbol an, wenn es passiert – Kaffee, Alkohol, spätes Essen, Sauna … Puls merkt sich die Uhrzeit und vergleicht deine Nächte danach: Recovery, HRV, Ruhepuls und Tiefschlaf mit gegen ohne. Ab 3 Nächten je Seite siehst du deinen persönlichen Effekt; bei Kaffee auch deine Uhrzeit-Grenze, bei Alkohol die Wirkung nach Menge. Alles bleibt auf deinem iPhone.'],
   training: ['Training heute', 'Puls lernt aus deinen Garmin-Aktivitäten der letzten 6 Wochen, was du trainierst (z. B. Gym im Push/Pull-Wechsel und Rad), wie lange du fährst und mit welchem Puls. Daraus und aus Recovery, HRV-Trend, Schlaf, Trainingslast und Infekt-Zeichen wird die Empfehlung: Rad mit Dauer und Puls, Gym mit Volumen und Wiederholungen in Reserve. Benenne deine Gym-Einheiten in Garmin „Push“ und „Pull“ – oder tippe es einmal hier an.'],
   illness: ['Infekt-Frühwarnung', 'Vergleicht jede Nacht Ruhepuls, HRV, Atemfrequenz und Hauttemperatur mit deinem eigenen Normalwert der letzten 6 Wochen. Studien mit Wearables zeigen: Ruhepuls und Atmung steigen oft 1–3 Tage vor den ersten Symptomen. Mehrere auffällige Werte, zwei Nächte in Folge oder dein Gefühl „angeschlagen“ erhöhen die Stufe. Ab „erhöht“ zeigt Puls nie volle Recovery an. Eine Schätzung, keine Diagnose.'],
   recovery: ['Recovery', 'Wie erholt dein Körper heute ist (0–100 %). Grün = bereit für harte Belastung, Gelb = moderat, Rot = Erholung. Berechnet aus HRV, Ruhepuls und Schlaf – verglichen mit deinen letzten 30 Tagen.'],
@@ -233,6 +247,9 @@ function toast(text) {
 // ------------------------------------------------------------------ Journal (Morgen-Check)
 
 const profile = () => ls.get(LS.profile, {});
+const lifeIcon = (id) => I[Life.byId[id]?.icon] || I.custom;
+const extraQ = () => questions().filter((q) => q.id.startsWith('c_'));
+const lifeInsights = () => Life.lifestyleInsights(state.model, journal(), extraQ());
 const splitLabels = () => ({ ...(state.store?.labels || {}), ...ls.get(LS.splits, {}) });
 const feelOn = (date) => (ls.get(LS.feel, {})?.date === date ? 'sick' : null);
 const reportExtra = () => (feelOn(state.model.days[state.model.days.length - 1].date) ? 'krank' : '');
@@ -582,7 +599,7 @@ const TAB_LIST = [
   ['heute', 'Heute', I.home],
   ['schlaf', 'Schlaf', I.sleep],
   ['recovery', 'Recovery', I.recovery],
-  ['belastung', 'Belastung', I.strain],
+  ['belastung', 'Strain', I.strain],
   ['coach', 'Coach', I.coach],
 ];
 
@@ -813,7 +830,7 @@ function dials(d, anim) {
     cmp(d.recovery, y?.recovery, (v) => `${Math.round(v)}`),
     d.target ? `<span class="capsub muted">${esc(shortPlan(planFor(d.i)))}</span>` : '<span class="capsub">&nbsp;</span>',
   ];
-  const R = { size: 104, stroke: 8, labelSize: 30, anim };
+  const R = { size: 104, stroke: 10, labelSize: 30, anim };
   return `<section class="rings v4">
     <button class="ringbox" data-tab="schlaf">${orbRing(ring({ ...R, value: d.perf, max: 100, color: 'var(--sleep)', label: d.perf == null ? '–' : `${Math.round(d.perf)}%`, count: d.perf == null ? null : Math.round(d.perf), suffix: '%' }), HEX.sleep, 64)}<span class="cap">Schlaf <i>›</i></span>${caps[0]}</button>
     <button class="ringbox" data-tab="recovery">${orbRing(ring({ ...R, value: d.recovery, max: 100, color: zoneColor(d.zone), label: d.recovery == null ? '–' : `${d.recovery}%`, count: d.recovery, suffix: '%' }), zoneHex(d.zone), 64)}<span class="cap">Recovery <i>›</i></span>${caps[1]}</button>
@@ -909,7 +926,7 @@ function viewToday(anim) {
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
   return `${setupCard()}${telemetry(d)}${dials(d, anim)}${dashTiles(m, i)}
-    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
+    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${isLatest ? lifestyleCard() : ''}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
     <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
 }
 
@@ -964,6 +981,87 @@ function weekTrainingCard(m, i) {
     `<div class="wk-grid">${cells}</div>
     <p class="note">${parts.length ? parts.join(' · ') : 'Noch kein Training diese Woche'} · Vorwoche ${w.prevCount}${diff ? ` (${diff > 0 ? '+' : '−'}${Math.abs(diff)})` : ''}</p>`,
     'wkcard',
+  );
+}
+
+// ------------------------------------------------------------------ Lifestyle-Log (wie ein Tagebuch per Knopfdruck)
+
+const QUICK = ['koffein', 'alkohol', 'spaetessen', 'bildschirm', 'stress', 'sauna', 'meditation', 'kalt'];
+function lifestyleCard() {
+  const date = Life.logDate();
+  const e = journal()[date] || {};
+  const tile = (id) => {
+    const b = Life.byId[id];
+    const n = (e._t?.[id] || []).length;
+    return `<button class="lf-btn ${n ? 'on' : ''}" data-act="life" data-id="${id}" aria-label="${esc(b.label)} jetzt eintragen"><span class="lf-ic">${lifeIcon(id)}${n ? `<b>${n}</b>` : ''}</span><span class="lf-l">${esc(b.label)}</span></button>`;
+  };
+  const logged = Life.BEHAVIORS.flatMap((b) => (e._t?.[b.id] || []).map((t) => ({ b, t }))).sort((a, b) => (a.t < b.t ? -1 : 1));
+  const top = lifeInsights().items.filter((x) => !x.pending && x.solid).slice(0, 1);
+  return `<section class="card lifecard">
+    <h2>Lifestyle${infoBtn('life')}</h2>
+    <div class="lf-grid">${QUICK.map(tile).join('')}</div>
+    ${logged.length ? `<div class="lf-today">${logged.map(({ b, t }) => `<button class="lf-chip" data-act="life-del" data-id="${b.id}" data-t="${t}" aria-label="${esc(b.label)} ${t} löschen">${lifeIcon(b.id)}<span>${t}</span><i>×</i></button>`).join('')}</div>` : '<p class="lf-hint">Antippen, wenn es passiert – Puls merkt sich die Uhrzeit.</p>'}
+    <div class="lf-more"><button class="linkbtn" data-act="life-more">Mehr · andere Uhrzeit</button>${top.length ? `<button class="linkbtn" data-tab="trends">Größter Hebel: ${top.map((x) => `${esc(x.label)} ${x.diff > 0 ? '+' : '−'}${Math.abs(Math.round(x.diff))} %`).join('')} ›</button>` : ''}</div>
+  </section>`;
+}
+
+/** Wie deine Gewohnheiten die Recovery am Morgen danach verändern (wie Journal-Insights bei Whoop). */
+/** Verhalten eintragen (Uhrzeit jetzt oder angegeben) und, wenn sinnvoll, sofort einordnen. */
+function logLife(id, time = null) {
+  const now = new Date();
+  const hhmm = time || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const date = Life.logDate(now);
+  saveJournal(date, Life.addLog(journal()[date], id, hhmm));
+  const m = state.model;
+  const isLast = m && !m.empty;
+  const bed = isLast ? E.bedtimePlan(m, m.days.length - 1)?.options?.[0]?.bed : null;
+  const min = Life.toMin(hhmm) + (now.getHours() < 4 && !time ? 1440 : 0);
+  const lines = isLast ? Life.adviceFor(id, min, lifeInsights(), { bedMin: bed }) : [];
+  if (navigator.vibrate) navigator.vibrate(12);
+  if (lines.length) openSheet({ type: 'logged', id, time: hhmm, lines });
+  else {
+    if (state.sheet?.type === 'lifemore') closeSheet();
+    toast(`${Life.byId[id].label} eingetragen · ${hhmm}`);
+  }
+  render();
+}
+
+function lifeInsightsCard() {
+  const ins = lifeInsights();
+  const done = ins.items.filter((x) => !x.pending);
+  const pend = ins.items.filter((x) => x.pending && x.ny > 0);
+  const max = Math.max(10, ...done.map((x) => Math.abs(x.diff)));
+  const fmt = (v, d = 0) => {
+    const r = d ? Math.round(v * 10) / 10 : Math.round(v);
+    return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${Math.abs(r).toString().replace('.', ',')}`;
+  };
+  const row = (x) => {
+    const w = Math.min(50, (Math.abs(x.diff) / max) * 50);
+    const sub = ['hrv', 'rhr', 'deep']
+      .map((k) => x.effects[k] && `${x.effects[k].label} ${fmt(x.effects[k].diff, x.effects[k].digits)}${x.effects[k].unit === '%-Pkt.' ? ' %-Pkt.' : ` ${x.effects[k].unit}`}`)
+      .filter(Boolean)
+      .join(' · ');
+    return `<div class="li-row"><span class="li-ic ${x.diff >= 0 ? 'good' : 'bad'}">${lifeIcon(x.id)}</span><div class="li-main"><div class="li-top"><b>${esc(x.label)}</b><em class="${x.diff >= 0 ? 'up' : 'down'}">${fmt(x.diff)} %</em></div>
+      <div class="li-bar"><i class="${x.diff >= 0 ? 'pos' : 'neg'}" style="width:${w.toFixed(1)}%"></i></div>
+      <span class="li-sub">${sub}${sub ? ' · ' : ''}${x.ny} gegen ${x.nn} Nächte${x.solid ? '' : ' · Tendenz'}</span></div></div>`;
+  };
+  const c = ins.caffeine;
+  const caf =
+    c.cutoff != null
+      ? `<div class="li-special"><span class="li-ic bad">${I.coffee}</span><div><b>Deine Koffein-Grenze: ${c.cutoff} Uhr</b><span>Kaffee danach kostet dich ${c.drop} % Recovery${c.deep ? ` und ${String(c.deep).replace('.', ',')} %-Punkte Tiefschlaf` : ''}${c.hrv ? `, HRV −${c.hrv} ms` : ''} (${c.nLate} gegen ${c.nEarly} Nächte).</span></div></div>`
+      : `<div class="li-special"><span class="li-ic">${I.coffee}</span><div><b>Koffein-Grenze: wird gelernt</b><span>Tippe deinen Kaffee beim Trinken an – nach ein paar Tagen mit späten und frühen Tassen zeigt Puls deine persönliche Grenze${c.logged ? ` (bisher ${c.logged} Tage)` : ''}.</span></div></div>`;
+  const alc = ins.alcohol.groups.filter((g) => g.recovery != null);
+  const alcRow = alc.length
+    ? `<div class="li-special"><span class="li-ic bad">${I.wine}</span><div><b>Alkohol nach Menge</b><span>${alc.map((g) => `${g.drinks === 2 ? 'ab 2 Gläsern' : '1 Glas'}: ${fmt(g.recovery)} % Recovery${g.hrv != null ? `, HRV ${fmt(g.hrv)} ms` : ''}`).join(' · ')}</span></div></div>`
+    : '';
+  const meal = ins.meal ? `<div class="li-special"><span class="li-ic ${ins.meal.recovery >= 0 ? '' : 'bad'}">${I.meal}</span><div><b>Essen kurz vor dem Schlafen</b><span>Weniger als 3 Std. davor: Recovery ${fmt(ins.meal.recovery)} %${ins.meal.rhr != null ? `, Ruhepuls ${fmt(ins.meal.rhr, 1)} bpm` : ''} (${ins.meal.n} gegen ${ins.meal.m} Nächte).</span></div></div>` : '';
+  return card(
+    'Lifestyle-Einflüsse',
+    `${done.length ? done.map(row).join('') : '<p class="small muted">Sobald du ein Verhalten mindestens 3× mit und 3× ohne geloggt hast, siehst du hier, wie es deine Recovery verändert.</p>'}
+    ${caf}${alcRow}${meal}
+    ${pend.length ? `<p class="note">Noch zu wenig Daten: ${pend.map((x) => `${esc(x.label)} (noch ${x.need})`).join(' · ')}</p>` : ''}`,
+    'licard',
+    'life',
   );
 }
 
@@ -1267,7 +1365,7 @@ function viewRecovery(anim) {
   const { span, labels, every } = trendSpan();
   const parts = [];
   parts.push(`<section class="hero" style="--glow:${zoneColor(d.zone)}">
-    ${orbRing(ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 200, stroke: 16, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : `Recovery · ${zoneName(d.zone)}`, labelSize: 54, count: d.recovery, suffix: '%', anim, glow: true }), zoneHex(d.zone), 156, [
+    ${orbRing(ring({ value: d.recovery, max: 100, color: zoneColor(d.zone), size: 200, stroke: 19, label: d.recovery == null ? '–' : `${d.recovery}%`, sub: d.recovery == null ? 'keine Daten' : `Recovery · ${zoneName(d.zone)}`, labelSize: 54, count: d.recovery, suffix: '%', anim, glow: true }), zoneHex(d.zone), 156, [
       { k: 'HRV', v: isNum(d.hrv) ? Math.round(d.hrv) : null, u: 'ms' },
       { k: 'Ruhepuls', v: d.rhr, u: 'bpm' },
       { k: 'Atmung', v: isNum(d.resp) ? de1(d.resp) : null, u: '/min' },
@@ -1473,7 +1571,7 @@ function viewSleep(anim) {
 
   if (s) {
     parts.push(`<section class="hero" style="--glow:var(--sleep)">
-      ${orbRing(ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 184, stroke: 15, label: `${Math.round(d.perf)}%`, sub: 'Performance', labelSize: 48, count: Math.round(d.perf), suffix: '%', anim, glow: true }), HEX.sleep, 142, [
+      ${orbRing(ring({ value: d.perf, max: 100, color: 'var(--sleep)', size: 184, stroke: 17, label: `${Math.round(d.perf)}%`, sub: 'Performance', labelSize: 48, count: Math.round(d.perf), suffix: '%', anim, glow: true }), HEX.sleep, 142, [
         { k: 'Effizienz', v: isNum(d.eff) ? Math.round(d.eff * 100) : null, u: '%' },
         { k: 'Tief', v: isNum(d.stages?.deep) ? Math.round(d.stages.deep) : null, u: '%' },
         { k: 'REM', v: isNum(d.stages?.rem) ? Math.round(d.stages.rem) : null, u: '%' },
@@ -1580,7 +1678,7 @@ function viewStrain(anim) {
   const parts = [];
 
   parts.push(`<section class="hero" style="--glow:var(--strain)">
-    ${orbRing(ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 184, stroke: 15, label: de1(d.strain), sub: 'Strain von 21', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 48, count: d.strain, digits: 1, anim, glow: true }), HEX.strain, 142, [
+    ${orbRing(ring({ value: d.strain, max: 21, color: 'var(--strain)', size: 184, stroke: 17, label: de1(d.strain), sub: 'Strain von 21', band: d.target ? [d.target.low, d.target.high] : null, labelSize: 48, count: d.strain, digits: 1, anim, glow: true }), HEX.strain, 142, [
       { k: 'Ziel', v: d.target ? `${de1(d.target.low)}–${de1(d.target.high)}` : null },
       { k: 'Zone 4–5', v: d.zoneMin ? Math.round(d.zoneMin[3] + d.zoneMin[4]) : null, u: 'min' },
       { k: 'Training', v: d.acts.length, u: d.acts.length === 1 ? 'Einheit' : 'Einh.' },
@@ -1700,6 +1798,7 @@ function viewTrends() {
       ${row('Schlaf', c.sleep, p.sleep, (v) => `${E.fmtDur(v)}`, true, (v) => `${v >= 0 ? '+' : ''}${E.fmtDur(v)}`)}
       ${row('Strain', c.strain, p.strain, (v) => de1(v), true)}
     </table></section>`);
+  parts.push(lifeInsightsCard());
   parts.push(monthCard(m));
   parts.push(calendarCard(m));
   parts.push(influencesCard(m));
@@ -1873,10 +1972,25 @@ function renderSheet() {
   if (sh.type === 'journal') {
     const answers = journal()[sh.date] || {};
     const dayName = dayTitle(sh.date) === 'Gestern' ? 'gestern' : `am ${longDate(sh.date)}`;
+    const t = answers._t || {};
     body = `<h3>Morgen-Check</h3><p class="muted">Was war ${dayName}? Antippen, was passt.</p>
-      <div class="qchips">${questions().map((q) => `<button class="qchip ${answers[q.id] ? 'on' : ''}" data-q="${q.id}">${esc(q.label)}</button>`).join('')}<button class="qchip add" data-act="q-add">${I.plus}Eigene Frage</button></div>
+      <div class="lf-grid big">${questions().map((q) => `<button class="lf-btn qchip ${answers[q.id] ? 'on' : ''}" data-q="${q.id}"><span class="lf-ic">${lifeIcon(q.id)}${t[q.id]?.length ? `<b>${t[q.id].length}</b>` : ''}</span><span class="lf-l">${esc(Life.byId[q.id]?.ask || q.label)}</span>${t[q.id]?.length ? `<small>${t[q.id].join(' · ')}</small>` : ''}</button>`).join('')}<button class="lf-btn add" data-act="q-add"><span class="lf-ic">${I.plus}</span><span class="lf-l">Eigene Frage</span></button></div>
       <button class="btn" data-act="sheet-save">Speichern</button>
       <button class="btn ghost" data-act="sheet-none">Nichts davon</button>`;
+  } else if (sh.type === 'logged') {
+    const b = Life.byId[sh.id];
+    body = `<div class="lg-head"><span class="lf-ic on">${lifeIcon(sh.id)}</span><div><h3>${esc(b.label)} · ${esc(sh.time)}</h3><p class="muted small">Eingetragen</p></div></div>
+      <ul class="lg-list">${sh.lines.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+      <p class="muted small">${esc(Life.why(sh.id))}</p>
+      <button class="btn" data-act="sheet-close">Alles klar</button>
+      <button class="btn ghost" data-act="life-undo" data-id="${sh.id}" data-t="${esc(sh.time)}">Doch nicht – rückgängig</button>`;
+  } else if (sh.type === 'lifemore') {
+    const now = new Date();
+    const cur = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    body = `<h3>Eintragen</h3><p class="muted small">Für heute – auch mit anderer Uhrzeit, falls du es vergessen hast.</p>
+      <label class="field"><span>Uhrzeit</span><input id="life-time" type="time" value="${cur}"></label>
+      <div class="lf-grid big">${Life.BEHAVIORS.map((b) => `<button class="lf-btn" data-act="life-at" data-id="${b.id}"><span class="lf-ic">${lifeIcon(b.id)}</span><span class="lf-l">${esc(b.label)}</span></button>`).join('')}</div>
+      <button class="btn ghost" data-act="sheet-close">Fertig</button>`;
   } else if (sh.type === 'info') {
     const [title, text] = INFO[sh.key] || ['', ''];
     body = `<h3>${title}</h3><p style="margin:10px 0 18px">${text}</p><button class="btn ghost" data-act="sheet-close">Verstanden</button>`;
@@ -2051,6 +2165,16 @@ sheetEl.addEventListener('click', async (e) => {
   if (!t) return;
   const act = t.dataset.act;
   if (act === 'sheet-close') closeSheet();
+  if (act === 'life-at') {
+    const time = document.getElementById('life-time')?.value || null;
+    logLife(t.dataset.id, time);
+  }
+  if (act === 'life-undo') {
+    const date = Life.logDate();
+    saveJournal(date, Life.removeLog(journal()[date], t.dataset.id, t.dataset.t));
+    closeSheet();
+    render();
+  }
   if (act === 'breath-start') startBreath();
   if (act === 'goals-save') {
     const g = {};
@@ -2089,7 +2213,8 @@ sheetEl.addEventListener('click', async (e) => {
     }
   }
   if (act === 'sheet-save' || act === 'sheet-none') {
-    const answers = { _done: true };
+    const prev = journal()[state.sheet.date] || {};
+    const answers = { _done: true, ...(prev._t ? { _t: prev._t } : {}) };
     if (act === 'sheet-save') sheetEl.querySelectorAll('.qchip.on').forEach((c) => (answers[c.dataset.q] = true));
     saveJournal(state.sheet.date, answers);
     closeSheet();
@@ -2194,6 +2319,44 @@ async function calendarUrl() {
   return new URL(`kal-${hex}.ics`, location.href.split('#')[0].split('?')[0]).href;
 }
 
+/** Schlüssel und Adresse fürs Widget (aus dem Daten-Passwort abgeleitet, wie im Abruf). */
+async function widgetSetup() {
+  const pass = ls.get(LS.pass);
+  if (!pass || !crypto?.subtle) return null;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(pass), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const hex = async (msg) => [...new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(msg)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const base = location.href.split('#')[0].split('?')[0];
+  const url = new URL(`w-${(await hex('puls-widget-v1')).slice(0, 24)}.json`, base).href;
+  return { url, keyHex: await hex('puls-widget-key-v1'), app: new URL('./', base).href };
+}
+
+function widgetCard() {
+  if (state.demo) return '';
+  if (state.widget === undefined) {
+    state.widget = null;
+    widgetSetup()
+      .then((w) => {
+        state.widget = w || '';
+        if (state.tab === 'settings') render();
+      })
+      .catch(() => (state.widget = ''));
+  }
+  if (!state.widget) return '';
+  return `<section class="card"><h2>iPhone-Widgets</h2>
+    <p class="small">Recovery, Schlaf, Strain und dein Training heute auf dem Home- und Sperrbildschirm – über die kostenlose App <b>Scriptable</b>. Die Daten bleiben verschlüsselt.</p>
+    <ol class="steps">
+      <li><a href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noopener">Scriptable</a> aus dem App Store laden.</li>
+      <li>Hier <b>Widget-Code kopieren</b> tippen.</li>
+      <li>Scriptable öffnen → oben rechts <b>+</b> → einfügen → oben den Namen auf <b>Puls</b> ändern → <b>Fertig</b>.</li>
+      <li>Homebildschirm lange drücken → <b>+</b> → <b>Scriptable</b> → Größe wählen (klein, mittel, groß) → hinzufügen.</li>
+      <li>Das neue Widget lange drücken → <b>Widget bearbeiten</b> → Script: <b>Puls</b>.</li>
+    </ol>
+    <button class="btn" data-act="widget-copy">Widget-Code kopieren</button>
+    <p class="muted small" style="margin-top:8px">Sperrbildschirm: lange drücken → Anpassen → Sperrbildschirm → Widget-Feld → Scriptable (rund oder rechteckig) → antippen → Script: Puls. Das Widget aktualisiert sich etwa alle 20 Minuten.</p>
+  </section>`;
+}
+
 function calSubscribeCard() {
   if (state.demo) return '';
   if (state.calUrl === undefined) {
@@ -2249,6 +2412,7 @@ function viewSettings() {
     ${PUSH_KINDS.map(([k, label, sub]) => `<label class="toggle"><span><b>${label}</b><small>${sub}</small></span><input type="checkbox" data-pushpref="${k}" ${ls.get(LS.pushPrefs, {})[k] === false ? '' : 'checked'}><i></i></label>`).join('')}
   </section>` : ''}
 
+  ${widgetCard()}
   ${calSubscribeCard()}
 
   <section class="card"><h2>Garmin</h2>
@@ -2359,6 +2523,18 @@ app.addEventListener('click', async (e) => {
     case 'journal':
       openSheet({ type: 'journal', date: t.dataset.date });
       break;
+    case 'life':
+      logLife(t.dataset.id);
+      break;
+    case 'life-del': {
+      const date = Life.logDate();
+      saveJournal(date, Life.removeLog(journal()[date], t.dataset.id, t.dataset.t));
+      render();
+      break;
+    }
+    case 'life-more':
+      openSheet({ type: 'lifemore' });
+      break;
     case 'feel': {
       const date = state.model.days[state.model.days.length - 1].date;
       const on = feelOn(date) === 'sick';
@@ -2461,6 +2637,15 @@ app.addEventListener('click', async (e) => {
       }
       break;
     }
+    case 'widget-copy':
+      if (state.widget) {
+        const code = widgetScript(state.widget);
+        navigator.clipboard?.writeText(code).then(
+          () => toast('Widget-Code kopiert – jetzt in Scriptable einfügen.'),
+          () => toast('Kopieren ging nicht.'),
+        );
+      }
+      break;
     case 'cal-copy':
       if (state.calUrl) {
         navigator.clipboard?.writeText(state.calUrl).then(

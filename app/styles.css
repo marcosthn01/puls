@@ -1047,6 +1047,47 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 .cal em.k-other { background: #4a4f55; }
 .calgrid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .cal { min-width: 0; overflow: hidden; aspect-ratio: auto; min-height: 50px; padding: 5px 0 6px; }
+/* ================= v5.5: Lifestyle-Log ================= */
+.lf-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 6px; margin: 4px 0 2px; }
+.lf-grid.big { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 14px 0 16px; }
+.lf-btn { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; cursor: pointer; -webkit-user-select: none; user-select: none; }
+.lf-ic { position: relative; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--card2); color: #d7dbdf; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.25s, box-shadow 0.25s; }
+.lf-ic svg { width: 25px; height: 25px; }
+.lf-ic b { position: absolute; top: -3px; right: -3px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--green); color: #00140a; font-family: var(--display); font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; box-shadow: 0 0 0 3px var(--card); }
+.lf-btn.on .lf-ic, .lf-ic.on { background: rgba(30, 224, 142, 0.16); color: var(--green); box-shadow: inset 0 0 0 1.5px rgba(30, 224, 142, 0.7); }
+.lf-btn:active .lf-ic { transform: scale(0.9); }
+.lf-l { font-size: 11.5px; line-height: 1.2; text-align: center; color: #c9ced3; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lf-btn small { font-size: 10.5px; color: var(--green); font-variant-numeric: tabular-nums; }
+.lf-btn.add .lf-ic { background: none; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--muted); }
+.lf-today { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lf-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px 5px 7px; border: 0; border-radius: 999px; background: var(--card2); color: var(--text); font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.lf-chip svg { width: 15px; height: 15px; color: var(--green); }
+.lf-chip i { font-style: normal; color: var(--muted); margin-left: 2px; }
+.lf-hint { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+.lf-more { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.lf-more .linkbtn { font-size: 13px; padding: 6px 0; }
+.lg-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.lg-head h3 { margin: 0; }
+.lg-list { margin: 6px 0 10px; padding-left: 18px; }
+.lg-list li { font-size: 15px; line-height: 1.45; margin-bottom: 6px; }
+.li-row { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.li-row:first-of-type { border-top: 0; padding-top: 0; }
+.li-ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--card2); color: #d7dbdf; flex: none; }
+.li-ic svg { width: 20px; height: 20px; }
+.li-ic.good { color: var(--green); background: rgba(30, 224, 142, 0.12); }
+.li-ic.bad { color: var(--red); background: rgba(255, 81, 72, 0.12); }
+.li-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.li-top b { font-size: 15px; }
+.li-top em { font-style: normal; font-family: var(--display); font-size: 19px; font-weight: 700; }
+.li-bar { position: relative; height: 6px; margin: 6px 0 5px; border-radius: 3px; background: var(--track); }
+.li-bar::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: rgba(255, 255, 255, 0.35); border-radius: 1px; }
+.li-bar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.li-bar i.pos { left: 50%; background: var(--green); }
+.li-bar i.neg { right: 50%; background: var(--red); }
+.li-sub { font-size: 12px; color: var(--muted); }
+.li-special { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; margin-top: 10px; padding: 12px; border-radius: 14px; background: var(--card2); }
+.li-special b { display: block; font-size: 15px; }
+.li-special span:not(.li-ic) { display: block; font-size: 13px; color: #c9ced3; line-height: 1.45; margin-top: 2px; }
 .calurl { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--card2); }
 .calurl code { display: block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; line-height: 1.45; color: #c9ced3; word-break: break-all; user-select: all; -webkit-user-select: all; }
 
@@ -1362,3 +1403,62 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) {
   .hx > svg, .avatar::after, .coach-empty .bigic::after, .tl-l i.on, .chart .pulse, .tabbar button[data-tab="coach"]::before, .screen.anim > .card::after { animation: none !important; }
 }
+
+/* ================= v5.5: Premium noch näher an Whoop ================= */
+/* Farben wie bei Whoop: Recovery Neongrün/Gelb/Rot, Strain Blau, Schlaf Blaugrau; dunkle Schiefer-Fläche */
+:root:not([data-theme="hud"]) {
+  --card: #1a1d21;
+  --card2: #24282d;
+  --line: #2a2f35;
+  --track: rgba(255, 255, 255, 0.09);
+  --grid: #2c3137;
+  --muted: #8b939b;
+  --green: #16ec06;
+  --yellow: #ffde00;
+  --red: #ff0026;
+  --strain: #0093e7;
+  --sleep: #7ba1bb;
+  --band: rgba(123, 161, 187, 0.16);
+  --radius: 14px;
+}
+:root:not([data-theme="hud"]) body { background: transparent; }
+:root:not([data-theme="hud"]) body::before {
+  content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background: linear-gradient(180deg, #1d2127 0%, #121418 34%, #08090a 70%, #000 100%);
+}
+
+/* Überschriften und Beschriftungen: Großbuchstaben, schmal, kräftig */
+:root:not([data-theme="hud"]) h2.bighead { font-family: var(--display); font-size: 22px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin: 28px 4px 12px; }
+:root:not([data-theme="hud"]) .card h2 { color: #e6e9ec; font-size: 14.5px; letter-spacing: 0.09em; font-weight: 700; }
+:root:not([data-theme="hud"]) .rings.v4 .cap { font-size: 14px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: #fff; }
+:root:not([data-theme="hud"]) .rings.v4 .cap i { color: var(--muted); }
+:root:not([data-theme="hud"]) .datepill { background: rgba(26, 29, 33, 0.9); }
+:root:not([data-theme="hud"]) .datepill > span { background: #2a2f35; font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+:root:not([data-theme="hud"]) .datepill > span b { font-weight: 700; }
+:root:not([data-theme="hud"]) .ring-label { font-weight: 700; }
+
+/* Aktivitäten und Kacheln in Whoop-Farben */
+:root:not([data-theme="hud"]) .pill.sleep, :root:not([data-theme="hud"]) .tr-ic.k-rest { background: linear-gradient(135deg, #7ba1bb, #4d6c80); }
+:root:not([data-theme="hud"]) .pill.strain, :root:not([data-theme="hud"]) .tr-ic.k-bike, :root:not([data-theme="hud"]) .wk-chip.k-bike { background: linear-gradient(135deg, #0093e7, #00609a); }
+:root:not([data-theme="hud"]) .cal em.k-bike { background: #0080cc; }
+:root:not([data-theme="hud"]) .tr-ic.k-done, :root:not([data-theme="hud"]) .wk-chip.k-run { background: linear-gradient(135deg, #12b605, #0b7a03); }
+:root:not([data-theme="hud"]) .lf-btn.on .lf-ic, :root:not([data-theme="hud"]) .lf-ic.on { background: rgba(22, 236, 6, 0.13); box-shadow: inset 0 0 0 1.5px rgba(22, 236, 6, 0.7); }
+:root:not([data-theme="hud"]) .lf-ic b { color: #041400; }
+:root:not([data-theme="hud"]) .li-ic.good { background: rgba(22, 236, 6, 0.12); }
+:root:not([data-theme="hud"]) .li-ic.bad { background: rgba(255, 0, 38, 0.12); }
+:root:not([data-theme="hud"]) .journal-cta { border-color: rgba(123, 161, 187, 0.4); }
+
+/* Leiste unten wie bei Whoop: volle Breite, Symbol mit Beschriftung */
+:root:not([data-theme="hud"]) .tabbar {
+  left: 0; right: 0; bottom: 0; max-width: none; margin: 0; border-radius: 0; border: 0;
+  padding: 6px 6px calc(var(--safe-bottom) + 4px);
+  background: rgba(14, 16, 19, 0.94); border-top: 1px solid rgba(255, 255, 255, 0.07); box-shadow: none;
+  -webkit-backdrop-filter: blur(20px) saturate(150%); backdrop-filter: blur(20px) saturate(150%);
+}
+:root:not([data-theme="hud"]) .tabbar button { flex-direction: column; gap: 3px; padding: 6px 0 3px; border-radius: 0; color: #6e767e; background: none; }
+:root:not([data-theme="hud"]) .tabbar button svg { width: 24px; height: 24px; }
+:root:not([data-theme="hud"]) .tabbar button span { position: static; width: auto; height: auto; overflow: visible; clip: auto; font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+:root:not([data-theme="hud"]) .tabbar button.on { color: #fff; background: none; }
+:root:not([data-theme="hud"]) .tabbar button[data-tab="coach"] { color: var(--green); }
+:root:not([data-theme="hud"]) .tabbar button[data-tab="coach"]::before { display: none; }
+:root:not([data-theme="hud"]) .toast { bottom: calc(var(--safe-bottom) + 78px); }
