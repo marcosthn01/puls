@@ -199,14 +199,13 @@ export function trainingPlan(model, i = model.days.length - 1, { labels = {}, fe
   const doneToday = prof.today.filter((x) => x.kind === 'gym' || x.kind === 'bike' || x.kind === 'run');
   const doneMin = doneToday.reduce((t, x) => t + x.min, 0);
   if (doneToday.length && d.target && ((d.strain ?? 0) >= d.target.low || doneMin >= 30)) {
-    const x = doneToday[doneToday.length - 1];
     const f1 = (v) => v.toFixed(1).replace('.', ',');
     const inTarget = (d.strain ?? 0) >= d.target.low;
     return {
       ...base,
       kind: 'done',
       level: null,
-      title: `Erledigt: ${x.kind === 'gym' ? `Gym${x.split ? ` · ${SPLITS[x.split]}` : ''}` : `${x.sport} · ${Math.round(x.min)} Min.`}`,
+      title: `Erledigt: ${doneToday.map((y) => (y.kind === 'gym' ? `Gym${y.split ? ` · ${SPLITS[y.split]}` : ''}` : `${y.sport} · ${Math.round(y.min)} Min.`)).join(' + ')}`,
       sub: inTarget
         ? `Strain ${f1(d.strain ?? 0)} – im Ziel ${f1(d.target.low)}–${f1(d.target.high)}. Jetzt zählt die Erholung.`
         : `Strain ${f1(d.strain ?? 0)} – knapp unter dem Ziel ${f1(d.target.low)}–${f1(d.target.high)}. Ein lockerer Spaziergang reicht, kein zweites Training nötig.`,

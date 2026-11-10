@@ -43,3 +43,16 @@ test('Messwerte je Sportart', () => {
   assert.deepEqual(S.exercises(gym), [{ name: 'Bankdrücken', sets: 4, reps: 32 }, { name: 'New thing', sets: 2, reps: null }]);
   assert.match(S.sportLine(gym), /^Push \(Krafttraining\), Sätze 18, Wiederholungen 164, Übungen: Bankdrücken 4×32/);
 });
+
+test('Training heute: nach Indoor-Rad gilt der Tag als erledigt – kein Gym obendrauf', async () => {
+  const { makeDemoStore } = await import('../app/demo.js');
+  const E = await import('../app/engine.js');
+  const store = makeDemoStore();
+  const days = Object.keys(store.days).sort();
+  const last = days[days.length - 1];
+  store.days[last].acts = [{ id: 1, type: 'indoor_cycling', name: 'Gym', start: '07:00', dur: 2700, avgHr: 118 }];
+  const m = E.analyze(store, {});
+  const plan = T.trainingPlan(m, m.days.length - 1);
+  assert.equal(plan.kind, 'done');
+  assert.match(plan.title, /^Erledigt: Indoor-Rad · 45 Min\.$/);
+});
