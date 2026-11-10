@@ -175,7 +175,11 @@ class AuthError(Exception):
     pass
 
 
-def fake_module(needs_mfa=False, valid_tokens=("tok-1",), first_day=None):
+def fake_module(needs_mfa=False, valid_tokens=("tok-1",), first_day=None, gap=None):
+    def off(d):  # an diesem Tag hat die Uhr nichts gemessen
+        d = dt.date.fromisoformat(d) if isinstance(d, str) else d
+        return bool((first_day and d < first_day) or (gap and gap[0] <= d <= gap[1]))
+
     calls = []
 
     class FakeClient:
@@ -213,22 +217,22 @@ def fake_module(needs_mfa=False, valid_tokens=("tok-1",), first_day=None):
             return {"userData": {"gender": "MALE", "birthDate": "1992-04-01", "weight": 82400.0, "height": 183.0}}
 
         def get_sleep_data(self, d):
-            if first_day and dt.date.fromisoformat(d) < first_day:
+            if off(d):
                 return {}
             return sleep_payload(dt.date.fromisoformat(d))
 
         def get_hrv_data(self, d):
-            if first_day and dt.date.fromisoformat(d) < first_day:
+            if off(d):
                 return {}
             return {"hrvSummary": {"lastNightAvg": 50}}
 
         def get_stats(self, d):
-            if first_day and dt.date.fromisoformat(d) < first_day:
+            if off(d):
                 return {"dailyStepGoal": 7500}  # Garmin liefert vor der Uhr nur das Standardziel
             return {"totalSteps": 9000, "restingHeartRate": 52}
 
         def get_heart_rates(self, d):
-            if first_day and dt.date.fromisoformat(d) < first_day:
+            if off(d):
                 return {}
             return heart_payload(dt.date.fromisoformat(d))
 
@@ -242,7 +246,7 @@ def fake_module(needs_mfa=False, valid_tokens=("tok-1",), first_day=None):
             return [{"startGMT": gmt(day.year, day.month, day.day, 14, m), "steps": 300} for m in (0, 15)]
 
         def get_activities_by_date(self, start, end):
-            if first_day and dt.date.fromisoformat(end) < first_day:
+            if off(end) and off(start):
                 return []
             return [{"activityId": 7, "startTimeLocal": f"{end} 18:00:00", "duration": 3600, "averageHR": 150,
                      "activityType": {"typeKey": "running"}}]
@@ -387,3 +391,21 @@ def test_history_loads_back_to_the_first_day_of_the_watch(tmp_path, monkeypatch)
     assert 4 <= runs <= 6  # 26 Tage + 21 leere Tage in Etappen zu 10
     # Weitere Läufe mit „history“ holen nichts mehr nach
     assert puls_sync.history_batch(store, dt.date(2026, 11, 9), 10) == []
+
+
+def test_history_bridges_a_gap_of_several_weeks(tmp_path, monkeypatch):
+    out = tmp_path / "github_output"
+    out.write_text("")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    # Uhr ab 1.8., aber 25.9.–25.10. nicht getragen (Urlaub) – danach wieder
+    mod, _ = fake_module(first_day=dt.date(2026, 8, 1), gap=(dt.date(2026, 9, 25), dt.date(2026, 10, 25)))
+    assert run(tmp_path, mod, GARMIN_EMAIL="a@b.de", GARMIN_PASSWORD="pw") == 0
+    for _ in range(20):
+        assert run(tmp_path, mod, inputs={"history": "30"}, event="workflow_dispatch") == 0
+        if out.read_text().strip().splitlines()[-1] == "history_more=false":
+            break
+    store = read_store(tmp_path)
+    assert store["history"]["done"] is True
+    assert store["history"]["first"] == "2026-08-01"
+    assert min(store["days"]) == "2026-08-01"
+    assert "2026-10-10" not in store["days"]  # in der Lücke nichts gespeichert

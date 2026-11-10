@@ -167,6 +167,40 @@ def advance_history(store: dict, day: dt.date, today: dt.date) -> None:
         h["done"] = True
 
 
+PROBE_DAYS = 120  # nach dem „Anfang“ noch so weit zurück stichprobenartig nachsehen (Lücken überbrücken)
+
+
+def probe_older(fetch: Any, store: dict, today: dt.date) -> dt.date | None:
+    """Gibt es vor der Lücke doch noch ältere Daten? Wöchentliche Stichproben + Aktivitäten-Liste."""
+    h = store.get("history") or {}
+    start = dt.date.fromisoformat(h.get("next") or today.isoformat())
+    limit = today - dt.timedelta(days=MAX_DAYS)
+    lo = max(limit + dt.timedelta(days=1), start - dt.timedelta(days=PROBE_DAYS))
+    found: dt.date | None = None
+    raw = fetch("get_activities_by_date", lo.isoformat(), (start - dt.timedelta(days=1)).isoformat())
+    if isinstance(raw, list):
+        for item in raw:
+            parsed = normalize_activity(item)
+            if parsed and (found is None or parsed[0] > found.isoformat()):
+                found = dt.date.fromisoformat(parsed[0])
+    day = start - dt.timedelta(days=7)
+    while day >= lo:
+        if found and day <= found:
+            break
+        probe = {}
+        stats = fetch("get_stats", day.isoformat())
+        if stats is not FAILED and (value := normalize_stats(stats)):
+            probe["stats"] = value
+        sleep = fetch("get_sleep_data", day.isoformat())
+        if sleep is not FAILED and normalize_sleep(sleep, day, ZoneInfo(store.get("tz") or "Europe/Berlin"), keep_levels=False):
+            probe["sleep"] = True
+        if has_watch_data(probe):
+            found = day
+            break
+        day -= dt.timedelta(days=7)
+    return found
+
+
 def set_output(key: str, value: str) -> None:
     path = os.environ.get("GITHUB_OUTPUT")
     if path:
@@ -422,8 +456,20 @@ def run(
             log("Verlauf: Garmin bremst – geht beim nächsten Mal weiter, wo es aufgehört hat.")
             status = "partial"
         h = store.get("history") or {}
+        # „Anfang“ erreicht? Einmal weiter zurück nachsehen, ob vor einer Lücke noch ältere Daten liegen
+        if h.get("done") and not h.get("probed") and status == "ok":
+            try:
+                older = probe_older(fetch, store, today)
+                h["probed"] = True
+                if older:
+                    h.update({"done": False, "empty": 0, "next": (older + dt.timedelta(days=1)).isoformat()})
+                    log(f"Verlauf: vor einer Lücke gibt es ältere Daten (um {older.isoformat()}) – es geht dort weiter.")
+                    done_days = done_days or [older]
+                store["history"] = h
+            except garmin_module.GarminConnectTooManyRequestsError:
+                status = "partial"
         if h.get("done"):
-            log(f"Verlauf vollständig: deine Daten reichen zurück bis {h.get('first') or '–'}.")
+            log(f"Verlauf vollständig: deine Daten reichen zurück bis {h.get('first') or '–'} (davor bis {PROBE_DAYS} Tage stichprobenartig geprüft).")
         elif done_days:
             log(f"Verlauf: ältere Tage bis {h.get('next')} geladen – es geht weiter.")
         set_output("history_more", "true" if not h.get("done") and status == "ok" and done_days else "false")
