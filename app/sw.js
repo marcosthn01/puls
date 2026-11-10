@@ -1,7 +1,7 @@
 // Schneller Start: App-Dateien sofort aus dem Speicher (im Hintergrund aufgefrischt),
 // Daten zuerst aus dem Netz – aber höchstens 2,5 s warten, sonst erst der letzte Stand.
 // Neue Versionen kommen über eine neue VERSION: Installieren lädt alles frisch, die App lädt sich einmal neu.
-const VERSION = 'puls-v5.7.1';
+const VERSION = 'puls-v5.8.0';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'engine.js', 'charts.js', 'crypto.js', 'demo.js', 'coach.js', 'hud.js', 'training.js', 'lifestyle.js',
   'infekt.js', 'widget.js',

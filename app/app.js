@@ -10,7 +10,7 @@ import * as T from './training.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.7.1';
+const VERSION = '5.8.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -229,7 +229,7 @@ const INFO = {
   sleep: ['Schlaf', 'Wie viel deines Schlafbedarfs du geschafft hast. Dein Bedarf steigt nach harten Tagen und wenn dir Schlaf fehlt. Der Schlafplaner sagt dir, wann du ins Bett solltest.'],
   hrv: ['HRV', 'Herzfrequenzvariabilität: wie flexibel dein Herzschlag ist, gemessen im Schlaf. Höher als normal = gut erholt. Niedriger = Stress, Infekt, Alkohol oder Ermüdung.'],
   body: ['Körper-Check', 'Prüft jede Nacht HRV, Ruhepuls, Atemfrequenz und Blutsauerstoff gegen deinen persönlichen Normalbereich. Mehrere auffällige Werte zugleich deuten oft auf einen Infekt hin.'],
-  stress: ['Stress & Body Battery', 'Garmin schätzt deinen Stress über den Tag aus der HRV (0–100). Body Battery ist deine Energiereserve: Schlaf lädt sie, Belastung und Stress leeren sie.'],
+  stress: ['Stress', 'Die Uhr misst über den Tag deine HRV und leitet daraus einen Stresswert ab (0–100) – das ist ein Messwert. Garmins eigene Bewertungen wie Body Battery nutzt Puls bewusst nicht; Erholung und Belastung rechnet Puls selbst aus.'],
   age: ['Puls-Alter', 'Eine Schätzung, wie alt dein Körper wirkt – aus Fitness (VO₂max), Ruhepuls, Schlaf und Bewegung der letzten 30 Tage. Jeder Faktor zählt nur ein paar Jahre. Kein medizinischer Wert.'],
   load: ['Trainingslast', 'Deine Belastung der letzten 7 Tage im Vergleich zu den letzten 28. Zwischen 0,8 und 1,3 machst du Fortschritte, darüber steigt das Verletzungsrisiko.'],
   pad: ['Walking-Pad', 'Schritte von deinem Walking-Pad – von Hand eingetragen (Kilometer aus PitPat, umgerechnet mit deiner Schrittlänge) oder über Apple Health und den Kurzbefehl. Wenn du am Schreibtisch läufst, zählt die Uhr kaum mit, weil der Arm still bleibt. Puls zieht ab, was die Uhr in der Zeit schon gezählt hat, und addiert nur den Rest. So zählt nichts doppelt.'],
@@ -1686,15 +1686,15 @@ function stressCard(d) {
     ? arcGauge({ value: now.value, max: 100, label: String(now.value), sub: isToday && now.at != null ? `${now.level} · ${clockDE(now.at)}` : `${now.level} · zuletzt` })
     : '';
   let chart = '';
-  if (s.series?.length || s.battery?.length) {
+  if (s.series?.length) {
     const slots = (series) => {
       const arr = new Array(144).fill(null);
       for (const [min, v] of series || []) arr[Math.floor(min / 10)] = v;
       return arr;
     };
     const labels = new Array(144).fill('').map((_, k) => (k % 36 === 0 ? `${k / 6}:00` : ''));
-    chart = `${lines({ series: [{ values: slots(s.series), color: 'var(--awake)', width: 1.8 }, { values: slots(s.battery), color: 'var(--green)', width: 2.4 }], labels, every: 1, fixed: [0, 100], height: 130 })}
-      <div class="legend"><span><i style="background:var(--awake)"></i>Stress</span><span><i style="background:var(--green)"></i>Body Battery</span></div>`;
+    chart = `${lines({ series: [{ values: slots(s.series), color: 'var(--awake)', width: 1.8 }], labels, every: 1, fixed: [0, 100], height: 130 })}
+      <div class="legend"><span><i style="background:var(--awake)"></i>Stress (von der Uhr aus der HRV gemessen)</span></div>`;
   }
   let split = '';
   if (s.minutes) {
@@ -2257,7 +2257,7 @@ function renderSheet() {
       const zc = ['var(--z1)', 'var(--z2)', 'var(--z3)', 'var(--z4)', 'var(--z5)'];
       const zones = zt ? `<h3 class="subhead">Zeit in Pulszonen</h3>${a.zones.map((z, k) => `<div class="zonebar"><span>Z${k + 1}</span><div class="bar"><i style="width:${(100 * (z || 0)) / zt}%;background:${zc[k]}"></i></div><span class="m">${Math.round((z || 0) / 60)} Min.</span></div>`).join('')}` : '';
       body = `<h3>${esc(a.name || a.type || 'Aktivität')}</h3><p class="muted small">${esc(longDate(d.date))} · ${esc(a.start || '')}</p>
-        <div class="grid" style="margin-top:12px">${t('Strain', de1(a.strain))}${t('Dauer', E.fmtDur(a.dur / 60), 'Std.')}${t('Ø Puls', a.avgHr, 'bpm')}${t('Max. Puls', a.maxHr, 'bpm')}${t('Kalorien', a.kcal != null ? int(a.kcal) : null, 'kcal')}${t('Distanz', a.dist ? (a.dist / 1000).toFixed(1).replace('.', ',') : null, 'km')}${t('Aerob', a.te != null ? de1(a.te) : null)}${t('Anaerob', a.ate != null ? de1(a.ate) : null)}${ml ? t('Muskeln', `${de1(ml.score)}`, ml.level) : ''}</div>
+        <div class="grid" style="margin-top:12px">${t('Strain', de1(a.strain))}${t('Dauer', E.fmtDur(a.dur / 60), 'Std.')}${t('Ø Puls', a.avgHr, 'bpm')}${t('Max. Puls', a.maxHr, 'bpm')}${t('Kalorien', a.kcal != null ? int(a.kcal) : null, 'kcal')}${t('Distanz', a.dist ? (a.dist / 1000).toFixed(1).replace('.', ',') : null, 'km')}${ml ? t('Muskeln', `${de1(ml.score)}`, ml.level) : ''}</div>
         ${zones}<button class="btn ghost" data-act="sheet-close" style="margin-top:14px">Schließen</button>`;
     }
   } else if (sh.type === 'profile') {

@@ -184,7 +184,8 @@ test('Puls-Alter: plausibel und mit Begründung', () => {
 
 test('Stress-Zusammenfassung und Tagesverlauf aus den Daten', () => {
   const s = E.stressSummary(model.days[last - 1]);
-  assert.ok(s.minutes && s.series.length > 50 && s.battery.length > 50);
+  assert.ok(s.minutes && s.series.length > 50);
+  assert.equal(s.battery, undefined); // Garmins Body Battery nutzt Puls bewusst nicht
   assert.equal(E.stressSummary(model.days[0]).series, null);
 });
 

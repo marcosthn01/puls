@@ -205,8 +205,6 @@ export function dueMessages(model, now, sent = {}, prefs = {}) {
     } else if (strain <= d.target.high) {
       msg = { title: 'Ziel-Strain erreicht 💪', body: `${de1(strain)} – perfekt im Zielbereich. Ab jetzt locker bleiben.` };
     }
-    const bb = st.bbNow;
-    if (E.isNum(bb) && bb <= 25) msg = { title: `Energie niedrig (Body Battery ${bb})`, body: `${msg ? `${msg.title}. ` : ''}Plane einen ruhigen Abend und geh früh ins Bett.` };
     if (msg) out.push({ kind: 'afternoon', ...msg, tag: 'afternoon' });
   }
 
@@ -333,7 +331,6 @@ export function widgetPayload(model) {
     rhrBase: d.base?.rhr ? r0(d.base.rhr.mean) : null,
     steps: r0(st.steps),
     stepGoal: r0(st.stepGoal),
-    bb: r0(st.bbNow ?? st.bbHigh),
     stress: r0(st.stress),
     plan: plan.kind === 'none' || plan.kind === 'free' ? null : { title: plan.title, sub, short, kind: plan.kind },
     ill: { level: lvl, label: E.ILL_LEVELS[lvl] },

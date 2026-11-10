@@ -340,7 +340,11 @@ function computeDay(i, date, raw, days, S) {
     comps.push({ key: 'rhr', w: 0.2, z, score: P(z), value: d.rhr, ref: rhrBase.mean });
   }
   if (sl) {
-    const quality = isNum(sl.score) ? sl.score : d.eff != null ? 100 * clamp((d.eff - 0.7) / 0.25, 0, 1) : 70;
+    // Eigene Schlafqualität (nicht Garmins Schlaf-Score): Effizienz und Anteil Tief- + REM-Schlaf
+    const effQ = d.eff != null ? clamp((d.eff - 0.75) / 0.2, 0, 1) : 0.7;
+    const restor = isNum(d.stages?.deep) && isNum(d.stages?.rem) ? d.stages.deep + d.stages.rem : null;
+    const resQ = restor != null ? clamp((restor - 25) / 20, 0, 1) : effQ;
+    const quality = 100 * (0.6 * effQ + 0.4 * resQ);
     comps.push({ key: 'sleep', w: 0.3, score: 0.7 * d.perf + 0.3 * quality, value: d.sleepMin, ref: d.need.total, quality });
   }
   const penalties = [];
@@ -1043,11 +1047,6 @@ export function healthAge(model, i = model.days.length - 1) {
   const items = [];
   const add = (key, label, value, years, better) => items.push({ key, label, value, years: Math.round(years * 10) / 10, better });
 
-  const vo2 = model.profile?.vo2max;
-  if (isNum(vo2)) {
-    const norm = S.sex === 'female' ? 44 - 0.3 * S.age : 50.5 - 0.33 * S.age;
-    add('vo2', 'VO₂max', `${Math.round(vo2)}`, clamp(-(vo2 - norm) * 0.6, -6, 6), 'Ausdauertraining in Zone 2 und Intervalle heben die VO₂max.');
-  }
   const rhr = avg(all, (d) => d.rhr);
   if (rhr != null) add('rhr', 'Ruhepuls', `${Math.round(rhr)} bpm`, clamp((rhr - 60) * 0.15, -2.5, 3), 'Regelmäßiges Ausdauertraining senkt den Ruhepuls.');
   const sleepH = avg(all, (d) => (d.sleepMin != null ? d.sleepMin / 60 : null));
@@ -1093,11 +1092,12 @@ export function paceOfAging(model, i = model.days.length - 1, back = 60) {
   return { pace: Math.round(pace * 10) / 10, now: Math.round(now * 10) / 10, then: Math.round(then * 10) / 10, days: back };
 }
 
-/** Muskel-Belastung einer Kraft- oder HIIT-Einheit (0–10), geschätzt aus Dauer und anaerobem Effekt. */
+/** Muskel-Belastung einer Kraft- oder HIIT-Einheit (0–10), aus Dauer und Puls-Belastung (eigener Strain). */
 export function muscleLoad(a) {
   if (!isStrength(a?.type)) return null;
   const min = (a.dur || 0) / 60;
-  const score = clamp((min / 60) * 4 + (isNum(a.ate) ? a.ate : 1.5) * 1.4, 0, 10);
+  const intensity = isNum(a.strain) ? clamp(a.strain / 14, 0, 1.2) : 0.5;
+  const score = clamp((min / 60) * 4 + intensity * 4.5, 0, 10);
   return { score: Math.round(score * 10) / 10, level: score >= 7 ? 'hoch' : score >= 4 ? 'mittel' : 'niedrig' };
 }
 
@@ -1156,7 +1156,6 @@ export function dayReview(model, i = model.days.length - 1) {
   if (d.acts.length) items.push(`${d.acts.length} ${d.acts.length === 1 ? 'Aktivität' : 'Aktivitäten'}, zusammen ${fmtDurLong(d.acts.reduce((t, a) => t + (a.dur || 0) / 60, 0))}`);
   if (isNum(st.steps)) items.push(`${Math.round(st.steps).toLocaleString('de-DE')} Schritte${isNum(st.stepGoal) ? (st.steps >= st.stepGoal ? ' – Ziel geschafft' : ` – ${Math.round(st.stepGoal - st.steps).toLocaleString('de-DE')} unter Ziel`) : ''}`);
   if (isNum(st.stress)) items.push(`Stress Ø ${st.stress} (${st.stress >= 50 ? 'hoch' : st.stress >= 26 ? 'mittel' : 'niedrig'})`);
-  if (isNum(st.bbNow)) items.push(`Body Battery jetzt ${st.bbNow}`);
   let tonight = null;
   if (i === model.days.length - 1) {
     const plan = bedtimePlan(model, i);
@@ -1204,7 +1203,6 @@ export function stressSummary(d) {
     avg: isNum(st.stress) ? st.stress : null,
     minutes: known ? { rest: Math.round(parts[0]), low: Math.round(parts[1]), med: Math.round(parts[2]), high: Math.round(parts[3]) } : null,
     series: d.stressSeries,
-    battery: d.bbSeries,
   };
 }
 
@@ -1381,13 +1379,6 @@ export function healthTrends(model, i = model.days.length - 1) {
   const stepsNow = avg(recent.slice(0, -1), (x) => x.stats?.steps, 3);
   if (stepsNow != null) items.push({ key: 'steps', label: 'Schritte (Ø)', unit: '', value: Math.round(stepsNow / 100) * 100, base: null, delta: null, status: stepsNow >= 8000 ? 'good' : stepsNow < 5000 ? 'watch' : 'ok', text: 'Ab ca. 7.000–8.000 Schritten am Tag sinkt das Sterberisiko deutlich (Meta-Analysen).' });
 
-  const vo2 = model.profile?.vo2max;
-  if (isNum(vo2)) {
-    const S = model.settings;
-    const norm = S.sex === 'female' ? 44 - 0.3 * S.age : 50.5 - 0.33 * S.age;
-    const diff = vo2 - norm;
-    items.push({ key: 'vo2', label: 'VO₂max', unit: '', value: Math.round(vo2), base: Math.round(norm), delta: Math.round(diff), status: diff >= 3 ? 'good' : diff <= -5 ? 'watch' : 'ok', text: `Stärkster Einzelfaktor für Lebenserwartung. Durchschnitt für dein Alter ca. ${Math.round(norm)}.` });
-  }
 
   const order = { arzt: 0, beobachten: 1, info: 2 };
   flags.sort((a, b) => order[a.level] - order[b.level]);
@@ -1409,7 +1400,7 @@ export function coachContext(model, journal = {}, i = model.days.length - 1, pro
   const wd = (iso) => ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][weekday(iso)];
 
   L(`Datenstand: ${model.generated || 'unbekannt'} · Heute ist ${wd(d.date)}, ${d.date}.`);
-  L(`Profil: ${S.sex === 'female' ? 'weiblich' : 'männlich'}, ${S.age} Jahre, Max-Puls ${S.maxHr}, Ruhepuls-Basis ${d.rhrRef} bpm, Hauptsport ${SPORTS[S.sport]}, Schlafbedarf-Basis ${fmtDur(S.sleepNeed)} h${isNum(model.profile?.vo2max) ? `, VO2max ${model.profile.vo2max}` : ''}.`);
+  L(`Profil: ${S.sex === 'female' ? 'weiblich' : 'männlich'}, ${S.age} Jahre, Max-Puls ${S.maxHr}, Ruhepuls-Basis ${d.rhrRef} bpm, Hauptsport ${SPORTS[S.sport]}, Schlafbedarf-Basis ${fmtDur(S.sleepNeed)} h.`);
   L(`Pulszonen (Herzfrequenzreserve): ${zones.map((z) => `Z${z.zone} ${z.lo}–${z.hi}`).join(', ')} bpm.`);
   const kg = Number(profile?.weight) || model.profile?.weight;
   const cm = Number(profile?.height) || model.profile?.height;
@@ -1446,7 +1437,7 @@ export function coachContext(model, journal = {}, i = model.days.length - 1, pro
     if (coach.plan) L(`App-Empfehlung Training: ${coach.plan} ${coach.remaining?.text || ''}`);
   }
   const st = d.stats || {};
-  L(`Tageswerte: Schritte ${fmtN(st.steps)}${st.padSteps ? ` (davon ${fmtN(st.padSteps)} vom Walking-Pad, das die Uhr nicht gezählt hat)` : ''}, Kalorien ${fmtN(st.kcal)}, Stress Ø ${fmtN(st.stress)}, Body Battery max ${fmtN(st.bbHigh)}${isNum(st.bbNow) ? ` jetzt ${st.bbNow}` : ''}.`);
+  L(`Tageswerte: Schritte ${fmtN(st.steps)}${st.padSteps ? ` (davon ${fmtN(st.padSteps)} vom Walking-Pad, das die Uhr nicht gezählt hat)` : ''}, Kalorien ${fmtN(st.kcal)}, Stress Ø ${fmtN(st.stress)} (Uhr-Messung aus der HRV am Tag).`);
   if (i === model.days.length - 1) {
     const plan = bedtimePlan(model, i);
     L(`Schlaf heute Nacht: Bedarf ${fmtDur(plan.need.total)} Std. (Basis ${fmtDur(plan.need.base)}, +${Math.round(plan.need.strain)} Belastung, +${Math.round(plan.need.debt)} Schlafschuld, +${plan.need.recovery} Erholung). Aufstehen ${fmtClock(plan.wake)} → ins Bett ${plan.options.map((o) => `${o.label} ${fmtClock(o.bed)}`).join(', ')}.`);
@@ -1544,7 +1535,7 @@ export function dayDetails(model, date, journal = {}) {
           spo2: d.sleep.spo2 ?? null,
         }
       : null,
-    activities: d.acts.map((a) => ({ name: a.name, type: a.type, start: a.start, minutes: Math.round(a.dur / 60), km: a.dist ? Math.round(a.dist / 100) / 10 : null, avgHr: a.avgHr, maxHr: a.maxHr, strain: Math.round(a.strain * 10) / 10, trainingEffect: a.te ?? null })),
+    activities: d.acts.map((a) => ({ name: a.name, type: a.type, start: a.start, minutes: Math.round(a.dur / 60), km: a.dist ? Math.round(a.dist / 100) / 10 : null, avgHr: a.avgHr, maxHr: a.maxHr, strain: Math.round(a.strain * 10) / 10 })),
     hrZoneMinutes: d.zoneMin,
     stats: d.stats,
     walkingPad: d.pad ? { steps: d.pad.total, addedToWatch: d.pad.added, minutes: d.pad.minutes, sessions: d.pad.units.map(([s, e, n]) => `${fmtClock(s)}–${fmtClock(e)}: ${n} Schritte`) } : null,

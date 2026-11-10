@@ -19,7 +19,7 @@ und so auswertet wie Whoop:
   Puls, wie jedes Verhalten deine Nacht verändert (Recovery, HRV, Ruhepuls, Tiefschlaf), deine persönliche
   Koffein-Grenze und Alkohol nach Menge – und sagt beim Loggen direkt, was das für heute Nacht bedeutet.
 - **iPhone-Widgets** (Home- und Sperrbildschirm) über die kostenlose App Scriptable. Das große Widget
-  zeigt alles auf einen Blick (drei Ringe, HRV, Ruhepuls, Schritte, Body Battery, Training, Schlafenszeit,
+  zeigt alles auf einen Blick (drei Ringe, HRV, Ruhepuls, Schritte, Schlafbedarf, Training, Schlafenszeit,
   Woche Mo–So); der Sperrbildschirm zeigt runde Ringe (Parameter `recovery`/`schlaf`/`strain`) oder alle
   drei nebeneinander. Eingebaute Tests prüfen, ob ein Tippen Puls öffnen kann: direkt (inoffizieller
   `webapp://`-Weg von iOS – dann springen die Ringe in die Bereiche und Lifestyle-Knöpfe tragen direkt ein,
@@ -66,7 +66,7 @@ und so auswertet wie Whoop:
   - freitags: fehlende Intensitätsminuten der Woche · sonntags: Wochenbericht
   - nach dem Walking-Pad: kurze Bestätigung mit deinen Schritten heute
 - **Morgen-Check** (wie das Whoop-Journal) mit gemessenem Effekt, z. B. „Alkohol: −14 % Recovery“.
-- **Körper-Check** (HRV, Ruhepuls, Atmung, SpO₂), **Stress & Body Battery** im Tagesverlauf,
+- **Körper-Check** (HRV, Ruhepuls, Atmung, SpO₂), **Stress** (Uhr-Messung aus der HRV) im Tagesverlauf,
   **Puls-Alter** (wie Whoops Healthspan), **Trainingslast**, **Wochenbericht** und **Kalender**.
 - Einfache Bedienung: kurze Einführung beim ersten Start, (i)-Knöpfe erklären jeden Wert.
 
@@ -185,6 +185,13 @@ Am Schreibtisch zählt die Uhr kaum Schritte, weil der Arm still bleibt. Zwei We
   Schritte von anderen Apps in die Tagessumme.
 
 ## Gut zu wissen
+
+- **Garmin liefert nur Messwerte, die Auswertung macht Puls:** übernommen werden Puls, HRV, Atmung,
+  Hauttemperatur, SpO₂, Schlafphasen, Schritte, Aktivitäten (Dauer, Puls) und der Stresswert der Uhr
+  (aus der HRV gemessen). Garmins eigene Bewertungen – Body Battery, Training Readiness, Trainingszustand,
+  Schlaf-Score, Trainingseffekt, VO₂max-Schätzung, Trainingsvorschläge – nutzt Puls bewusst **nicht**.
+  Recovery, Strain, Schlafbedarf, Trainings-Empfehlung, Infekt-Modell, Puls-Alter und Lifestyle-Einflüsse
+  rechnet Puls selbst; der KI-Coach (Claude) wertet auf dieser Grundlage aus.
 
 - **Dein ganzer Verlauf seit Tag 1:** Der erste Abruf holt 90 Tage. Ältere Tage lädt ein Start von
   „Puls Sync“ mit `history` (z. B. 60) in Etappen nach – jede Etappe wird veröffentlicht und startet die

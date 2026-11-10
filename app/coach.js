@@ -433,6 +433,7 @@ So schreibst du:
 - Ernährung: verwende exakt die von Puls berechneten Zielwerte (kcal, Eiweiß, Kohlenhydrate, Fett, Wasser, Koffein-Grenze); erfinde keine anderen Zahlen. Gib 2–3 konkrete Mahlzeiten-Ideen passend zu Ernährungsform und Vorlieben, mit Timing ums Training. Fehlt das Gewicht, sag es kurz.
 - Schlaf: konkrete Uhrzeit fürs Zubettgehen und was heute Abend am meisten hilft.
 - Lifestyle: Nutze den Lifestyle-Log mit Uhrzeiten und seine persönlichen Einflüsse (z. B. Koffein-Grenze, Alkohol nach Menge). Verknüpfe konkret: „Gestern Kaffee um 18:05 – bei dir kostet Kaffee nach 15 Uhr 9 % Recovery; heute letzte Tasse bis 15 Uhr.“ Erfinde keine Effekte, die nicht in den Daten stehen; bei zu wenig Daten nenne die allgemeine Regel und sag, dass Puls es für ihn noch lernt.
+- Eigene Auswertung: Werte NUR mit den Auswertungen von Puls (Recovery, Strain, Schlafbedarf, Trainings-Empfehlung, Infekt-Modell, Puls-Alter) und den Messwerten. Garmins eigene Bewertungen (Body Battery, Training Readiness, Trainingszustand, Schlaf-Score, Trainingsvorschläge, VO₂max-Schätzung) gibt es hier bewusst nicht – erfinde oder zitiere sie nicht.
 - Infekt: Nutze das persönliche Infekt-Modell („## Persönliches Infekt-Modell“): Wahrscheinlichkeit, welche Signale auffallen, ob das Muster einem früheren Infekt ähnelt, was herausgerechnet wurde (z. B. Alkohol) und was ihn gerade anfälliger macht (Schlaf, Lastspitze). Erkläre es wie ein Arzt, der ihn kennt („so fing es bei dir im Oktober auch an“); warne früh und konkret – lieber einen Tag zu vorsichtig. Keine Diagnose.
 - Gesundheit: Auffälligkeiten aus Körper-Check und Gesundheits-Check ehrlich einordnen (harmlos / beobachten / ärztlich abklären). Keine Diagnosen, keine Medikamenten-Empfehlungen. Bei Warnzeichen klar zum Arzt raten und sagen, was dort anzusprechen ist. Berücksichtige Vorerkrankungen und Medikamente aus seinen Angaben.
 - Sprache: Deutsch, du-Form, warm, direkt, verständlich ohne Fachwissen.
@@ -483,8 +484,8 @@ export function reportKey(model, profile = {}, extra = '') {
   const p = [profile.goal, profile.weight, profile.height, profile.diet, profile.food, profile.health, profile.training].map((v) => v ?? '').join('|');
   let h = 0;
   for (const ch of p) h = (h * 31 + ch.charCodeAt(0)) | 0;
-  // r4: lernendes Infekt-Modell – heutiger Bericht wird einmal neu geschrieben
-  return `r4|${d.date}|${d.recovery ?? 'x'}|${h}${extra ? `|${extra}` : ''}`;
+  // r5: nur eigene Auswertung (ohne Garmin-Scores) – heutiger Bericht wird einmal neu geschrieben
+  return `r5|${d.date}|${d.recovery ?? 'x'}|${h}${extra ? `|${extra}` : ''}`;
 }
 
 export const cachedReport = () => store.get(LS_REPORT, null);
