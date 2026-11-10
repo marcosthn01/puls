@@ -51,7 +51,8 @@ if (summary?.view === 'main') {
     console.log(`Bereich ${tab}: ${forward + 1} Tage geöffnet (${back} zurück, ${forward} vor)`);
   }
   await page.click('#tabbar [data-tab=coach]');
-  console.log('Coach: ' + ((await page.$('#askbox')) ? 'Chat bereit' : 'noch nicht aktiviert'));
+  // Der Coach-Schlüssel liegt nur auf dem iPhone – im Test-Browser gibt es ihn nie
+  console.log('Coach: ' + ((await page.$('#askbox')) ? 'Chat bereit' : 'im Test-Browser ohne Schlüssel (auf dem iPhone separat eingerichtet)'));
   await page.click('#tabbar [data-tab=recovery]');
   await page.click('[data-tab=trends] >> nth=0');
   await page.click('[data-act=back]');
