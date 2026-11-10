@@ -308,6 +308,23 @@ def normalize_steps(raw: Any, day: dt.date, tz: ZoneInfo) -> list[int] | None:
     return slots if seen else None
 
 
+def _exercises(raw: Any) -> list[dict[str, Any]] | None:
+    """Übungen einer Kraft-Einheit (Garmin erkennt sie am Handgelenk): Kategorie, Sätze, Wiederholungen."""
+    if not isinstance(raw, list):
+        return None
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        cat = item.get("category")
+        if not isinstance(cat, str) or not cat:
+            continue
+        ex = compact({"c": cat[:40], "s": rnd(item.get("sets"), 0), "r": rnd(item.get("reps"), 0)})
+        if ex.get("s") or ex.get("r"):
+            out.append(ex)
+    return out[:20] or None
+
+
 def normalize_activity(raw: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
     if not isinstance(raw, dict):
         return None
@@ -315,18 +332,50 @@ def normalize_activity(raw: dict[str, Any]) -> tuple[str, dict[str, Any]] | None
     if not isinstance(start, str) or len(start) < 16:
         return None
     activity_type = raw.get("activityType") or {}
+    if not isinstance(activity_type, dict):
+        activity_type = {}
     zones = [rnd(raw.get(f"hrTimeInZone_{i}"), 0) for i in range(1, 6)]
+
+    def first(*keys: str, digits: int = 0) -> float | int | None:
+        for k in keys:
+            v = rnd(raw.get(k), digits)
+            if v is not None:
+                return v
+        return None
+
     act = compact(
         {
             "id": raw.get("activityId"),
             "name": raw.get("activityName") if isinstance(raw.get("activityName"), str) else None,
-            "type": activity_type.get("typeKey") if isinstance(activity_type, dict) else None,
+            # Sportart genau so, wie auf der Uhr gewählt (z. B. indoor_cycling) + übergeordnete Art
+            "type": activity_type.get("typeKey"),
+            "ptype": num(activity_type.get("parentTypeId")),
             "start": start[11:16],
             "dur": rnd(raw.get("duration"), 0),
+            "moving": rnd(raw.get("movingDuration"), 0),
             "dist": rnd(raw.get("distance"), 0),
+            "spd": rnd(raw.get("averageSpeed"), 2),
+            "maxSpd": rnd(raw.get("maxSpeed"), 2),
+            "elev": rnd(raw.get("elevationGain"), 0),
+            "elevDn": rnd(raw.get("elevationLoss"), 0),
             "avgHr": rnd(raw.get("averageHR"), 0),
             "maxHr": rnd(raw.get("maxHR"), 0),
             "kcal": rnd(raw.get("calories"), 0),
+            # Leistung und Trittfrequenz (Rad: U/min, Laufen: Schritte/min)
+            "pwr": rnd(raw.get("avgPower"), 0),
+            "maxPwr": rnd(raw.get("maxPower"), 0),
+            "np": rnd(raw.get("normPower"), 0),
+            "cad": first("averageBikingCadenceInRevPerMinute", "averageRunningCadenceInStepsPerMinute", "averageSwimCadenceInStrokesPerMinute"),
+            "maxCad": first("maxBikingCadenceInRevPerMinute", "maxRunningCadenceInStepsPerMinute"),
+            "steps": rnd(raw.get("steps"), 0),
+            # Kraft: Sätze, Wiederholungen, von der Uhr erkannte Übungen
+            "sets": first("activeSets", "totalSets"),
+            "reps": rnd(raw.get("totalReps"), 0),
+            "ex": _exercises(raw.get("summarizedExerciseSets")),
+            # Schwimmen
+            "lengths": rnd(raw.get("activeLengths"), 0),
+            "swolf": rnd(raw.get("avgSwolf"), 0),
+            "resp": rnd(raw.get("avgRespirationRate")),
             "load": rnd(raw.get("activityTrainingLoad"), 0),
             "te": rnd(raw.get("aerobicTrainingEffect")),
             "ate": rnd(raw.get("anaerobicTrainingEffect")),

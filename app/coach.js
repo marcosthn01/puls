@@ -423,13 +423,16 @@ function friendlyError(err, Anthropic) {
 // ------------------------------------------------------------------ Tagesbericht („wie beim Arzt“)
 
 const LS_REPORT = 'puls.report';
+const WD = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 
-const REPORT_PERSONA = `Du schreibst den persönlichen Tagesbericht in der privaten iPhone-App „Puls“. Du bist ein Team aus Sportärztin, Trainer und Ernährungscoach in einer Stimme und kennst die Garmin-Daten (Venu 4S) dieses einen Menschen genau. Der Bericht soll sich anfühlen, als hätte sich sein persönlicher Arzt heute Morgen alle Werte angesehen – nicht wie ein Bot mit Standardsätzen.
+const REPORT_PERSONA = `Du schreibst den persönlichen Tagesbericht in der privaten iPhone-App „Puls“. Du bist ein Team aus Sportärztin, Trainer und Ernährungscoach in einer Stimme und kennst die Garmin-Daten (Venu 4S) dieses einen Menschen genau. Der Bericht soll sich anfühlen, als hätte sich sein persönlicher Arzt gerade eben alle Werte angesehen – nicht wie ein Bot mit Standardsätzen.
+
+Tageszeit: Es gibt einen Morgen-, Mittags-, Nachmittags- und Abendbericht. Der Auftrag nennt die aktuelle Uhrzeit und worum es jetzt geht. Schreib, was JETZT zählt: Vorbei ist vorbei (nur als kurze Bilanz), Kommendes konkret mit Uhrzeit. Wiederhole nicht in jedem Bericht die Nacht – nur wenn sie für den Rest des Tages noch wichtig ist.
 
 So schreibst du:
 - Persönlich: Jede Aussage stützt sich auf konkrete Werte aus <daten> und vergleicht sie mit SEINER Basis (z. B. „Ruhepuls 58 – 4 Schläge über deinem Schnitt“). Nichts, was für jeden gelten würde.
 - Ursachen statt Symptome: Verbinde Schlaf, Belastung der letzten Tage, Stress, Morgen-Check-Verhalten (Alkohol, spätes Essen …), Trends aus dem Gesundheits-Check und seine eigenen Angaben (Ziel, Training, Essen, Gesundheit).
-- Training: genau EIN konkreter Vorschlag für heute in seiner eigenen Trainingswelt (siehe „## Training“: was er wirklich trainiert, z. B. Gym im Push/Pull-Wechsel oder Rad). Rad: Dauer in Minuten und Puls in bpm. Gym: welcher Split und wie viel Volumen (z. B. „−20 % Volumen, 2–3 Wdh. in Reserve“ oder „volles Volumen + 1 Satz, Supersätze fürs Zubehör“). Folge der Puls-Empfehlung; weiche nur mit klarer Begründung ab. Schlage NIE Trainingsformen vor, die er nicht macht (keine Intervalle, keine Zone-4-Blöcke, kein Laufen, wenn er nie läuft). Bei Infekt-Frühwarnung „erhöht“/„hoch“ oder wenn er sich angeschlagen fühlt: klar zu Pause oder nur lockerer Bewegung raten und sagen, warum (z. B. „Ruhepuls +5, Atmung +1 – so fing es bei dir schon mal an“).
+- Training: morgens bis nachmittags genau EIN konkreter Vorschlag für heute in seiner eigenen Trainingswelt; ist das Training schon erledigt oder ist Abend, dann eine Bilanz mit der Sportart laut Garmin und ihren Messwerten (z. B. „Indoor-Rad 55 Min., Ø 182 W, 88 U/min“) und was das für morgen heißt. Nenne Einheiten immer mit der Sportart, die Garmin aufgezeichnet hat – nie z. B. ein Indoor-Rad als Gym (siehe „## Training“: was er wirklich trainiert, z. B. Gym im Push/Pull-Wechsel oder Rad). Rad: Dauer in Minuten und Puls in bpm. Gym: welcher Split und wie viel Volumen (z. B. „−20 % Volumen, 2–3 Wdh. in Reserve“ oder „volles Volumen + 1 Satz, Supersätze fürs Zubehör“). Folge der Puls-Empfehlung; weiche nur mit klarer Begründung ab. Schlage NIE Trainingsformen vor, die er nicht macht (keine Intervalle, keine Zone-4-Blöcke, kein Laufen, wenn er nie läuft). Bei Infekt-Frühwarnung „erhöht“/„hoch“ oder wenn er sich angeschlagen fühlt: klar zu Pause oder nur lockerer Bewegung raten und sagen, warum (z. B. „Ruhepuls +5, Atmung +1 – so fing es bei dir schon mal an“).
 - Ernährung: verwende exakt die von Puls berechneten Zielwerte (kcal, Eiweiß, Kohlenhydrate, Fett, Wasser, Koffein-Grenze); erfinde keine anderen Zahlen. Gib 2–3 konkrete Mahlzeiten-Ideen passend zu Ernährungsform und Vorlieben, mit Timing ums Training. Fehlt das Gewicht, sag es kurz.
 - Schlaf: konkrete Uhrzeit fürs Zubettgehen und was heute Abend am meisten hilft.
 - Lifestyle: Nutze den Lifestyle-Log mit Uhrzeiten und seine persönlichen Einflüsse (z. B. Koffein-Grenze, Alkohol nach Menge). Verknüpfe konkret: „Gestern Kaffee um 18:05 – bei dir kostet Kaffee nach 15 Uhr 9 % Recovery; heute letzte Tasse bis 15 Uhr.“ Erfinde keine Effekte, die nicht in den Daten stehen; bei zu wenig Daten nenne die allgemeine Regel und sag, dass Puls es für ihn noch lernt.
@@ -453,9 +456,9 @@ const SECTION = {
 export const REPORT_SCHEMA = {
   type: 'object',
   properties: {
-    schlagzeile: { type: 'string', description: 'Höchstens 8 Wörter: das Wichtigste für heute' },
+    schlagzeile: { type: 'string', description: 'Höchstens 8 Wörter: das Wichtigste jetzt' },
     einschaetzung: { type: 'string', description: 'Höchstens 2 kurze Sätze wie von einem Arzt, mit konkreten Werten' },
-    fokus: { type: 'string', description: 'Ein kurzer Satz: die eine Sache, die heute am meisten bringt' },
+    fokus: { type: 'string', description: 'Ein kurzer Satz: die eine Sache, die ab jetzt am meisten bringt' },
     koerper: SECTION,
     training: SECTION,
     ernaehrung: SECTION,
@@ -478,14 +481,52 @@ export const REPORT_SCHEMA = {
   additionalProperties: false,
 };
 
-/** Schlüssel, der sich nur ändert, wenn ein neuer Bericht sinnvoll ist (neue Nacht, anderes Profil). */
-export function reportKey(model, profile = {}, extra = '') {
+// Tageszeit des Berichts: Morgen (4–11 Uhr), Mittag (11–15), Nachmittag (15–18), Abend (ab 18 Uhr)
+export const PHASES = {
+  morgen: {
+    label: 'Morgenbericht',
+    focus: 'Heute im Fokus',
+    sections: { training: 'Training heute', ernaehrung: 'Ernährung heute', schlaf: 'Schlaf' },
+    task: 'Morgenbericht: Wie war die Nacht, wie erholt ist er, was ist heute dran – Training mit Dosis, Essen über den Tag, Koffein-Grenze und die Zubettgehzeit für heute Abend.',
+  },
+  mittag: {
+    label: 'Mittagsbericht',
+    focus: 'Heute Nachmittag im Fokus',
+    sections: { training: 'Training', ernaehrung: 'Essen ab jetzt', schlaf: 'Schlaf heute Nacht' },
+    task: 'Mittagsbericht: kurze Bilanz des Vormittags (Strain bisher, Schritte, Stress, schon trainiert?) und was am Nachmittag und Abend ansteht – wann das Training am besten passt, Mittag- und Nachmittagsessen, letzte Tasse Kaffee. Die Nacht nur erwähnen, wenn sie heute noch zählt.',
+  },
+  nachmittag: {
+    label: 'Nachmittagsbericht',
+    focus: 'Bis heute Abend im Fokus',
+    sections: { training: 'Training', ernaehrung: 'Essen bis zum Abend', schlaf: 'Schlaf heute Nacht' },
+    task: 'Nachmittagsbericht: Wie weit ist er vom Ziel-Strain, ist das Training erledigt oder wann und wie noch (mit Dosis), Snack vor dem Training, Koffein ab jetzt meiden, Abendessen. Was schon passiert ist, nur als kurze Bilanz.',
+  },
+  abend: {
+    label: 'Abendbericht',
+    focus: 'Heute Abend im Fokus',
+    sections: { training: 'Training heute – Bilanz', ernaehrung: 'Abendessen', schlaf: 'Schlaf heute Nacht' },
+    task: 'Abendbericht: Tagesbilanz (Training mit Sportart und Messwerten laut Garmin, Strain gegenüber dem Ziel, Schritte, Stress), was die Erholung heute Nacht am meisten fördert (Abendessen, Alkohol, Bildschirm, Temperatur), die genaue Zubettgehzeit und ein kurzer Ausblick auf morgen. Kein neues Training vorschlagen – höchstens Spaziergang oder Mobility.',
+  },
+};
+
+/** Welche Tageszeit gerade ist (Uhr des iPhones). */
+export function reportPhase(now = new Date()) {
+  const h = now.getHours();
+  const key = h >= 4 && h < 11 ? 'morgen' : h >= 11 && h < 15 ? 'mittag' : h >= 15 && h < 18 ? 'nachmittag' : 'abend';
+  return { key, ...PHASES[key] };
+}
+
+/** Schlüssel, der sich nur ändert, wenn ein neuer Bericht sinnvoll ist (neue Nacht, neue Tageszeit, neues Training, anderes Profil). */
+export function reportKey(model, profile = {}, extra = '', now = new Date()) {
   const d = model.days[model.days.length - 1];
   const p = [profile.goal, profile.weight, profile.height, profile.diet, profile.food, profile.health, profile.training].map((v) => v ?? '').join('|');
   let h = 0;
   for (const ch of p) h = (h * 31 + ch.charCodeAt(0)) | 0;
-  // r5: nur eigene Auswertung (ohne Garmin-Scores) – heutiger Bericht wird einmal neu geschrieben
-  return `r5|${d.date}|${d.recovery ?? 'x'}|${h}${extra ? `|${extra}` : ''}`;
+  const phase = reportPhase(now).key;
+  // Nach dem Morgen zählt auch, ob seitdem ein Training dazugekommen ist
+  const acts = phase === 'morgen' ? '' : `|a${(d.acts || []).filter((a) => (a.dur || 0) >= 600).length}`;
+  // r6: Bericht je Tageszeit
+  return `r6|${d.date}|${phase}|${d.recovery ?? 'x'}${acts}|${h}${extra ? `|${extra}` : ''}`;
 }
 
 export const cachedReport = () => store.get(LS_REPORT, null);
@@ -501,13 +542,16 @@ export async function dailyReport(app) {
   const profile = app.profile?.() || {};
   const d = model.days[model.days.length - 1];
   const ctx = context(app, model, profile);
+  const now = new Date();
+  const phase = reportPhase(now);
+  const clock = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   const { Anthropic, api } = await client();
   const cfg = coachConfig();
   const params = {
     model: cfg.model,
     max_tokens: 32000,
     system: [{ type: 'text', text: REPORT_PERSONA, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: `<daten>\n${ctx}\n</daten>\n\nSchreibe den Tagesbericht für heute (${d.date}).` }],
+    messages: [{ role: 'user', content: `<daten>\n${ctx}\n</daten>\n\nJetzt ist ${WD[now.getDay()]}, ${d.date}, ${clock} Uhr.\nAuftrag – ${phase.task}\nSchreibe den ${phase.label}.` }],
     output_config: { effort: 'high', format: { type: 'json_schema', schema: REPORT_SCHEMA } },
   };
   if (cfg.model !== 'claude-haiku-5-5') {
@@ -530,7 +574,7 @@ export async function dailyReport(app) {
     throw new Error('Der Bericht kam unvollständig an. Bitte nochmal versuchen.');
   }
   if (!validReport(report)) throw new Error('Der Bericht kam unvollständig an. Bitte nochmal versuchen.');
-  const entry = { key: reportKey(model, profile, app.reportExtra?.() || ''), date: d.date, at: Date.now(), model: message.model || cfg.model, report };
+  const entry = { key: reportKey(model, profile, app.reportExtra?.() || '', now), date: d.date, phase: phase.key, at: Date.now(), model: message.model || cfg.model, report };
   store.set(LS_REPORT, entry);
   return entry;
 }

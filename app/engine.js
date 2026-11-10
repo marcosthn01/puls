@@ -3,6 +3,7 @@
 // Methodik in Kurzform steht in der App unter Einstellungen → "So rechnet Puls".
 
 import * as Infekt from './infekt.js';
+import * as Sp from './sport.js';
 
 export const HR_BIN_START = 30;
 export const HR_BIN_WIDTH = 5;
@@ -1061,7 +1062,7 @@ export function healthAge(model, i = model.days.length - 1) {
   const z45 = avg(full, (d) => (d.zoneMin ? d.zoneMin[3] + d.zoneMin[4] : null));
   if (z45 != null) add('z45', 'Zonen 4–5 (Woche)', `${fmtDur(z45 * 7)} Std.`, clamp(0.6 - (z45 * 7) / 40, -1.2, 0.6), 'Ein bis zwei kurze, harte Einheiten (Intervalle) pro Woche halten das Herz jung.');
   if (full.length >= 14) {
-    const strengthMin = full.reduce((t, d) => t + d.acts.filter((a) => isStrength(a.type)).reduce((u, a) => u + (a.dur || 0) / 60, 0), 0);
+    const strengthMin = full.reduce((t, d) => t + d.acts.filter((a) => Sp.activityKind(a) === 'gym').reduce((u, a) => u + (a.dur || 0) / 60, 0), 0);
     const week = (strengthMin * 7) / full.length;
     add('strength', 'Krafttraining (Woche)', `${fmtDur(week)} Std.`, clamp(0.6 - week / 90, -1.2, 0.6), 'Zwei Kraft-Einheiten pro Woche schützen Muskeln, Knochen und Stoffwechsel.');
   }
@@ -1094,7 +1095,7 @@ export function paceOfAging(model, i = model.days.length - 1, back = 60) {
 
 /** Muskel-Belastung einer Kraft- oder HIIT-Einheit (0–10), aus Dauer und Puls-Belastung (eigener Strain). */
 export function muscleLoad(a) {
-  if (!isStrength(a?.type)) return null;
+  if (Sp.activityKind(a) !== 'gym') return null;
   const min = (a.dur || 0) / 60;
   const intensity = isNum(a.strain) ? clamp(a.strain / 14, 0, 1.2) : 0.5;
   const score = clamp((min / 60) * 4 + intensity * 4.5, 0, 10);
@@ -1431,7 +1432,7 @@ export function coachContext(model, journal = {}, i = model.days.length - 1, pro
   } else {
     L('Recovery: noch keine Schlafdaten für heute.');
   }
-  L(`Strain bisher ${fmtN(d.strain, 1)} von 21${d.acts.length ? `; Aktivitäten: ${d.acts.map((a) => `${a.name || a.type} ${a.start} ${Math.round(a.dur / 60)} Min. Ø${a.avgHr || '–'} bpm (Strain ${fmtN(a.strain, 1)})`).join('; ')}` : ''}.`);
+  L(`Strain bisher ${fmtN(d.strain, 1)} von 21${d.acts.length ? `; Aktivitäten (Sportart laut Garmin): ${d.acts.map((a) => `${Sp.sportLine(a)}, ${a.start} ${Math.round(a.dur / 60)} Min. Ø${a.avgHr || '–'} bpm (Strain ${fmtN(a.strain, 1)})`).join('; ')}` : ''}.`);
   if (!training) {
     const coach = buildCoach(model, i);
     if (coach.plan) L(`App-Empfehlung Training: ${coach.plan} ${coach.remaining?.text || ''}`);
@@ -1493,7 +1494,7 @@ export function coachContext(model, journal = {}, i = model.days.length - 1, pro
     const x = model.days[k];
     const j = journal?.[addDays(x.date, -1)];
     const jtxt = j?._done ? JOURNAL_QUESTIONS.filter((q) => j[q.id]).map((q) => q.label).join('+') || 'nichts' : '';
-    L(`${wd(x.date)} ${x.date} | ${x.recovery ?? '–'} | ${fmtN(x.hrv)} | ${fmtN(x.rhr)} | ${x.sleepMin != null ? fmtDur(x.sleepMin) : '–'} | ${fmtN(x.perf)} | ${fmtN(x.strain, 1)} | ${fmtN(x.stats?.steps)} | ${fmtN(x.stats?.stress)} | ${x.acts.map((a) => `${a.name || a.type} ${Math.round(a.dur / 60)}′`).join(', ') || '–'} | ${jtxt}`);
+    L(`${wd(x.date)} ${x.date} | ${x.recovery ?? '–'} | ${fmtN(x.hrv)} | ${fmtN(x.rhr)} | ${x.sleepMin != null ? fmtDur(x.sleepMin) : '–'} | ${fmtN(x.perf)} | ${fmtN(x.strain, 1)} | ${fmtN(x.stats?.steps)} | ${fmtN(x.stats?.stress)} | ${x.acts.map((a) => `${Sp.activityTitle(a)}${Sp.activityTitle(a) !== Sp.sportLabel(a) ? ` (${Sp.sportLabel(a)})` : ''} ${Math.round(a.dur / 60)}′`).join(', ') || '–'} | ${jtxt}`);
   }
   const last30 = model.days.slice(Math.max(0, i - 29), i + 1);
   const m30 = (f) => mean(last30.map(f).filter(isNum));
@@ -1535,7 +1536,7 @@ export function dayDetails(model, date, journal = {}) {
           spo2: d.sleep.spo2 ?? null,
         }
       : null,
-    activities: d.acts.map((a) => ({ name: a.name, type: a.type, start: a.start, minutes: Math.round(a.dur / 60), km: a.dist ? Math.round(a.dist / 100) / 10 : null, avgHr: a.avgHr, maxHr: a.maxHr, strain: Math.round(a.strain * 10) / 10 })),
+    activities: d.acts.map((a) => ({ name: a.name, sport: Sp.sportLabel(a), type: a.type, start: a.start, minutes: Math.round(a.dur / 60), km: a.dist ? Math.round(a.dist / 100) / 10 : null, avgHr: a.avgHr, maxHr: a.maxHr, strain: Math.round(a.strain * 10) / 10, facts: Object.fromEntries(Sp.sportFacts(a).map((f) => [f.k, `${f.v}${f.u ? ` ${f.u}` : ''}`])), exercises: Sp.exercises(a) })),
     hrZoneMinutes: d.zoneMin,
     stats: d.stats,
     walkingPad: d.pad ? { steps: d.pad.total, addedToWatch: d.pad.added, minutes: d.pad.minutes, sessions: d.pad.units.map(([s, e, n]) => `${fmtClock(s)}–${fmtClock(e)}: ${n} Schritte`) } : null,
@@ -1562,7 +1563,7 @@ export function daysTable(model, from, to, journal = {}) {
       steps: d.stats?.steps ?? null,
       ...(d.pad ? { walkingPad: { steps: d.pad.total, addedToWatch: d.pad.added, minutes: d.pad.minutes } } : {}),
       stress: d.stats?.stress ?? null,
-      activities: d.acts.map((a) => `${a.name || a.type} ${Math.round(a.dur / 60)}min`),
+      activities: d.acts.map((a) => `${Sp.sportLabel(a)}${Sp.activityTitle(a) !== Sp.sportLabel(a) ? ` „${Sp.activityTitle(a)}“` : ''} ${Math.round(a.dur / 60)}min`),
       behaviorsThisDay: j?._done ? JOURNAL_QUESTIONS.filter((q) => j[q.id]).map((q) => q.label) : null,
     });
   }

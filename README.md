@@ -4,16 +4,24 @@ Eine private iPhone-App (Web-App für den Home-Bildschirm), die deine Garmin-Dat
 und so auswertet wie Whoop:
 
 - **Recovery, Strain, Schlaf** als leuchtende Ringe, mit Tagesziel und Schlafplaner.
-- **Dein Tagesbericht – wie beim Arzt:** Jeden Morgen schaut sich der KI-Coach alle deine Werte an
-  (Nacht, Trends der letzten Wochen, Morgen-Check, deine Angaben zu Ziel, Essen und Gesundheit) und
-  schreibt eine persönliche Einschätzung mit Plan für Training, Ernährung und Schlaf – plus klare
-  Hinweise, wann etwas ärztlich abgeklärt werden sollte.
+- **Dein Bericht – wie beim Arzt, passend zur Uhrzeit:** Der KI-Coach schaut sich alle deine Werte an
+  (Nacht, Tag bis jetzt, Trends der letzten Wochen, Morgen-Check, deine Angaben zu Ziel, Essen und Gesundheit)
+  und schreibt je nach Tageszeit: **morgens** (4–11 Uhr) Nacht, Erholung und Plan für heute, **mittags**
+  (11–15 Uhr) Bilanz des Vormittags und was noch ansteht, **nachmittags** (15–18 Uhr) Training und Essen bis
+  zum Abend, **abends** (ab 18 Uhr) Tagesbilanz mit deinem Training, Schlafenszeit und Ausblick auf morgen –
+  plus klare Hinweise, wann etwas ärztlich abgeklärt werden sollte. Ein neuer Bericht entsteht nur beim
+  Öffnen in einer neuen Tageszeit oder nach einem neuen Training.
 - **Ernährung heute:** Kalorien, Eiweiß, Kohlenhydrate, Fett und Wasser aus deinem echten
   Garmin-Verbrauch, angepasst an die Belastung des Tages und dein Ziel (abnehmen, Muskeln, Ausdauer …).
 - **Training heute:** Puls lernt aus deinen Garmin-Aktivitäten, was du trainierst (z. B. Gym im Push/Pull-Wechsel
   und Rad), und sagt dir jeden Tag konkret, was dran ist: „Rad · 75 Min., Puls um 138“ oder „Gym · Pull,
   −20 % Volumen, 2–3 Wdh. in Reserve“ – passend zu Recovery, HRV-Trend, Schlaf, Last und Infekt-Zeichen.
   Keine Zone-4-Intervalle, wenn du so etwas nie trainierst.
+- **Sportart genau wie auf der Uhr:** Puls übernimmt die Sportart, die du auf der Garmin gewählt hast
+  (Indoor-Rad bleibt Rad – auch wenn das Studio „Gym“ heißt), und zeigt alle Werte, die Garmin dazu misst:
+  Leistung (Ø, normiert, max.), Trittfrequenz, Tempo/Pace, Höhenmeter, Zeit in Bewegung, Atmung,
+  bei Kraft Sätze, Wiederholungen und die von der Uhr erkannten Übungen. Der Name einer Einheit zählt nur,
+  wenn Garmin keine eindeutige Sportart liefert (z. B. „Fitnessgerät“).
 - **Lifestyle-Log wie ein Tagebuch:** Symbol-Knöpfe auf „Heute“ (Kaffee, Alkohol, spätes Essen, Handy im Bett,
   Stress, Sauna, Meditation, Kälte …) – antippen, wenn es passiert, Puls merkt sich die Uhrzeit. Danach zeigt
   Puls, wie jedes Verhalten deine Nacht verändert (Recovery, HRV, Ruhepuls, Tiefschlaf), deine persönliche
@@ -31,7 +39,7 @@ und so auswertet wie Whoop:
   (Push, Pull, Rad …) und wie viele Trainings es diese Woche sind; der Monatskalender unter Trends
   zeigt Recovery und Training zusammen.
 - **Trainingskalender für Google/Apple:** Jedes Training landet automatisch als ganztägiges Ereignis
-  („Push“, „Pull“, „Cardio · Rad“) in einem abonnierbaren Kalender (geheimer Link unter Einstellungen →
+  („Push“, „Pull“, „Cardio · Indoor-Rad“, „Cardio · Rennrad“) in einem abonnierbaren Kalender (geheimer Link unter Einstellungen →
   Trainingskalender, ohne Gesundheitswerte). Push/Pull: einmal in der App antippen, Puls ergänzt den Rest
   im Wechsel.
 - **Infekt-Frühwarnung, die dich kennenlernt** ([`infekt.js`](app/infekt.js)): Jede Nacht rechnet Puls
@@ -58,10 +66,13 @@ und so auswertet wie Whoop:
   Daten von Garmin (ca. 1 Minute, mit sichtbarem Fortschritt). Fehlt morgens die Nacht noch, wartet
   die Morgenwache darauf und holt sie, sobald sie bei Garmin ist – auch bei geschlossener App.
 - **Benachrichtigungen** (jede einzeln abschaltbar, je höchstens einmal am Tag):
-  - morgens: Recovery, Ziel-Strain und Schlaf
+  - **Morgenbericht**, sobald die Nacht da ist: Recovery, Schlaf, HRV und Ruhepuls gegenüber deinem
+    Normalbereich, Training für heute, Schlafenszeit (bei Infekt-Zeichen als Frühwarnung)
   - mittags: „Erst 2.100 Schritte“ oder „Stress seit einer Stunde hoch“ – nur wenn es zutrifft
   - nachmittags: wie viele Minuten bis zum Trainingsziel fehlen, oder „Ziel erreicht“
   - früher Abend: „Noch 2.600 Schritte bis zu deinem Ziel“ oder „Schrittziel geschafft“
+  - **Abendbericht** (20–22:30 Uhr): dein Training mit Sportart und Messwerten laut Garmin, Strain gegenüber
+    dem Ziel, Schritte, Stress und wann du ins Bett solltest – Tippen öffnet den ausführlichen Abendbericht
   - abends: Erinnerung zum Schlafengehen
   - freitags: fehlende Intensitätsminuten der Woche · sonntags: Wochenbericht
   - nach dem Walking-Pad: kurze Bestätigung mit deinen Schritten heute
@@ -240,7 +251,8 @@ Am Schreibtisch zählt die Uhr kaum Schritte, weil der Arm still bleibt. Zwei We
 app/          Web-App (ohne Build-Schritt, ohne externe Bibliotheken)
   engine.js   Auswertung: Recovery, Strain, Schlafbedarf, Puls-Alter, Coach-Kontext
   app.js      Oberfläche
-  coach.js    KI-Coach (Claude, Werkzeuge, Chat-Verlauf)
+  sport.js    Sportarten wie auf der Garmin-Uhr + alle Messwerte je Einheit
+  coach.js    KI-Coach (Claude, Werkzeuge, Chat-Verlauf, Bericht je Tageszeit)
   vendor/     Anthropic-SDK als Browser-Datei
   charts.js   Diagramme (SVG)
   crypto.js   Entschlüsselung (WebCrypto)
@@ -255,6 +267,7 @@ sync/         Garmin-Abruf (Python 3.12+)
   walkpad.py      Walking-Pad-Schritte vom iPhone-Kurzbefehl (ohne Doppelzählung)
 tests/        pytest (Sync), node --test (Auswertung, Coach, Benachrichtigungen), live_check.mjs
 .github/workflows/sync.yml   Zeitplan, Sync, Benachrichtigungen, Veröffentlichung
+.github/workflows/passwort.yml   prüft ein Daten-Passwort per Fingerabdruck (verrät es nicht)
 .github/workflows/check.yml  Selbsttest der echten App
 ```
 

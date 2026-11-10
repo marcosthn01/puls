@@ -7,10 +7,11 @@ import * as Inf from './infekt.js';
 import * as Coach from './coach.js';
 import * as Hud from './hud.js';
 import * as T from './training.js';
+import * as Sp from './sport.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.8.1';
+const VERSION = '5.9.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -41,7 +42,8 @@ const LS = {
 };
 
 const PUSH_KINDS = [
-  ['morning', 'Recovery am Morgen', 'sobald deine Nacht da ist'],
+  ['morning', 'Morgenbericht', 'sobald deine Nacht da ist: Recovery, Schlaf, HRV, Training und Schlafenszeit'],
+  ['evening', 'Abendbericht', '20–22:30 Uhr: dein Training laut Garmin, Strain, Schritte und wann du ins Bett solltest'],
   ['midday', 'Bewegung & Stress', 'mittags, wenn du wenig gelaufen bist oder Stress hast'],
   ['afternoon', 'Trainingsziel', 'nachmittags: was bis zum Ziel fehlt'],
   ['steps', 'Schritte', 'früher Abend: fehlende Schritte oder „geschafft“'],
@@ -158,10 +160,12 @@ const I = {
   custom: svg('<circle cx="12" cy="12" r="7.5"/><path d="M12 8.5v7M8.5 12h7"/>'),
   lungs: svg('<path d="M12 4v8"/><path d="M12 12c-1.5-1-3-1-3 1v5c0 1.7-1.6 2.5-3 1.8C4.7 19.2 4 17.8 4 16v-3.5C4 9 6 7 8 7c1.6 0 2.5 1.6 2.5 3"/><path d="M12 12c1.5-1 3-1 3 1v5c0 1.7 1.6 2.5 3 1.8 1.3-.6 2-2 2-3.8v-3.5C20 9 18 7 16 7c-1.6 0-2.5 1.6-2.5 3"/>'),
 };
-const actIcon = (type = '') => {
-  if (/run|trail|treadmill/.test(type)) return I.run;
-  if (/cycl|bik|ride/.test(type)) return I.bike;
-  if (/strength|weight|fitness|hiit|gym/.test(type)) return I.lift;
+const actIcon = (a = {}) => {
+  const type = String(a.type || '');
+  const kind = Sp.activityKind(a);
+  if (kind === 'run') return I.run;
+  if (kind === 'bike') return I.bike;
+  if (kind === 'gym') return I.lift;
   if (/walk|hik/.test(type)) return I.walk;
   if (/swim/.test(type)) return I.swim;
   return I.act;
@@ -235,7 +239,7 @@ const INFO = {
   age: ['Puls-Alter', 'Eine Schätzung, wie alt dein Körper wirkt – aus Fitness (VO₂max), Ruhepuls, Schlaf und Bewegung der letzten 30 Tage. Jeder Faktor zählt nur ein paar Jahre. Kein medizinischer Wert.'],
   load: ['Trainingslast', 'Deine Belastung der letzten 7 Tage im Vergleich zu den letzten 28. Zwischen 0,8 und 1,3 machst du Fortschritte, darüber steigt das Verletzungsrisiko.'],
   pad: ['Walking-Pad', 'Schritte von deinem Walking-Pad – von Hand eingetragen (Kilometer aus PitPat, umgerechnet mit deiner Schrittlänge) oder über Apple Health und den Kurzbefehl. Wenn du am Schreibtisch läufst, zählt die Uhr kaum mit, weil der Arm still bleibt. Puls zieht ab, was die Uhr in der Zeit schon gezählt hat, und addiert nur den Rest. So zählt nichts doppelt.'],
-  report: ['Dein Tagesbericht', 'Jeden Morgen schaut sich der KI-Coach (Claude) alle deine Werte an – wie ein Arzt, Trainer und Ernährungscoach zusammen: Recovery, Schlaf, Trends der letzten Wochen, deinen Morgen-Check und deine Angaben (Ziel, Gesundheit, Essen). Daraus wird ein persönlicher Plan für heute. Kostet ca. 5–15 Cent pro Bericht über deinen Claude-Schlüssel. Keine ärztliche Diagnose.'],
+  report: ['Dein Bericht – passend zur Uhrzeit', 'Der KI-Coach (Claude) schaut sich alle deine Werte an – wie ein Arzt, Trainer und Ernährungscoach zusammen – und schreibt je nach Tageszeit: morgens (4–11 Uhr) Nacht, Erholung und Plan für heute; mittags (11–15 Uhr) Bilanz des Vormittags und was noch ansteht; nachmittags (15–18 Uhr) Training und Essen bis zum Abend; abends (ab 18 Uhr) Tagesbilanz mit deinem Training, Schlafenszeit und Ausblick auf morgen. Ein neuer Bericht entsteht nur, wenn du die App in einer neuen Tageszeit öffnest (oder ein Training dazukommt) – höchstens etwa 4 am Tag, je ca. 5–15 Cent über deinen Claude-Schlüssel (mit Sonnet etwa die Hälfte). Keine ärztliche Diagnose.'],
   nutrition: ['Ernährung heute', 'Dein Tagesbedarf aus deinem echten Garmin-Verbrauch der letzten 2 Wochen, angepasst an die Belastung von heute und dein Ziel. Eiweiß je nach Ziel 1,4–2,0 g pro kg, Kohlenhydrate 3–7 g pro kg je nach Strain (harte Tage brauchen mehr), Fett mindestens 0,8 g pro kg. Wasser: 35 ml pro kg plus 0,6 L pro Trainingsstunde. Richtwerte, keine Diät.'],
   health: ['Gesundheits-Check', 'Wie ein Arzt auf Trends schaut: Der Schnitt deiner letzten 7 Tage wird mit deinen eigenen Werten der 2 Monate davor verglichen – Ruhepuls, HRV, Atemfrequenz, Schlaf, Schlafrhythmus, Blutsauerstoff, Bewegung und VO₂max. Einzelne schlechte Nächte sind normal; wichtig sind Veränderungen über Tage. Bei Hinweisen der Stufe „Arzt“ bitte ärztlich abklären lassen.'],
   journal: ['Morgen-Check', 'Tippe jeden Morgen an, was gestern war (z. B. Alkohol, spätes Essen). Nach ein paar Wochen zeigt Puls, was deine Recovery wirklich hebt oder senkt.'],
@@ -947,7 +951,7 @@ function setupCard() {
   return `<section class="card setup"><h2>Puls fertig einrichten · ${done} von 3<button class="infobtn" data-act="setup-hide" aria-label="Ausblenden">×</button></h2>
     ${item(s.sync, I.sync, 'Automatisch aktualisieren', 'Frische Daten bei jedem Öffnen · 2 Min.', 'data-act="setup-sync"')}
     ${item(s.coach, I.coach, 'KI-Coach aktivieren', 'Frag alles zu Training & Schlaf · 3 Min.', 'data-act="setup-coach"')}
-    ${item(s.push, I.bell, 'Benachrichtigungen', 'Morgens Recovery, tagsüber Schritte & Training, abends Schlaf', 'data-act="setup-push"')}
+    ${item(s.push, I.bell, 'Benachrichtigungen', 'Morgen- und Abendbericht, tagsüber Schritte & Training', 'data-act="setup-push"')}
   </section>`;
 }
 
@@ -1378,18 +1382,21 @@ function reportCard(m, i) {
   if (state.demo) return '';
   const cfg = Coach.coachConfig();
   if (!cfg.apiKey) {
-    return `<section class="card slim">${rowLink(I.journal, 'var(--green)', 'Dein persönlicher Tagesbericht', 'Wie beim Arzt: jeden Morgen eine Einschätzung deiner Werte · KI-Coach einrichten', 'data-act="setup-coach"')}</section>`;
+    return `<section class="card slim">${rowLink(I.journal, 'var(--green)', 'Dein persönlicher Bericht', 'Wie beim Arzt: morgens, mittags, nachmittags und abends passend zur Uhrzeit · KI-Coach einrichten', 'data-act="setup-coach"')}</section>`;
   }
+  const now = Coach.reportPhase();
   const cached = Coach.cachedReport();
   const fresh = cached && cached.key === Coach.reportKey(m, profile(), reportExtra());
   const today = cached && cached.date === d.date ? cached : null;
-  if (reportRun.busy && !today) {
-    return `<section class="card report"><div class="rp-top"><span class="rp-badge">Dein Tagesbericht</span></div><div class="rp-wait"><span class="spinner small"></span><span>Dein Coach schaut sich deine Werte an … <span class="muted">(ca. 30–60 Sek.)</span></span></div></section>`;
+  const ph = Coach.PHASES[today?.phase || 'morgen'] || Coach.PHASES.morgen;
+  const outdated = today && (today.phase || 'morgen') !== now.key;
+  if (reportRun.busy && (!today || outdated)) {
+    return `<section class="card report"><div class="rp-top"><span class="rp-badge">Dein ${esc(now.label)}</span></div><div class="rp-wait"><span class="spinner small"></span><span>Dein Coach schaut sich deine Werte von heute an … <span class="muted">(ca. 30–60 Sek.)</span></span></div></section>`;
   }
   if (!today) {
-    if (d.recovery == null) return `<section class="card slim">${rowLink(I.journal, 'var(--muted)', 'Tagesbericht folgt', 'Sobald deine Nacht da ist, schreibt dein Coach den Bericht.', 'data-act="sync"')}</section>`;
+    if (d.recovery == null) return `<section class="card slim">${rowLink(I.journal, 'var(--muted)', 'Bericht folgt', 'Sobald deine Nacht da ist, schreibt dein Coach den Bericht.', 'data-act="sync"')}</section>`;
     const err = reportRun.error ? `<p class="small" style="color:var(--red);margin:6px 0">${esc(reportRun.error)}</p>` : '';
-    return `<section class="card report"><div class="rp-top"><span class="rp-badge">Dein Tagesbericht</span></div>${err}<p class="small muted">Dein Coach wertet deine Nacht, die letzten Wochen und deine Angaben aus.</p><button class="btn" data-act="report-refresh" style="margin-top:10px">Bericht erstellen</button></section>`;
+    return `<section class="card report"><div class="rp-top"><span class="rp-badge">Dein ${esc(now.label)}</span></div>${err}<p class="small muted">Dein Coach wertet deinen Tag bis jetzt, die letzten Wochen und deine Angaben aus – passend zur Uhrzeit.</p><button class="btn" data-act="report-refresh" style="margin-top:10px">${esc(now.label)} erstellen</button></section>`;
   }
   const r = today.report;
   const sec = (key, icon, title) => {
@@ -1404,13 +1411,13 @@ function reportCard(m, i) {
   const when = new Date(today.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   const label = Coach.MODELS[today.model]?.label || 'Claude';
   return `<section class="card report">
-    <div class="rp-top"><span class="rp-badge">Dein Tagesbericht</span>${infoBtn('report')}<button class="iconbtn small" data-act="report-refresh" aria-label="Neu erstellen" ${reportRun.busy ? 'disabled' : ''}>${reportRun.busy ? '<span class="spinner small"></span>' : I.sync}</button></div>
+    <div class="rp-top"><span class="rp-badge">Dein ${esc(ph.label)}</span>${infoBtn('report')}<button class="iconbtn small" data-act="report-refresh" aria-label="Neu erstellen" ${reportRun.busy ? 'disabled' : ''}>${reportRun.busy ? '<span class="spinner small"></span>' : I.sync}</button></div>
     <h3 class="rp-head">${rich(r.schlagzeile)}</h3>
     <p class="rp-sum">${rich(r.einschaetzung)}</p>
-    <div class="rp-focus"><span>Heute im Fokus</span>${rich(r.fokus)}</div>
+    <div class="rp-focus"><span>${esc(ph.focus)}</span>${rich(r.fokus)}</div>
     ${notes}
-    ${sec('koerper', I.steth, 'Körper & Gesundheit')}${sec('training', I.strain, 'Training')}${sec('ernaehrung', I.bowl, 'Ernährung')}${sec('schlaf', I.sleep, 'Schlaf')}
-    <p class="muted small rp-foot">${fresh ? '' : 'Neue Daten seit dem Bericht · '}Erstellt ${when} · ${esc(label)} · keine ärztliche Diagnose</p>
+    ${sec('koerper', I.steth, 'Körper & Gesundheit')}${sec('training', I.strain, ph.sections.training)}${sec('ernaehrung', I.bowl, ph.sections.ernaehrung)}${sec('schlaf', I.sleep, ph.sections.schlaf)}
+    <p class="muted small rp-foot">${outdated ? `Neue Tageszeit – gleich kommt dein ${esc(now.label)} (oder ↻ tippen) · ` : fresh ? '' : 'Neue Daten seit dem Bericht · '}Erstellt ${when} · ${esc(label)} · keine ärztliche Diagnose</p>
   </section>`;
 }
 
@@ -1513,7 +1520,10 @@ function dayCard(d) {
   for (const a of d.acts) {
     const start = E.parseClock(a.start);
     const end = start != null && a.dur ? clock(start + a.dur / 60) : '';
-    rows.push(pillRow('strain', actIcon(a.type), de1(a.strain), esc(a.name || a.type || 'Aktivität'), end, a.start || '', `data-act="act" data-idx="${d.acts.indexOf(a)}"`));
+    const title = Sp.activityTitle(a);
+    const label = Sp.sportLabel(a);
+    const sub = [title !== label ? label : '', ...Sp.sportMeta(a)].filter(Boolean).join(' · ');
+    rows.push(pillRow('strain', actIcon(a), de1(a.strain), `${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}`, end, a.start || '', `data-act="act" data-idx="${d.acts.indexOf(a)}"`));
   }
   if (d.pad) rows.push(pillRow('pad', I.walk, int(d.pad.total), 'Walking-Pad', d.pad.units.length ? clock(d.pad.units[d.pad.units.length - 1][1]) : '', d.pad.units.length ? clock(d.pad.units[0][0]) : '', 'data-info="pad"'));
   if (!rows.length) return '';
@@ -1568,9 +1578,11 @@ function statsCard(m, i) {
 }
 
 function actRow(a) {
-  const meta = [a.start, E.fmtDurLong(a.dur / 60), a.dist ? `${(a.dist / 1000).toFixed(1).replace('.', ',')} km` : '', a.avgHr ? `Ø ${a.avgHr} bpm` : ''].filter(Boolean).join(' · ');
-  return `<div class="act"><div class="ic" style="color:var(--strain)">${actIcon(a.type)}</div>
-    <div class="body"><div class="name">${esc(a.name || a.type || 'Aktivität')}</div><div class="meta">${esc(meta)}</div></div>
+  const title = Sp.activityTitle(a);
+  const label = Sp.sportLabel(a);
+  const meta = [title !== label ? label : '', a.start, E.fmtDurLong(a.dur / 60), ...Sp.sportMeta(a), a.avgHr ? `Ø ${a.avgHr} bpm` : ''].filter(Boolean).join(' · ');
+  return `<div class="act"><div class="ic" style="color:var(--strain)">${actIcon(a)}</div>
+    <div class="body"><div class="name">${esc(title)}</div><div class="meta">${esc(meta)}</div></div>
     <div class="st">${de1(a.strain)}<small>Strain</small></div></div>`;
 }
 
@@ -2264,9 +2276,16 @@ function renderSheet() {
       const zt = Array.isArray(a.zones) ? a.zones.reduce((x, y) => x + (y || 0), 0) : 0;
       const zc = ['var(--z1)', 'var(--z2)', 'var(--z3)', 'var(--z4)', 'var(--z5)'];
       const zones = zt ? `<h3 class="subhead">Zeit in Pulszonen</h3>${a.zones.map((z, k) => `<div class="zonebar"><span>Z${k + 1}</span><div class="bar"><i style="width:${(100 * (z || 0)) / zt}%;background:${zc[k]}"></i></div><span class="m">${Math.round((z || 0) / 60)} Min.</span></div>`).join('')}` : '';
-      body = `<h3>${esc(a.name || a.type || 'Aktivität')}</h3><p class="muted small">${esc(longDate(d.date))} · ${esc(a.start || '')}</p>
-        <div class="grid" style="margin-top:12px">${t('Strain', de1(a.strain))}${t('Dauer', E.fmtDur(a.dur / 60), 'Std.')}${t('Ø Puls', a.avgHr, 'bpm')}${t('Max. Puls', a.maxHr, 'bpm')}${t('Kalorien', a.kcal != null ? int(a.kcal) : null, 'kcal')}${t('Distanz', a.dist ? (a.dist / 1000).toFixed(1).replace('.', ',') : null, 'km')}${ml ? t('Muskeln', `${de1(ml.score)}`, ml.level) : ''}</div>
-        ${zones}<button class="btn ghost" data-act="sheet-close" style="margin-top:14px">Schließen</button>`;
+      const title = Sp.activityTitle(a);
+      const label = Sp.sportLabel(a);
+      const facts = Sp.sportFacts(a);
+      const ex = Sp.exercises(a);
+      const exList = ex.length
+        ? `<h3 class="subhead">Übungen (von der Uhr erkannt)</h3><ul class="exlist">${ex.map((x) => `<li><span>${esc(x.name)}</span><b>${x.sets ? `${x.sets} Sätze` : ''}${x.sets && x.reps ? ' · ' : ''}${x.reps ? `${x.reps} Wdh.` : ''}</b></li>`).join('')}</ul>`
+        : '';
+      body = `<h3>${esc(title)}</h3><p class="muted small">${esc(label)} · ${esc(longDate(d.date))} · ${esc(a.start || '')}</p>
+        <div class="grid" style="margin-top:12px">${t('Strain', de1(a.strain))}${t('Dauer', E.fmtDur(a.dur / 60), 'Std.')}${t('Ø Puls', a.avgHr, 'bpm')}${t('Max. Puls', a.maxHr, 'bpm')}${facts.map((f) => t(f.k, f.v, f.u)).join('')}${t('Kalorien', a.kcal != null ? int(a.kcal) : null, 'kcal')}${ml ? t('Muskeln', `${de1(ml.score)}`, ml.level) : ''}</div>
+        ${exList}${zones}<button class="btn ghost" data-act="sheet-close" style="margin-top:14px">Schließen</button>`;
     }
   } else if (sh.type === 'profile') {
     const p = profile();
@@ -3162,6 +3181,25 @@ function applyIntent() {
     openSheet({ type: 'pad-log' });
   }
   render();
+  // Aus einer Mitteilung (Morgen-/Abendbericht): zum Bericht springen
+  if (it.tab === 'heute' && !it.log && !it.open) requestAnimationFrame(() => document.querySelector('.card.report')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+}
+
+// Mitteilung angetippt, während Puls schon offen war: der Service Worker schickt die Adresse
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data?.type !== 'open' || typeof e.data.url !== 'string') return;
+    try {
+      const q = new URL(e.data.url, location.href).searchParams;
+      const it = { tab: q.get('tab'), log: q.get('log'), open: q.get('open') };
+      if (it.tab || it.log || it.open) {
+        intent = it;
+        applyIntent();
+      }
+    } catch {
+      /* ungültige Adresse */
+    }
+  });
 }
 
 document.addEventListener('visibilitychange', async () => {
@@ -3176,6 +3214,14 @@ document.addEventListener('visibilitychange', async () => {
 setInterval(() => {
   if (document.visibilityState === 'visible' && state.view === 'main' && !state.demo && !state.syncing && !state.chat.busy) loadData({ silent: true });
 }, 5 * 60e3);
+// Neue Tageszeit (z. B. 18 Uhr → Abendbericht): bei offener App einmal neu zeichnen, dann folgt der passende Bericht
+let lastPhase = Coach.reportPhase().key;
+setInterval(() => {
+  const k = Coach.reportPhase().key;
+  if (k === lastPhase) return;
+  lastPhase = k;
+  if (document.visibilityState === 'visible' && state.view === 'main' && state.tab === 'heute' && !state.sheet) render();
+}, 60e3);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   // Neue Version: sobald der neue Service Worker übernimmt, einmal neu laden.
@@ -3228,7 +3274,7 @@ window.__puls = {
         const kinds = { gym: 0, bike: 0, run: 0, other: 0 };
         for (const a of acts) kinds[T.activityKind(a)]++;
         const gymActs = acts.filter((a) => T.activityKind(a) === 'gym');
-        return { kinds, types: [...new Set(acts.map((a) => a.type))], gymWithSplit: gymActs.filter((a) => T.splitOf(a)).length, planKind: T.trainingPlan(m, m.days.length - 1).kind };
+        return { kinds, types: [...new Set(acts.map((a) => a.type))], kindByType: Object.fromEntries(acts.map((a) => [a.type, T.activityKind(a)])), withPower: acts.filter((a) => a.pwr != null).length, gymWithSplit: gymActs.filter((a) => T.splitOf(a)).length, planKind: T.trainingPlan(m, m.days.length - 1).kind };
       })(),
       coachContextChars: E.coachContext(m, journal()).length,
       // Infekt-Modell: läuft es? (nur Anzahl der Tage mit Wahrscheinlichkeit, keine Infekte)

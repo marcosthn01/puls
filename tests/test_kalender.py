@@ -48,6 +48,11 @@ def test_arten():
     assert kalender.activity_kind({"type": "road_biking"}) == "bike"
     assert kalender.activity_kind({"type": "other", "name": "Pull"}) == "gym"
     assert kalender.activity_kind({"type": "running"}) == "run"
+    # Garmins Sportart schlägt den Namen: Indoor-Rad im Studio „Gym“ bleibt Rad
+    assert kalender.activity_kind({"type": "indoor_cycling", "name": "Gym"}) == "bike"
+    assert kalender.activity_kind({"type": "road_biking", "name": "Push"}) == "bike"
+    assert kalender.activity_kind({"type": "fitness_equipment", "name": "Indoor-Rad"}) == "bike"
+    assert kalender.activity_kind({"type": "fitness_equipment", "name": "Push"}) == "gym"
 
 
 def test_push_pull_im_wechsel_ab_einer_markierung():
@@ -70,7 +75,9 @@ def test_kalender_ganztaegig_ohne_gesundheitswerte():
     assert ics.startswith("BEGIN:VCALENDAR\r\n") and ics.endswith("END:VCALENDAR\r\n")
     assert ics.count("BEGIN:VEVENT") == 6  # Spaziergang und 5-Minuten-Einheit fehlen
     assert "DTSTART;VALUE=DATE:20261106\r\nDTEND;VALUE=DATE:20261107" in ics
-    assert "SUMMARY:Pull" in ics and "SUMMARY:Push" in ics and "SUMMARY:Cardio · Rad" in ics
+    assert "SUMMARY:Pull" in ics and "SUMMARY:Push" in ics
+    # Sportart genau wie auf der Uhr gewählt
+    assert "SUMMARY:Cardio · Rennrad" in ics and "SUMMARY:Cardio · Indoor-Rad" in ics
     assert "UID:puls-105@puls" in ics
     assert "TRANSP:TRANSPARENT" in ics
     assert "Spaziergang" not in ics

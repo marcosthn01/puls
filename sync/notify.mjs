@@ -4,7 +4,8 @@
 //   node sync/notify.mjs send .puls-cache   → verschickt fällige Benachrichtigungen
 //
 // Nachrichten (je höchstens einmal am Tag, nur wenn es etwas zu sagen gibt):
-//   morning   – sobald die neue Nacht da ist: Recovery, Ziel-Strain, Schlaf
+//   morning   – Morgenbericht, sobald die neue Nacht da ist: Recovery, Schlaf, HRV, Training, Schlafenszeit
+//   evening   – Abendbericht (20–22:30 Uhr): Training mit Sportart, Strain gegenüber Ziel, Schritte, Schlafenszeit
 //   midday    – Stress seit einer Stunde hoch, sonst: noch kaum Schritte
 //   afternoon – Trainingsziel: wie viel noch fehlt oder „erreicht“; Energie niedrig
 //   weekly    – freitags Intensitätsminuten der Woche, sonntags Wochenbericht
@@ -20,6 +21,7 @@ import path from 'node:path';
 import { openBox } from '../app/crypto.js';
 import * as E from '../app/engine.js';
 import * as T from '../app/training.js';
+import * as Sp from '../app/sport.js';
 
 const tz = process.env.PULS_TIMEZONE || 'Europe/Berlin';
 const site = (process.env.PULS_SITE_URL || 'https://example.github.io/puls').replace(/\/$/, '') + '/';
@@ -64,13 +66,15 @@ const WINDOWS = {
   midday: [12 * 60, 14 * 60 + 30], // Sommerzeit + Verspätung der Läufe
   afternoon: [15 * 60, 17 * 60 + 30],
   steps: [18 * 60, 20 * 60 + 30],
+  report: [20 * 60, 22 * 60 + 30], // Abendbericht
   evening: [19 * 60, 24 * 60],
 };
 const inWin = (m, [a, b]) => m >= a && m < b;
 
 /** Welche Arten der Nutzer bekommen möchte (Standard: alle). */
 export const KINDS = {
-  morning: 'Recovery am Morgen',
+  morning: 'Morgenbericht',
+  evening: 'Abendbericht',
   midday: 'Bewegung & Stress mittags',
   afternoon: 'Trainingsziel am Nachmittag',
   steps: 'Schritte am Abend',
@@ -115,6 +119,7 @@ export function planRun({ now, state, model }) {
     const weekly = (now.weekday === 0 || now.weekday === 5) && open('weekly');
     return open('afternoon') || weekly ? { sync: true, reason: 'Nachmittag: Trainingsziel prüfen' } : { sync: false, reason: 'Nachmittag erledigt' };
   }
+  if (inWin(m, WINDOWS.report) && open('evening')) return { sync: true, reason: 'Abend: Abendbericht' };
   if (inWin(m, WINDOWS.steps) && open('steps')) return { sync: true, reason: 'Abend: Schritte prüfen' };
   if (inWin(m, WINDOWS.evening)) {
     if (open('bedtime') && bedtimeWindow(model, now)) return { sync: true, reason: 'Abend: bald Schlafenszeit' };
@@ -147,6 +152,76 @@ function weekIntensity(model) {
   return sum;
 }
 
+const pct = (v, ref) => (v != null && ref ? Math.round(100 * (v / ref - 1)) : null);
+const signed = (n, unit = '') => `${n >= 0 ? '+' : '−'}${Math.abs(n)}${unit}`;
+const zoneDot = { green: '💚', yellow: '💛', red: '❤️' };
+
+/** Morgenbericht als Push: Recovery, Nacht, Körperwerte gegenüber deinem Normalbereich, Training, Schlafenszeit. */
+export function morningReport(model, i = model.days.length - 1) {
+  const d = model.days[i];
+  const ill = d.ill?.level ?? 0;
+  const plan = T.trainingPlan(model, i, { labels: model.labels || {} });
+  const lines = [];
+  const sleep = d.sleepMin != null ? `Schlaf ${E.fmtDur(d.sleepMin)} Std.${d.perf != null ? ` (${round(d.perf)} % vom Bedarf)` : ''}` : '';
+  const hrvBase = d.base?.hrv ? Math.exp(d.base.hrv.mean) : null;
+  const hp = pct(d.hrv, hrvBase);
+  const rd = d.rhr != null && d.base?.rhr ? round(d.rhr - d.base.rhr.mean) : null;
+  const body = [d.hrv != null ? `HRV ${round(d.hrv)} ms${hp != null ? ` (${signed(hp, ' %')})` : ''}` : '', d.rhr != null ? `Ruhepuls ${round(d.rhr)}${rd != null ? ` (${signed(rd)})` : ''}` : ''].filter(Boolean).join(' · ');
+  if (sleep) lines.push(sleep);
+  if (body) lines.push(body);
+  let title;
+  if (ill >= 2) {
+    const sig = (d.ill.signals || []).filter((x) => ['rhr', 'hrv', 'resp', 'temp', 'spo2'].includes(x.key)).slice(0, 2).map((x) => x.text).join(', ');
+    const p = d.ill.p != null ? ` · ${Math.round(d.ill.p * 100)} %` : '';
+    const match = d.ill.match ? ` Sieht aus wie vor deinem Infekt am ${Number(d.ill.match.date.slice(8, 10))}.${Number(d.ill.match.date.slice(5, 7))}.` : '';
+    title = `⚠️ Morgenbericht · Infekt-Frühwarnung ${E.ILL_LEVELS[ill]}${p}`;
+    lines.unshift(`${sig ? `${sig}.` : ''}${match} ${ill >= 3 ? 'Heute Pause, viel trinken, früh schlafen.' : 'Heute nur locker – kein Gym-Volumen.'}`.trim());
+  } else if (d.alarm) {
+    title = `⚠️ Morgenbericht · Recovery ${d.recovery} %`;
+    lines.unshift('Mehrere Körperwerte auffällig – heute schonen, viel trinken, früh schlafen.');
+  } else {
+    title = `☀️ Morgenbericht · Recovery ${d.recovery} % ${zoneDot[d.zone] || ''}`.trim();
+    const line = plan.kind === 'done' ? `Training erledigt: ${plan.title.replace(/^Erledigt: /, '')}` : T.planLine(plan) ? `Training: ${T.planLine(plan)}` : '';
+    if (line) lines.push(`${line}${d.target && plan.kind !== 'rest' && plan.kind !== 'done' ? ` · Ziel-Strain ${round(d.target.low)}–${round(d.target.high)}` : ''}`);
+    if (ill === 1) lines.push(`Infekt-Risiko ${E.ILL_LEVELS[1]} – heute nicht ans Limit.`);
+  }
+  const bed = E.bedtimePlan(model, i)?.options?.[0]?.bed;
+  if (bed != null) lines.push(`Heute ins Bett um ${E.fmtClock(bed)}.`);
+  return { title, body: lines.join('\n') };
+}
+
+/** Abendbericht als Push: Training mit Sportart laut Garmin, Strain gegenüber Ziel, Schritte, Schlafenszeit. */
+export function eveningReport(model, i = model.days.length - 1) {
+  const d = model.days[i];
+  const st = d.stats || {};
+  const strain = d.strain ?? 0;
+  const t = d.target;
+  const state = !t ? '' : strain < t.low ? `unter Ziel ${round(t.low)}–${round(t.high)}` : strain <= t.high + 0.5 ? 'im Ziel ✓' : 'über dem Ziel';
+  const title = `🌙 Abendbericht · Strain ${de1(strain)}${state ? ` ${state}` : ''}`;
+  const lines = [];
+  const acts = (d.acts || []).filter((a) => (a.dur || 0) >= 600);
+  if (acts.length) {
+    lines.push(
+      `Training: ${acts
+        .map((a) => {
+          const meta = Sp.sportMeta(a)[0];
+          return `${Sp.sportLabel(a)} ${Math.round(a.dur / 60)} Min.${meta ? ` · ${meta}` : ''}${a.avgHr ? ` · Ø ${a.avgHr} bpm` : ''}`;
+        })
+        .join('; ')}`,
+    );
+  } else {
+    const plan = T.trainingPlan(model, i, { labels: model.labels || {} });
+    lines.push(plan.kind === 'rest' ? 'Ruhetag wie geplant – gut für die Erholung.' : 'Heute kein Training – morgen ist es wieder fällig.');
+  }
+  const goal = E.isNum(st.stepGoal) && st.stepGoal > 0 ? st.stepGoal : 8000;
+  if (E.isNum(st.steps)) lines.push(`${n0(st.steps)} von ${n0(goal)} Schritten${st.steps >= goal ? ' ✓' : ''}${E.isNum(st.stress) ? ` · Stress Ø ${round(st.stress)}` : ''}`);
+  const ill = d.ill?.level ?? 0;
+  if (ill >= 1) lines.push(`Infekt-Risiko ${E.ILL_LEVELS[ill]} – heute besonders früh schlafen, kein Alkohol.`);
+  const plan = E.bedtimePlan(model, i);
+  if (plan?.options?.[0]) lines.push(`Heute Nacht: ins Bett um ${E.fmtClock(plan.options[0].bed)} für ${E.fmtDur(plan.need.total)} Std. Schlaf.`);
+  return { title, body: lines.join('\n') };
+}
+
 /** Welche Nachrichten jetzt fällig sind. ``state`` liefert Versandstatus und Wünsche. */
 export function dueMessages(model, now, sent = {}, prefs = {}) {
   const out = [];
@@ -159,28 +234,9 @@ export function dueMessages(model, now, sent = {}, prefs = {}) {
   const goal = E.isNum(st.stepGoal) && st.stepGoal > 0 ? st.stepGoal : 8000;
   const steps = E.isNum(st.steps) ? st.steps : null;
 
-  // Morgen: Recovery, sobald die Nacht da ist
+  // Morgenbericht, sobald die Nacht da ist
   if (want('morning') && d.recovery != null && sent.morning !== now.date && now.minutes >= 5 * 60 && now.minutes < 13 * 60) {
-    const ill = d.ill?.level ?? 0;
-    const plan = T.trainingPlan(model, i);
-    const sleep = d.sleepMin != null ? `Schlaf ${E.fmtDur(d.sleepMin)} Std. (${round(d.perf)} %)` : '';
-    let title;
-    let body;
-    if (ill >= 2) {
-      const sig = (d.ill.signals || []).filter((x) => ['rhr', 'hrv', 'resp', 'temp', 'spo2'].includes(x.key)).slice(0, 2).map((x) => x.text).join(', ');
-      const p = d.ill.p != null ? ` · ${Math.round(d.ill.p * 100)} %` : '';
-      const match = d.ill.match ? ` Sieht aus wie vor deinem Infekt am ${Number(d.ill.match.date.slice(8, 10))}.${Number(d.ill.match.date.slice(5, 7))}.` : '';
-      title = `⚠️ Infekt-Frühwarnung · ${E.ILL_LEVELS[ill]}${p}`;
-      body = `${sig ? `${sig}.` : ''}${match} ${ill >= 3 ? 'Heute Pause, viel trinken, früh schlafen.' : 'Heute nur locker – kein Gym-Volumen.'} Recovery ${d.recovery} %.`.trim();
-    } else if (d.alarm) {
-      title = `⚠️ Recovery ${d.recovery} % · Warnsignale`;
-      body = 'Mehrere Körperwerte auffällig – heute schonen, viel trinken, früh schlafen.';
-    } else {
-      title = `Recovery ${d.recovery} % · ${zoneWord[d.zone]}`;
-      const line = T.planLine(plan);
-      body = `${line ? `Heute: ${line}.` : ''}${sleep ? ` ${sleep}.` : ''} Tippe für Details und den Morgen-Check.`.trim();
-    }
-    out.push({ kind: 'morning', title, body, tag: 'morning' });
+    out.push({ kind: 'morning', ...morningReport(model, i), tag: 'morning', url: `${site}?tab=heute` });
   }
 
   // Mittag: Stress hoch? Sonst: zu wenig Bewegung?
@@ -219,8 +275,12 @@ export function dueMessages(model, now, sent = {}, prefs = {}) {
     }
   }
 
-  // Früher Abend: Schritte
-  if (want('steps') && inWin(now.minutes, WINDOWS.steps) && sent.steps !== now.date && steps != null) {
+  // Abendbericht: Bilanz des Tages und die Nacht
+  const evening = want('evening') && inWin(now.minutes, WINDOWS.report) && sent.evening !== now.date && d.recovery != null;
+  if (evening) out.push({ kind: 'evening', ...eveningReport(model, i), tag: 'evening', url: `${site}?tab=heute` });
+
+  // Früher Abend: Schritte (im Abendbericht stehen sie ohnehin)
+  if (!evening && want('steps') && inWin(now.minutes, WINDOWS.steps) && sent.steps !== now.date && steps != null) {
     if (steps < goal) {
       const left = goal - steps;
       out.push({ kind: 'steps', title: `Noch ${n0(left)} Schritte bis zu deinem Ziel 👟`, body: `${n0(steps)} von ${n0(goal)} – das sind ca. ${Math.max(5, Math.round(left / 100 / 5) * 5)} Min. Spazieren.`, tag: 'steps' });
@@ -397,7 +457,7 @@ async function send(cacheDir, pass) {
 
   const push = async (msg) => {
     try {
-      await webpush.sendNotification(state.subscription, JSON.stringify({ ...msg, url: site }), { TTL: 6 * 3600, urgency: 'normal' });
+      await webpush.sendNotification(state.subscription, JSON.stringify({ url: site, ...msg }), { TTL: 6 * 3600, urgency: 'normal' });
       log(`Benachrichtigung gesendet: ${msg.kind}.`);
       return true;
     } catch (err) {
@@ -427,7 +487,7 @@ async function send(cacheDir, pass) {
         if (!validSubscription(sub)) throw new Error('ungültig');
         state.subscription = sub;
         log('Benachrichtigungen: Abo gespeichert.');
-        await push({ kind: 'test', title: 'Puls ✓', body: 'Benachrichtigungen sind aktiv: morgens Recovery, tagsüber Bewegung, Training und Schritte, abends die Schlaf-Erinnerung.', tag: 'test' });
+        await push({ kind: 'test', title: 'Puls ✓', body: 'Benachrichtigungen sind aktiv: morgens dein Morgenbericht, tagsüber Bewegung und Training, abends dein Abendbericht und die Schlaf-Erinnerung.', tag: 'test' });
       }
     } catch {
       log('Benachrichtigungen: übergebenes Abo ist ungültig.');

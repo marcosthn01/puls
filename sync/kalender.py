@@ -30,17 +30,41 @@ def calendar_token(passphrase: str) -> str:
     return hmac.new(passphrase.encode("utf-8"), TOKEN_MSG, hashlib.sha256).hexdigest()[:24]
 
 
+# Garmins Sportart hat Vorrang vor dem Namen (wie app/sport.js): Indoor-Rad bleibt Rad, auch wenn die
+# Einheit „Gym“ heißt. Nur bei unklaren Arten (Fitnessgerät, Cardio, Sonstiges, leer) zählt der Name.
+_GYM_T = re.compile(r"strength|weight|krafttraining|hiit|functional|crossfit|boulder|climb")
+_BIKE_T = re.compile(r"cycl|bik|ride|spinning|gravel|mountain|mtb")
+_RUN_T = re.compile(r"run|treadmill")
+_GYM_N = re.compile(r"\b(push|pull|gym|kraft|krafttraining|beine|legs|oberkörper|unterkörper|ganzkörper|hypertrophie)\b")
+_BIKE_N = re.compile(r"\b(rad|radtour|radfahren|indoor-rad|indoor-radfahren|bike|spinning|rennrad|mtb|ergometer|zwift|cycling)\b")
+_RUN_N = re.compile(r"\b(lauf|laufen|run|joggen|jogging)\b")
+_AMBIGUOUS = re.compile(r"^(other|fitness_equipment|indoor_cardio|generic|multi_sport)$")
+_PARENT_KIND = {1: "run", 2: "bike"}
+_BIKE_LABEL = {"indoor_cycling": "Indoor-Rad", "virtual_ride": "Indoor-Rad", "spinning": "Spinning", "road_biking": "Rennrad", "mountain_biking": "MTB", "gravel_cycling": "Gravel"}
+_RUN_LABEL = {"treadmill_running": "Laufband", "indoor_running": "Laufband", "trail_running": "Trailrun"}
+
+
 def activity_kind(a: dict[str, Any]) -> str:
     t = str(a.get("type") or "").lower()
     n = str(a.get("name") or "").lower()
-    if re.search(r"strength|weight|krafttraining|fitness_equipment|hiit|functional|gym", t) or re.search(
-        r"\b(push|pull|gym|kraft|beine|legs|oberkörper|unterkörper)\b", n
-    ):
-        return "gym"
-    if re.search(r"cycl|bik|ride|spinning|gravel|mountain", t) or re.search(r"\b(rad|radtour|bike|spinning|rennrad|mtb)\b", n):
+    if _BIKE_T.search(t):
         return "bike"
-    if re.search(r"run|lauf", t):
+    if _RUN_T.search(t):
         return "run"
+    if _GYM_T.search(t):
+        return "gym"
+    if not t or _AMBIGUOUS.match(t):
+        if _BIKE_N.search(n):
+            return "bike"
+        if _RUN_N.search(n):
+            return "run"
+        if _GYM_N.search(n):
+            return "gym"
+        if t == "fitness_equipment":
+            return "gym"
+        p = _PARENT_KIND.get(a.get("ptype"))
+        if p:
+            return p
     return "other"
 
 
@@ -113,10 +137,11 @@ def title_of(a: dict[str, Any], splits: dict[str, str]) -> str | None:
     if kind == "gym":
         sp = splits.get(str(a.get("id")))
         return SPLITS[sp] if sp else "Gym"
+    t = str(a.get("type") or "").lower()
     if kind == "bike":
-        return "Cardio · Rad"
+        return f"Cardio · {_BIKE_LABEL.get(t, 'Rad')}"
     if kind == "run":
-        return "Cardio · Laufen"
+        return f"Cardio · {_RUN_LABEL.get(t, 'Laufen')}"
     if SKIP_TYPES.search(str(a.get("type") or "").lower()):
         return None
     name = str(a.get("name") or a.get("type") or "Training").strip()

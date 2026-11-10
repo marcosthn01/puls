@@ -11,20 +11,14 @@
 // - Infekt-Zeichen: kein intensives Training; „Neck-Check“ – Symptome unterhalb des Halses = Pause.
 // - Dieselbe Muskelgruppe braucht rund 48 Stunden (Schoenfeld 2016).
 
+import { activityKind, activityTitle, sportLabel } from './sport.js';
 import { clamp, hrZones, illnessRisk, isNum, median, strainFromTrimp, trimpFromStrain, trimpWeight } from './engine.js';
 
 export const KINDS = { gym: 'Gym', bike: 'Rad', run: 'Laufen', other: 'Sonstiges' };
 export const SPLITS = { push: 'Push', pull: 'Pull', legs: 'Beine', upper: 'Oberkörper', lower: 'Unterkörper', full: 'Ganzkörper' };
 
-/** Art einer Aktivität aus Garmin-Typ und Name. */
-export function activityKind(a) {
-  const t = String(a?.type || '').toLowerCase();
-  const n = String(a?.name || '').toLowerCase();
-  if (/strength|weight|krafttraining|fitness_equipment|hiit|functional|gym/.test(t) || /\b(push|pull|gym|kraft|beine|legs|oberkörper|unterkörper)\b/.test(n)) return 'gym';
-  if (/cycl|bik|ride|spinning|gravel|mountain/.test(t) || /\b(rad|radtour|bike|spinning|rennrad|mtb)\b/.test(n)) return 'bike';
-  if (/run|lauf/.test(t)) return 'run';
-  return 'other';
-}
+// Art einer Aktivität: Garmins Sportart hat Vorrang (siehe sport.js)
+export { activityKind };
 
 /** Split einer Gym-Einheit: selbst markiert (labels[id]) oder aus dem Namen („Push“, „Pull“ …). */
 export function splitOf(a, labels = {}) {
@@ -105,7 +99,8 @@ export function trainingProfile(model, i = model.days.length - 1, { labels = {},
         kind,
         split: kind === 'gym' ? splitOf(a, labels) : null,
         id: a.id ?? null,
-        name: a.name || KINDS[kind],
+        name: activityTitle(a),
+        sport: sportLabel(a),
         min,
         avgHr: a.avgHr ?? null,
         trimp: a.trimp ?? null,
@@ -200,15 +195,21 @@ export function trainingPlan(model, i = model.days.length - 1, { labels = {}, fe
   }
 
   // 2) Heute schon trainiert?
-  const doneToday = prof.today.filter((x) => x.kind === 'gym' || x.kind === 'bike');
-  if (doneToday.length && d.target && (d.strain ?? 0) >= d.target.low) {
+  // (ab 30 Trainingsminuten gilt der Tag als erledigt – auch wenn der Strain knapp unter dem Ziel bleibt)
+  const doneToday = prof.today.filter((x) => x.kind === 'gym' || x.kind === 'bike' || x.kind === 'run');
+  const doneMin = doneToday.reduce((t, x) => t + x.min, 0);
+  if (doneToday.length && d.target && ((d.strain ?? 0) >= d.target.low || doneMin >= 30)) {
     const x = doneToday[doneToday.length - 1];
+    const f1 = (v) => v.toFixed(1).replace('.', ',');
+    const inTarget = (d.strain ?? 0) >= d.target.low;
     return {
       ...base,
       kind: 'done',
       level: null,
-      title: `Erledigt: ${x.kind === 'gym' ? `Gym${x.split ? ` · ${SPLITS[x.split]}` : ''}` : `Rad · ${Math.round(x.min)} Min.`}`,
-      sub: `Strain ${(d.strain ?? 0).toFixed(1).replace('.', ',')} – im Ziel ${d.target.low.toFixed(1).replace('.', ',')}–${d.target.high.toFixed(1).replace('.', ',')}. Jetzt zählt die Erholung.`,
+      title: `Erledigt: ${x.kind === 'gym' ? `Gym${x.split ? ` · ${SPLITS[x.split]}` : ''}` : `${x.sport} · ${Math.round(x.min)} Min.`}`,
+      sub: inTarget
+        ? `Strain ${f1(d.strain ?? 0)} – im Ziel ${f1(d.target.low)}–${f1(d.target.high)}. Jetzt zählt die Erholung.`
+        : `Strain ${f1(d.strain ?? 0)} – knapp unter dem Ziel ${f1(d.target.low)}–${f1(d.target.high)}. Ein lockerer Spaziergang reicht, kein zweites Training nötig.`,
       bullets: ['Eiweiß in den nächsten 2 Stunden (ca. 30–40 g).', 'Heute Abend rechtzeitig ins Bett – siehe Schlafenszeit.'],
     };
   }
@@ -375,8 +376,7 @@ export function sessionLabel(a, labels = {}) {
     const sp = splitOf(a, labels);
     return sp ? SPLITS[sp] : 'Gym';
   }
-  if (kind === 'bike') return 'Rad';
-  if (kind === 'run') return 'Laufen';
+  if (kind === 'bike' || kind === 'run') return sportLabel(a);
   const n = String(a?.name || a?.type || 'Training').trim();
   return n.length > 14 ? `${n.slice(0, 13)}…` : n;
 }

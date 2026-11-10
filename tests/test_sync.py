@@ -155,6 +155,44 @@ def test_normalize_activity():
     assert act["zones"] == [60, 600, 2000, None, None]
 
 
+def test_normalize_activity_keeps_sport_and_all_values():
+    raw = {"activityId": 2, "activityName": "Gym", "startTimeLocal": "2026-11-10 07:00:00",
+           "activityType": {"typeKey": "indoor_cycling", "parentTypeId": 2}, "duration": 3000, "movingDuration": 2950,
+           "distance": 0, "averageHR": 138, "avgPower": 181.6, "maxPower": 402, "normPower": 189,
+           "averageBikingCadenceInRevPerMinute": 87.6, "maxBikingCadenceInRevPerMinute": 110,
+           "elevationGain": None, "averageSpeed": 0.0, "avgRespirationRate": 28.4}
+    _, act = gd.normalize_activity(raw)
+    assert act["type"] == "indoor_cycling" and act["ptype"] == 2
+    assert act["pwr"] == 182 and act["maxPwr"] == 402 and act["np"] == 189 and act["cad"] == 88 and act["maxCad"] == 110
+    assert act["moving"] == 2950 and act["resp"] == 28.4 and "elev" not in act
+    gym = {"activityId": 3, "startTimeLocal": "2026-11-09 18:00:00", "activityType": {"typeKey": "strength_training"},
+           "duration": 3900, "activeSets": 18, "totalSets": 20, "totalReps": 164,
+           "summarizedExerciseSets": [{"category": "BENCH_PRESS", "sets": 4, "reps": 32}, {"category": "UNKNOWN", "sets": 0, "reps": 0}, "kaputt"]}
+    _, g = gd.normalize_activity(gym)
+    assert g["sets"] == 18 and g["reps"] == 164 and g["ex"] == [{"c": "BENCH_PRESS", "s": 4, "r": 32}]
+
+
+def test_all_activities_are_fetched_again_once(tmp_path):
+    mod, calls = fake_module()
+    assert run(tmp_path, mod, GARMIN_EMAIL="a@b.de", GARMIN_PASSWORD="pw") == 0
+    store = read_store(tmp_path)
+    assert store["actsV"] == puls_sync.ACTS_VERSION
+    # ältere Datei ohne Version: beim nächsten Lauf wird einmal alles neu geholt
+    st = {"days": {"2026-10-01": {"acts": [{"id": 1, "type": "strength_training", "start": "18:00", "dur": 600}]}, "2026-11-09": {}}}
+    fetched = []
+
+    def fetch(name, *args):
+        fetched.append((name, args))
+        return [{"activityId": 1, "startTimeLocal": "2026-10-01 18:00:00", "duration": 3000,
+                 "activityType": {"typeKey": "indoor_cycling"}, "avgPower": 170}]
+
+    n = puls_sync.refresh_all_activities(fetch, st, dt.date(2026, 11, 9))
+    assert n == 1 and st["actsV"] == puls_sync.ACTS_VERSION
+    assert fetched == [("get_activities_by_date", ("2026-10-01", "2026-11-09"))]
+    assert st["days"]["2026-10-01"]["acts"][0]["type"] == "indoor_cycling" and st["days"]["2026-10-01"]["acts"][0]["pwr"] == 170
+    assert puls_sync.refresh_all_activities(lambda *a: puls_sync.FAILED, {"days": {"2026-10-01": {}}}, dt.date(2026, 11, 9)) is None
+
+
 def test_dates_to_fetch():
     today = dt.date(2026, 11, 9)
     assert len(puls_sync.dates_to_fetch({"days": {}}, today, 90, False)) == 90

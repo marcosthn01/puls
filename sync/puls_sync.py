@@ -270,11 +270,28 @@ def sync_days(fetch: Fetcher, store: dict, days: list[dt.date], today: dt.date, 
     return updated
 
 
-def sync_activities(fetch: Fetcher, store: dict, days: list[dt.date]) -> int:
-    start, end = min(days).isoformat(), max(days).isoformat()
-    raw = fetch("get_activities_by_date", start, end)
-    if raw is FAILED or not isinstance(raw, list):
+ACTS_VERSION = 2  # 2: Sportart + alle Messwerte (Leistung, Trittfrequenz, Sätze …) je Einheit
+
+
+def refresh_all_activities(fetch: Fetcher, store: dict, today: dt.date) -> int | None:
+    """Einmalig alle Einheiten seit dem ersten Tag neu holen, wenn Puls mehr Werte je Einheit speichert.
+
+    Garmin liefert die Liste in einem Rutsch (eine Abfrage) – danach gilt store["actsV"]."""
+    keys = sorted(k for k in store.get("days", {}) if _DATE.match(k))
+    if not keys:
+        store["actsV"] = ACTS_VERSION
         return 0
+    first = dt.date.fromisoformat(keys[0])
+    raw = fetch("get_activities_by_date", first.isoformat(), today.isoformat())
+    if raw is FAILED or not isinstance(raw, list):
+        return None
+    days = [first + dt.timedelta(days=k) for k in range((today - first).days + 1)]
+    n = _apply_activities(store, raw, days)
+    store["actsV"] = ACTS_VERSION
+    return n
+
+
+def _apply_activities(store: dict, raw: list, days: list[dt.date]) -> int:
     grouped: dict[str, list[dict]] = {}
     for item in raw:
         parsed = normalize_activity(item)
@@ -289,6 +306,14 @@ def sync_activities(fetch: Fetcher, store: dict, days: list[dt.date]) -> int:
         elif key in store["days"]:
             store["days"][key].pop("acts", None)
     return sum(len(v) for v in grouped.values())
+
+
+def sync_activities(fetch: Fetcher, store: dict, days: list[dt.date]) -> int:
+    start, end = min(days).isoformat(), max(days).isoformat()
+    raw = fetch("get_activities_by_date", start, end)
+    if raw is FAILED or not isinstance(raw, list):
+        return 0
+    return _apply_activities(store, raw, days)
 
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -478,6 +503,9 @@ def run(
         updated = sync_days(fetch, store, days, today, tz)
         n_acts = sync_activities(fetch, store, days)
         log(f"Aktualisiert: {updated} Tage, {n_acts} Aktivitäten, {fetch.calls} Abfragen.")
+        if store.get("actsV") != ACTS_VERSION:
+            n_all = refresh_all_activities(fetch, store, today)
+            log("Einheiten: alle Messwerte je Sportart neu geholt." if n_all is not None else "Einheiten: Neuabruf klappt beim nächsten Mal.")
     except garmin_module.GarminConnectTooManyRequestsError:
         log("WARNUNG: Garmin bremst gerade (zu viele Anfragen). Gespeichert wird, was schon da ist.")
         status = "partial"

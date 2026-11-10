@@ -12,9 +12,14 @@ const today = model.days[model.days.length - 1].date;
 const at = (h, m = 0, date = today) => ({ date, minutes: h * 60 + m, weekday: E.weekday(date) });
 const sub = { subscription: { endpoint: 'https://x' } };
 
-test('Morgens kommt die Recovery-Nachricht genau einmal', () => {
+test('Morgens kommt der Morgenbericht genau einmal', () => {
   const m = dueMessages(model, at(7, 30), {}).find((x) => x.kind === 'morning');
-  assert.ok(m && /Recovery \d+ %/.test(m.title) && /Heute: (Rad|Gym|Heute Pause)/.test(m.body), m?.body);
+  assert.ok(m && /Morgenbericht · Recovery \d+ %/.test(m.title) && /Training: (Rad|Gym|Heute Pause|Erledigt)/.test(m.body), m?.body);
+  // Schlaf, HRV/Ruhepuls gegenüber normal und die Schlafenszeit stehen drin; Tippen öffnet die App auf „Heute“
+  assert.match(m.body, /Schlaf \d+:\d\d Std\./);
+  assert.match(m.body, /HRV \d+ ms \([+−]\d+ %\)/);
+  assert.match(m.body, /Heute ins Bett um \d\d:\d\d/);
+  assert.match(m.url, /\?tab=heute$/);
   assert.ok(!dueMessages(model, at(7, 30), { morning: today }).some((x) => x.kind === 'morning'));
   assert.ok(!dueMessages(model, at(15), {}).some((x) => x.kind === 'morning'));
   assert.deepEqual(dueMessages(model, at(8, 0, E.addDays(today, 1)), {}), []);
@@ -177,7 +182,33 @@ test('Morgens mit Infekt-Zeichen: Warnung statt Trainingsplan', () => {
   const ill = { level: 2, score: 4, raw: 4, signals: [{ key: 'rhr', pts: 2, text: 'Ruhepuls +5 bpm über deinem Normalwert' }, { key: 'resp', pts: 2, text: 'Atemfrequenz +1,1 Atemzüge/Min. über normal' }] };
   const sickModel = { ...model, days: [...model.days.slice(0, -1), { ...last, ill }] };
   const m = dueMessages(sickModel, at(7, 30), {}).find((x) => x.kind === 'morning');
-  assert.match(m.title, /Infekt-Frühwarnung · erhöht/);
+  assert.match(m.title, /Morgenbericht · Infekt-Frühwarnung erhöht/);
   assert.match(m.body, /Ruhepuls \+5 bpm/);
   assert.match(m.body, /nur locker/);
+});
+
+test('Abends kommt der Abendbericht mit Training, Schritten und Schlafenszeit', () => {
+  const i = model.days.length - 1;
+  const last = model.days[i];
+  const ride = { id: 9, type: 'indoor_cycling', name: 'Gym', start: '17:30', dur: 3300, avgHr: 138, pwr: 182, cad: 88, strain: 9.5 };
+  const m2 = { ...model, days: [...model.days.slice(0, -1), { ...last, acts: [ride], stats: { ...(last.stats || {}), steps: 9100, stepGoal: 10000, stress: 31 } }] };
+  const msgs = dueMessages(m2, at(20, 30), { morning: today });
+  const ev = msgs.find((x) => x.kind === 'evening');
+  assert.ok(ev, 'Abendbericht fehlt');
+  assert.match(ev.title, /^🌙 Abendbericht · Strain \d+,\d/);
+  // Sportart genau wie von Garmin: Indoor-Rad, nicht „Gym“
+  assert.match(ev.body, /Training: Indoor-Rad 55 Min\. · 182 W · Ø 138 bpm/);
+  assert.match(ev.body, /9\.100 von 10\.000 Schritten · Stress Ø 31/);
+  assert.match(ev.body, /Heute Nacht: ins Bett um \d\d:\d\d für \d+:\d\d Std\. Schlaf/);
+  // Schritte stehen im Abendbericht – keine zweite Schritt-Nachricht im selben Lauf
+  assert.ok(!msgs.some((x) => x.kind === 'steps'));
+  assert.ok(!dueMessages(m2, at(20, 30), { morning: today, evening: today }).some((x) => x.kind === 'evening'));
+  assert.ok(!dueMessages(m2, at(19, 0), { morning: today }).some((x) => x.kind === 'evening'));
+  assert.ok(!dueMessages(m2, at(20, 30), { morning: today }, { evening: false }).some((x) => x.kind === 'evening'));
+});
+
+test('Abendbericht: Lauf wird zur passenden Zeit geplant', () => {
+  const st = { subscription: { endpoint: 'https://x' }, sent: {}, morningDone: today };
+  assert.equal(planRun({ now: at(20, 47), state: st, model }).sync, true);
+  assert.equal(planRun({ now: at(20, 47), state: { ...st, sent: { evening: today, steps: today, bedtime: today } }, model }).sync, false);
 });
