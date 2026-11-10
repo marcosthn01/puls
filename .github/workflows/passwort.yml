@@ -1,0 +1,25 @@
+name: Puls Passwort prüfen
+
+# Prüft, ob ein Passwort zum gespeicherten DATA_PASSPHRASE passt – ohne es zu verraten:
+# Eingabe ist nur der Anfang seines SHA-256-Fingerabdrucks (16 Zeichen).
+on:
+  workflow_dispatch:
+    inputs:
+      fingerprint:
+        description: 'Erste 16 Zeichen von sha256(Passwort)'
+        required: true
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Vergleichen
+        env:
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          WANT: ${{ inputs.fingerprint }}
+        run: |
+          got=$(printf '%s' "$DATA_PASSPHRASE" | sha256sum | cut -c1-16)
+          if [ "$got" = "$WANT" ]; then echo "Passwort stimmt."; else echo "Passwort stimmt NICHT."; exit 1; fi
