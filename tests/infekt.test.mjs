@@ -110,3 +110,15 @@ test('Zu wenig Daten: keine Wahrscheinlichkeit, keine Warnung', () => {
   const fit = fitIllness(days, {});
   assert.ok(fit.days.every((d) => d.p == null && d.level === 0 && d.calibrating));
 });
+
+test('Krank-Einträge aus dem Kalender zählen als gelernte Infekte (überlappende zusammengefasst)', () => {
+  const eps = [120, 200];
+  const days = makeDays(260, { episodes: eps, style: 'classic', seed: 9 });
+  const fit = fitIllness(days, {
+    cal: [{ s: days[120].date, e: days[123].date }, { s: days[200].date, e: days[204].date }],
+    pos: [{ s: days[121].date, src: 'feel' }], // doppelt: gleicher Infekt, schon im Kalender
+  });
+  assert.equal(fit.model.episodes.length, 2);
+  assert.ok(fit.model.episodes.every((e) => e.src === 'kalender'));
+  assert.equal(fit.model.tuned, true);
+});

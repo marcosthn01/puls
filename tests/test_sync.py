@@ -409,3 +409,31 @@ def test_history_bridges_a_gap_of_several_weeks(tmp_path, monkeypatch):
     assert store["history"]["first"] == "2026-08-01"
     assert min(store["days"]) == "2026-08-01"
     assert "2026-10-10" not in store["days"]  # in der Lücke nichts gespeichert
+
+
+def test_calendar_import_with_public_key_and_ical(tmp_path, monkeypatch):
+    mod, _ = fake_module()
+    creds = {"GARMIN_EMAIL": "a@b.de", "GARMIN_PASSWORD": "pw"}
+    assert run(tmp_path, mod, **creds) == 0
+    key_file = json.loads((tmp_path / "cache" / "import-key.json").read_text())
+    # Von außen (ohne Passwort): Krank-Einträge mit dem öffentlichen Schlüssel verschlüsseln
+    box = crypto_box.seal_import({"cal": [{"s": "2026-08-20", "e": "2026-08-23"}, {"s": "kaputt"}]}, key_file["pub"])
+    assert run(tmp_path, mod, inputs={"import": json.dumps(box)}, event="workflow_dispatch") == 0
+    store = read_store(tmp_path)
+    assert store["illness"]["cal"] == [{"s": "2026-08-20", "e": "2026-08-23"}]
+    # Gleicher Schlüssel beim nächsten Lauf (liegt im verschlüsselten Speicher)
+    assert json.loads((tmp_path / "cache" / "import-key.json").read_text())["pub"] == key_file["pub"]
+    # App schickt ihre Angaben + iCal-Adresse: Kalender-Phasen bleiben, Adresse wird gespeichert
+    app_box = crypto_box.encrypt_json({"pos": [{"s": "2026-10-01", "src": "feel"}], "neg": [], "conf": {}, "ics": "https://calendar.example/basic.ics"}, PASS, iterations=1000)
+    monkeypatch.setattr(puls_sync.kalender, "fetch_ics", lambda url: ICS if url.startswith("https://calendar.example") else "")
+    assert run(tmp_path, mod, inputs={"illness": json.dumps(app_box)}, event="workflow_dispatch") == 0
+    store = read_store(tmp_path)
+    assert store["illness"]["ics"] == "https://calendar.example/basic.ics"
+    assert store["illness"]["pos"] == [{"s": "2026-10-01", "src": "feel"}]
+    assert store["illness"]["cal"] == [{"s": "2026-09-19", "e": "2026-09-24"}]  # aus der iCal-Datei
+    # Ein falsch verschlüsselter Import ändert nichts
+    assert run(tmp_path, mod, inputs={"import": json.dumps({"v": 1, "epk": "AA", "iv": "AA", "ct": "AA"})}, event="workflow_dispatch") == 0
+    assert read_store(tmp_path)["illness"]["cal"] == [{"s": "2026-09-19", "e": "2026-09-24"}]
+
+
+ICS = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20260919\r\nDTEND;VALUE=DATE:20260925\r\nSUMMARY:Krank\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"

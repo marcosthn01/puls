@@ -192,3 +192,60 @@ def write_calendar(store: dict, cache_dir: Path, passphrase: str, now: dt.dateti
     path = cache_dir / name
     path.write_text(build_ics(store, now), encoding="utf-8", newline="")
     return path
+
+
+# ---------------------------------------------------------------- Krank-Einträge aus deinem Kalender
+#
+# Wer „Krank“ in den Google Kalender schreibt, bringt Puls damit bei, wann Infekte waren. Gelesen wird
+# die private iCal-Adresse (liegt verschlüsselt im Speicher); übernommen werden nur Termine, deren Titel
+# nach Krankheit klingt – sonst nichts aus dem Kalender.
+
+SICK = re.compile(r"krank|erk(ä|ae)lt|grippe|infekt|fieber|corona|covid|angeschlagen|\bsick\b", re.I)
+
+
+def _ics_date(value: str) -> dt.date | None:
+    m = re.match(r"\s*(\d{4})(\d{2})(\d{2})", value or "")
+    if not m:
+        return None
+    try:
+        return dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def sick_episodes(text: str, today: dt.date, max_days: int = 730) -> list[dict[str, str]]:
+    """Krank-Phasen aus einer iCal-Datei: [{s, e}] (ganztägige Enden sind exklusiv → einen Tag abziehen)."""
+    unfolded = re.sub(r"\r?\n[ \t]", "", text or "")
+    out: dict[str, str] = {}
+    for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", unfolded, re.S):
+        props: dict[str, tuple[str, str]] = {}
+        for line in block.splitlines():
+            if ":" not in line:
+                continue
+            head, value = line.split(":", 1)
+            props.setdefault(head.split(";")[0].strip().upper(), (head.upper(), value.strip()))
+        if not SICK.search(props.get("SUMMARY", ("", ""))[1]) or props.get("STATUS", ("", ""))[1].upper() == "CANCELLED":
+            continue
+        head, raw_start = props.get("DTSTART", ("", ""))
+        start = _ics_date(raw_start)
+        if not start or start > today or start < today - dt.timedelta(days=max_days):
+            continue
+        all_day = "VALUE=DATE" in head or len(raw_start) == 8
+        end = _ics_date(props.get("DTEND", ("", ""))[1]) or start
+        if all_day and end > start:
+            end -= dt.timedelta(days=1)
+        end = max(start, end)
+        key = start.isoformat()
+        out[key] = max(out.get(key, key), end.isoformat())
+    return [{"s": s, "e": e} for s, e in sorted(out.items())][-200:]
+
+
+def fetch_ics(url: str, timeout: float = 20) -> str:
+    """iCal-Datei laden (nur https). Fehlertexte enthalten die Adresse nicht."""
+    import urllib.request
+
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError("keine https-Adresse")
+    req = urllib.request.Request(url, headers={"User-Agent": "Puls/1.0 (Kalender-Abgleich)"})
+    with urllib.request.urlopen(req, timeout=timeout) as res:  # noqa: S310 – nur https, Adresse vom Nutzer
+        return res.read(5_000_000).decode("utf-8", "replace")

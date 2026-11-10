@@ -48,6 +48,10 @@ on:
         description: "Nur für die App: deine Infekte und Antworten fürs Infekt-Lernen (verschlüsselt)"
         required: false
         default: ""
+      import:
+        description: "Nur intern: verschlüsselte Krank-Einträge aus deinem Kalender (mit dem öffentlichen Import-Schlüssel)"
+        required: false
+        default: ""
       history:
         description: "Verlauf nachladen: ältere Tage pro Lauf (z. B. 60) – läuft von selbst weiter bis zum ersten Tag deiner Uhr"
         required: false
@@ -175,6 +179,7 @@ jobs:
           if [ -f .puls-cache/push-public.json ]; then cp .puls-cache/push-public.json _site/push.json; fi
           cp .puls-cache/kal-*.ics _site/ 2>/dev/null || true
           cp .puls-cache/w-*.json _site/ 2>/dev/null || true
+          cp .puls-cache/import-key.json _site/ 2>/dev/null || true
 
       - uses: actions/upload-pages-artifact@v5
         with:

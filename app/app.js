@@ -10,7 +10,7 @@ import * as T from './training.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.7.0';
+const VERSION = '5.7.1';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -37,6 +37,7 @@ const LS = {
   illness: 'puls.illness',
   illAsked: 'puls.illAsked',
   illSent: 'puls.illSent',
+  ics: 'puls.ics',
 };
 
 const PUSH_KINDS = [
@@ -289,8 +290,12 @@ function illnessLabels() {
   }
   return { pos, neg: [...(own.neg || [])], conf };
 }
+/** Fürs Modell: dazu die Krank-Einträge aus deinem Kalender (kommen vom Abruf). */
+const illnessForModel = (store = state.store) => ({ ...illnessLabels(), cal: store?.illness?.cal || [] });
+/** Zum Abruf: deine Angaben + die private iCal-Adresse (leer = Kalender getrennt). */
+const illnessUpload = () => ({ ...illnessLabels(), ics: state.demo ? '' : ls.get(LS.ics, '') });
 function analyzeStore(store, settings) {
-  state.model = E.analyze({ ...store, illness: illnessLabels() }, settings);
+  state.model = E.analyze({ ...store, illness: illnessForModel(store) }, settings);
 }
 function refreshModel() {
   if (state.store) analyzeStore(state.store, ls.get(LS.settings, {}));
@@ -423,10 +428,10 @@ async function dispatch(inputs = {}) {
   // Infekt-Lernen: deine Angaben verschlüsselt mitschicken, wenn sie sich geändert haben (für die Morgen-Push)
   let illSent = null;
   try {
-    const labels = illnessLabels();
+    const labels = illnessUpload();
     const txt = JSON.stringify(labels);
     const cache = ls.get(LS.key);
-    if ((labels.pos.length || labels.neg.length || Object.keys(labels.conf).length) && txt !== ls.get(LS.illSent, '') && cache?.key) {
+    if ((labels.pos.length || labels.neg.length || Object.keys(labels.conf).length || labels.ics || ls.get(LS.illSent, '')) && txt !== ls.get(LS.illSent, '') && cache?.key) {
       inputs = { ...inputs, illness: JSON.stringify(await sealBox(labels, cache)) };
       illSent = txt;
     }
@@ -1270,7 +1275,7 @@ function illModelCard(m) {
     .slice()
     .reverse()
     .slice(0, 8)
-    .map((e) => `<span class="ilm-ep">${shortDate(e.s)}${e.e && e.e !== e.s ? `–${shortDate(e.e)}` : ''}${e.src === 'journal' ? ' · Morgen-Check' : e.src === 'feel' ? ' · angeschlagen' : ''}${e.src !== 'journal' ? `<button data-act="ill-del" data-date="${e.s}" aria-label="Entfernen">×</button>` : ''}</span>`)
+    .map((e) => `<span class="ilm-ep">${shortDate(e.s)}${e.e && e.e !== e.s ? `–${shortDate(e.e)}` : ''}${e.src === 'journal' ? ' · Morgen-Check' : e.src === 'feel' ? ' · angeschlagen' : e.src === 'kalender' ? ' · Kalender' : ''}${e.src !== 'journal' && e.src !== 'kalender' ? `<button data-act="ill-del" data-date="${e.s}" aria-label="Entfernen">×</button>` : ''}</span>`)
     .join('');
   return card(
     'Dein Infekt-Modell',
@@ -1279,6 +1284,7 @@ function illModelCard(m) {
     <p class="ilm-h">Gewicht der Signale <small>Strich = Studien · Balken = bei dir</small></p>${weights}
     ${lines.length ? `<ul class="ntips">${lines.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
     ${list ? `<div class="ilm-list">${list}</div>` : ''}
+    <button class="rowlink ilm-cal" data-act="ill-cal">${I.calendar || I.trends}<span class="rl"><b>Google Kalender</b><span>${ls.get(LS.ics, '') ? `verbunden – „Krank“-Einträge kommen automatisch${(state.store?.illness?.cal || []).length ? ` (${state.store.illness.cal.length} gefunden)` : ''}` : 'Krank-Einträge automatisch übernehmen'}</span></span><span class="chev">${I.chevron}</span></button>
     <div class="ilm-btns"><button class="btn ghost" data-act="ill-add">Infekt nachtragen</button><button class="linkbtn" data-act="ill-method">So funktioniert’s</button></div>`,
     'ilmcard',
   );
@@ -2279,6 +2285,19 @@ function renderSheet() {
         <label class="field"><span>Wieder gesund (optional)</span><input id="ill-e" type="date" min="${first}" max="${todayIso()}"></label>
       </div>
       <button class="btn" data-act="ill-save" style="margin-top:12px">Speichern</button>`;
+  } else if (sh.type === 'ill-cal') {
+    const has = !!ls.get(LS.ics, '');
+    body = `<h3>Krank-Einträge aus Google Kalender</h3>
+      <p class="muted small">Du trägst „Krank“ in deinen Kalender ein? Dann übernimmt Puls das bei jedem Abruf automatisch – auch „Erkältung“, „Grippe“, „Fieber“ oder „Infekt“. Andere Termine liest Puls nicht aus.</p>
+      ${has ? '<p class="small" style="margin-top:8px"><b>Verbunden.</b> Neue Einträge kommen beim nächsten Abruf dazu.</p>' : `<ol class="steps small">
+        <li>In Safari <b>calendar.google.com</b> öffnen und unten „Desktop“ wählen (oder am Computer).</li>
+        <li>Zahnrad → <b>Einstellungen</b> → links deinen Kalender antippen → <b>Kalender integrieren</b>.</li>
+        <li><b>Privatadresse im iCal-Format</b> kopieren (nicht die öffentliche).</li>
+        <li>Hier einfügen → Speichern.</li>
+      </ol>
+      <label class="field" style="margin-top:10px"><span>Privatadresse im iCal-Format</span><input id="ics-url" type="url" inputmode="url" autocomplete="off" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"></label>`}
+      <p class="muted small" style="margin-top:8px">Die Adresse geht verschlüsselt zum Abruf (wie deine Daten) und steht nirgends lesbar.</p>
+      <button class="btn" data-act="${has ? 'ics-remove' : 'ics-save'}" style="margin-top:12px">${has ? 'Trennen' : 'Speichern'}</button>`;
   } else if (sh.type === 'ill-method') {
     body = `<h3>So lernt deine Infekt-Frühwarnung</h3>
       <ol class="steps small">
@@ -2434,6 +2453,18 @@ sheetEl.addEventListener('click', async (e) => {
   }
   if (act === 'breath-start') startBreath();
   if (act === 'pad-log') openSheet({ type: 'pad-log' });
+  if (act === 'ics-save' || act === 'ics-remove') {
+    const url = act === 'ics-remove' ? '' : String(document.getElementById('ics-url')?.value || '').trim();
+    if (act === 'ics-save' && !/^https:\/\/\S+$/.test(url)) return toast('Bitte die Adresse vollständig einfügen (beginnt mit https://).');
+    if (url) ls.set(LS.ics, url);
+    else ls.del(LS.ics);
+    closeSheet();
+    render();
+    if (state.demo) return toast('Demo: nichts verbunden.');
+    toast(url ? 'Verbunden – Puls gleicht deinen Kalender beim Abruf ab.' : 'Kalender getrennt.');
+    ls.del(LS.lastTrigger);
+    triggerSync({}, { quiet: true });
+  }
   if (act === 'ill-save') {
     const sDate = document.getElementById('ill-s')?.value;
     const eDate = document.getElementById('ill-e')?.value;
@@ -2876,6 +2907,9 @@ app.addEventListener('click', async (e) => {
       break;
     case 'ill-method':
       openSheet({ type: 'ill-method' });
+      break;
+    case 'ill-cal':
+      openSheet({ type: 'ill-cal' });
       break;
     case 'report-refresh':
       makeReport();

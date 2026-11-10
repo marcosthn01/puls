@@ -39,8 +39,10 @@ und so auswertet wie Whoop:
   zusammen) die Wahrscheinlichkeit, dass in den nächsten 3 Tagen ein Infekt beginnt.
   - **Startwissen aus Studien** (Alavi 2022, Mishra 2020, Grzesiak 2021, Natarajan 2020/21, Quer 2021;
     Anfälligkeit: Prather 2015 Schlaf, Gabbett 2016 Lastspitzen) – als Bayes-Modell.
-  - **Lernt aus deinen Infekten** („krank“ im Morgen-Check, „Ich fühle mich angeschlagen“, nachgetragen
-    oder auf Nachfrage bestätigt): welche Signale bei *dir* wie stark anschlagen, wie oft du krank wirst.
+  - **Lernt aus deinen Infekten** („krank“ im Morgen-Check, „Ich fühle mich angeschlagen“, nachgetragen,
+    auf Nachfrage bestätigt oder als „Krank“-Termin im **Google Kalender** – über die private iCal-Adresse,
+    die verschlüsselt beim Abruf liegt; einmalige Importe gehen verschlüsselt mit dem öffentlichen
+    Import-Schlüssel `import-key.json`, X25519 + AES-GCM): welche Signale bei *dir* wie stark anschlagen, wie oft du krank wirst.
     Fragt nach auffälligen Phasen („Warst du da krank?“) – jedes Nein zeigt, was nur ein Ausreißer war.
   - **Rechnet Störfaktoren heraus:** Alkohol, Reisen, harte Trainingstage – mit deiner gemessenen Wirkung.
   - **Erinnert sich:** „So sah es einen Tag vor deinem Infekt im Oktober aus.“

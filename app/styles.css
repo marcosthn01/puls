@@ -1493,3 +1493,5 @@ details.disclose p { font-size: 13.5px; line-height: 1.5; }
 .illq p { line-height: 1.45; }
 .illq-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 6px; }
 @media (max-width: 360px) { .ilm-w { grid-template-columns: 88px 1fr 96px; } }
+
+.ilm-cal { margin-top: 12px; }

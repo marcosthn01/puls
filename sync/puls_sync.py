@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from crypto_box import CryptoError, box_salt, check_passphrase, decrypt_json, encrypt_json  # noqa: E402
+from crypto_box import CryptoError, box_salt, check_passphrase, decrypt_json, encrypt_json, import_key, import_public, open_import  # noqa: E402
 from garmin_auth import AuthProblem, MfaRequired, connect, save_tokens  # noqa: E402
 from garmin_data import (  # noqa: E402
     normalize_activity,
@@ -322,6 +322,24 @@ def clean_illness(data: Any) -> dict:
     return {"pos": pos[-200:], "neg": neg[-400:], "conf": conf}
 
 
+def clean_cal(raw: Any) -> list[dict[str, str]]:
+    """Kalender-Phasen [{s, e}] prüfen (nur Datumsangaben, höchstens 200)."""
+    out = []
+    for x in raw or []:
+        if isinstance(x, dict) and _DATE.match(str(x.get("s", ""))):
+            e = str(x.get("e", "")) if _DATE.match(str(x.get("e", ""))) and str(x.get("e")) >= x["s"] else x["s"]
+            out.append({"s": x["s"], "e": e})
+    return sorted(out, key=lambda x: x["s"])[-200:]
+
+
+def clean_ics(raw: Any) -> str | None:
+    """Private iCal-Adresse: nur https, ohne Leerzeichen; leer = entfernen."""
+    url = str(raw or "").strip()
+    if not url.startswith("https://") or len(url) > 600 or re.search(r"\s", url):
+        return None
+    return url
+
+
 def prune(store: dict, today: dt.date) -> None:
     days = store["days"]
     for key in list(days):
@@ -377,13 +395,43 @@ def run(
             log(f"Walking-Pad: Format nicht erkannt ({walkpad.describe_format(str(walk_raw))}).")
     walkpad.refresh(store, today, DETAIL_DAYS)
 
+    # Öffentlicher Import-Schlüssel (für Krank-Einträge aus dem Kalender, ohne dein Passwort zu kennen)
+    ikey = import_key(store)
+    (cache_dir / "import-key.json").write_text(json.dumps({"v": 1, "alg": "X25519-HKDF-SHA256-AES256GCM", "pub": import_public(ikey)}))
+    log(f"Import-Schlüssel (öffentlich): {import_public(ikey)}")
+
     # Infekt-Lernen: deine Infekte, Antworten und Störfaktoren aus der App (verschlüsselt geschickt)
     if inputs.get("illness"):
         try:
-            store["illness"] = clean_illness(decrypt_json(json.loads(str(inputs["illness"])), passphrase))
+            payload = decrypt_json(json.loads(str(inputs["illness"])), passphrase)
+            old = store.get("illness") or {}
+            new = clean_illness(payload)
+            ics = clean_ics(payload.get("ics")) if "ics" in payload else old.get("ics")
+            if ics:
+                new["ics"] = ics
+            if old.get("cal"):
+                new["cal"] = old["cal"]
+            store["illness"] = new
             log("Infekt-Lernen: Angaben aus der App übernommen.")
         except (CryptoError, ValueError, TypeError, AttributeError):
             log("Infekt-Lernen: Angaben nicht lesbar – übersprungen.")
+
+    # Krank-Einträge aus deinem Kalender: verschlüsselt geschickt (Import) …
+    if inputs.get("import"):
+        try:
+            data = open_import(json.loads(str(inputs["import"])), ikey)
+            store.setdefault("illness", {})["cal"] = clean_cal(data.get("cal") if isinstance(data, dict) else None)
+            log("Infekt-Lernen: Kalender-Einträge übernommen.")
+        except (CryptoError, ValueError, TypeError, AttributeError):
+            log("Import: nicht lesbar – übersprungen.")
+    # … oder bei jedem Lauf direkt aus der privaten iCal-Adresse (in der App hinterlegt)
+    ics_url = (store.get("illness") or {}).get("ics")
+    if ics_url:
+        try:
+            store["illness"]["cal"] = kalender.sick_episodes(kalender.fetch_ics(ics_url), today)
+            log("Kalender: Krank-Einträge abgeglichen.")
+        except Exception as e:  # noqa: BLE001 – Netz/Format: letzter Stand bleibt
+            log(f"Kalender: nicht lesbar ({type(e).__name__}) – letzter Stand bleibt.")
 
     # Push/Pull-Markierungen aus der App (für den Trainingskalender)
     if inputs.get("labels"):

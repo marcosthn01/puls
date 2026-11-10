@@ -64,7 +64,8 @@ export const LEVEL_LABELS = ['unauffällig', 'beobachten', 'erhöht', 'hoch'];
 
 /** Labels aus App/Abruf: { pos: [{s, e?, src}], neg: [Datum], conf: { Datum: { a: Gläser, u: 1, k: 1 } } } */
 function normLabels(ill) {
-  const pos = (Array.isArray(ill?.pos) ? ill.pos : [])
+  const cal = (Array.isArray(ill?.cal) ? ill.cal : []).map((x) => ({ ...x, src: 'kalender' }));
+  const pos = [...(Array.isArray(ill?.pos) ? ill.pos : []), ...cal]
     .filter((x) => x && /^\d{4}-\d{2}-\d{2}$/.test(x.s))
     .map((x) => ({ s: x.s, e: /^\d{4}-\d{2}-\d{2}$/.test(x.e || '') && x.e >= x.s ? x.e : addDays(x.s, 3), src: x.src || 'user' }))
     .sort((a, b) => (a.s < b.s ? -1 : 1));
@@ -72,7 +73,10 @@ function normLabels(ill) {
   const merged = [];
   for (const x of pos) {
     const last = merged[merged.length - 1];
-    if (last && x.s <= addDays(last.e, 2)) last.e = x.e > last.e ? x.e : last.e;
+    if (last && x.s <= addDays(last.e, 2)) {
+      last.e = x.e > last.e ? x.e : last.e;
+      if (x.src === 'kalender') last.src = 'kalender';
+    }
     else merged.push({ ...x });
   }
   const neg = (Array.isArray(ill?.neg) ? ill.neg : []).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));

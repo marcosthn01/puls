@@ -91,3 +91,48 @@ def test_datei_mit_token_und_alte_weg(tmp_path):
     assert path.name == f"kal-{kalender.calendar_token('mein-geheimes-passwort')}.ics"
     assert not (tmp_path / "kal-alt.ics").exists()
     assert path.read_bytes().count(b"\r\n") > 10
+
+
+ICS_SICK = """BEGIN:VCALENDAR\r
+BEGIN:VEVENT\r
+DTSTART;VALUE=DATE:20260820\r
+DTEND;VALUE=DATE:20260824\r
+SUMMARY:Krank\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART;VALUE=DATE:20260919\r
+DTEND;VALUE=DATE:20260925\r
+SUMMARY:Erkältung – zu\r
+ hause\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART:20261003T080000Z\r
+DTEND:20261003T090000Z\r
+SUMMARY:Arzt wegen Fieber\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART;VALUE=DATE:20261005\r
+DTEND;VALUE=DATE:20261006\r
+SUMMARY:Krank\r
+STATUS:CANCELLED\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART;VALUE=DATE:20261010\r
+DTEND;VALUE=DATE:20261011\r
+SUMMARY:Geburtstag Oma\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART;VALUE=DATE:20270101\r
+SUMMARY:Krank (Zukunft)\r
+END:VEVENT\r
+END:VCALENDAR\r
+"""
+
+
+def test_sick_episodes_from_ical():
+    eps = kalender.sick_episodes(ICS_SICK, dt.date(2026, 11, 10))
+    assert eps == [
+        {"s": "2026-08-20", "e": "2026-08-23"},  # ganztägig: Ende exklusiv
+        {"s": "2026-09-19", "e": "2026-09-24"},  # gefaltete Zeile, „Erkältung“
+        {"s": "2026-10-03", "e": "2026-10-03"},  # Termin mit Uhrzeit, „Fieber“
+    ]
