@@ -18,9 +18,14 @@ und so auswertet wie Whoop:
   Stress, Sauna, Meditation, Kälte …) – antippen, wenn es passiert, Puls merkt sich die Uhrzeit. Danach zeigt
   Puls, wie jedes Verhalten deine Nacht verändert (Recovery, HRV, Ruhepuls, Tiefschlaf), deine persönliche
   Koffein-Grenze und Alkohol nach Menge – und sagt beim Loggen direkt, was das für heute Nacht bedeutet.
-- **iPhone-Widgets** (Home- und Sperrbildschirm) über die kostenlose App Scriptable: Schlaf, Recovery, Strain
-  und dein Training heute. Die Widget-Datei ist verschlüsselt (Schlüssel aus deinem Daten-Passwort);
-  Code zum Kopieren unter Einstellungen → iPhone-Widgets.
+- **iPhone-Widgets** (Home- und Sperrbildschirm) über die kostenlose App Scriptable. Das große Widget
+  zeigt alles auf einen Blick (drei Ringe, HRV, Ruhepuls, Schritte, Body Battery, Training, Schlafenszeit,
+  Woche Mo–So); der Sperrbildschirm zeigt runde Ringe (Parameter `recovery`/`schlaf`/`strain`) oder alle
+  drei nebeneinander. Ein eingebauter Test prüft, ob ein Tippen Puls direkt öffnen kann (inoffizieller
+  `webapp://`-Weg von iOS); dann springen die Ringe in die Bereiche und Lifestyle-Knöpfe tragen direkt ein
+  (`?tab=`, `?log=`, `?open=laufband`).
+  Die Widget-Datei ist verschlüsselt (Schlüssel aus deinem Daten-Passwort); Code zum Kopieren und
+  Anleitung unter Einstellungen → iPhone-Widgets.
 - **Trainingswoche & Kalender:** Auf „Heute“ siehst du Mo–So, an welchen Tagen du was trainiert hast
   (Push, Pull, Rad …) und wie viele Trainings es diese Woche sind; der Monatskalender unter Trends
   zeigt Recovery und Training zusammen.

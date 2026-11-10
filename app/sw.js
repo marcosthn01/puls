@@ -1,7 +1,7 @@
 // Schneller Start: App-Dateien sofort aus dem Speicher (im Hintergrund aufgefrischt),
 // Daten zuerst aus dem Netz – aber höchstens 2,5 s warten, sonst erst der letzte Stand.
 // Neue Versionen kommen über eine neue VERSION: Installieren lädt alles frisch, die App lädt sich einmal neu.
-const VERSION = 'puls-v5.5.1';
+const VERSION = 'puls-v5.6.0';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'engine.js', 'charts.js', 'crypto.js', 'demo.js', 'coach.js', 'hud.js', 'training.js', 'lifestyle.js', 'widget.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
@@ -82,7 +82,8 @@ self.addEventListener('fetch', (e) => {
       const net = fetch(url.href, { cache: 'no-cache', credentials: 'same-origin' }).then((res) => {
         if (res.ok) {
           const copy = res.clone();
-          caches.open(VERSION).then((c) => c.put(e.request, copy));
+          // Aufrufe aus dem Widget (?tab=…, ?log=…) nicht einzeln speichern
+          caches.open(VERSION).then((c) => c.put(url.search && e.request.mode === 'navigate' ? url.origin + url.pathname : e.request, copy));
         }
         return res;
       });

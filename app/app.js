@@ -9,7 +9,7 @@ import * as T from './training.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.5.1';
+const VERSION = '5.6.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -2445,16 +2445,24 @@ function widgetCard() {
   }
   if (!state.widget) return '';
   return `<section class="card"><h2>iPhone-Widgets</h2>
-    <p class="small">Recovery, Schlaf, Strain und dein Training heute auf dem Home- und Sperrbildschirm – über die kostenlose App <b>Scriptable</b>. Die Daten bleiben verschlüsselt.</p>
+    <p class="small">Schlaf, Recovery, Strain, HRV, Ruhepuls, Schritte, Training und Woche auf dem Home- und Sperrbildschirm – über die kostenlose App <b>Scriptable</b>. Die Daten bleiben verschlüsselt.</p>
     <ol class="steps">
       <li><a href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noopener">Scriptable</a> aus dem App Store laden.</li>
       <li>Hier <b>Widget-Code kopieren</b> tippen.</li>
-      <li>Scriptable öffnen → oben rechts <b>+</b> → einfügen → oben den Namen auf <b>Puls</b> ändern → <b>Fertig</b>.</li>
-      <li>Homebildschirm lange drücken → <b>+</b> → <b>Scriptable</b> → Größe wählen (klein, mittel, groß) → hinzufügen.</li>
-      <li>Das neue Widget lange drücken → <b>Widget bearbeiten</b> → Script: <b>Puls</b>.</li>
+      <li>Scriptable öffnen → <b>+</b> → einfügen → Namen <b>Puls</b> geben → <b>Fertig</b>. <i>Schon eingerichtet?</i> Script „Puls“ öffnen, alles markieren und den neuen Code einfügen.</li>
+      <li>Homebildschirm lange drücken → <b>+</b> → <b>Scriptable</b> → nach links wischen bis <b>groß</b> (oder mittel/klein) → hinzufügen.</li>
+      <li>Widget lange drücken → <b>Widget bearbeiten</b> → Script: <b>Puls</b>.</li>
     </ol>
     <button class="btn" data-act="widget-copy">Widget-Code kopieren</button>
-    <p class="muted small" style="margin-top:8px">Sperrbildschirm: lange drücken → Anpassen → Sperrbildschirm → Widget-Feld → Scriptable (rund oder rechteckig) → antippen → Script: Puls. Das Widget aktualisiert sich etwa alle 20 Minuten.</p>
+    <h4 style="margin-top:14px">Direkt in Puls springen</h4>
+    <p class="small">In Scriptable einmal das Script <b>Puls</b> antippen → <b>„Puls direkt öffnen – testen“</b>. Klappt es auf deinem iPhone, öffnet ein Tippen aufs Widget Puls wie eine richtige App: die Ringe springen zu Schlaf, Recovery oder Strain, und im großen Widget erscheinen die Lifestyle-Knöpfe (Kaffee, Alkohol, Essen … und Laufband) – ein Tippen trägt direkt ein. Klappt es nicht, erlaubt iOS das nicht – dann öffnet das Widget Scriptable.</p>
+    <h4 style="margin-top:14px">Sperrbildschirm</h4>
+    <p class="small">Sperrbildschirm lange drücken → <b>Anpassen</b> → <b>Sperrbildschirm</b> → Widget-Feld → <b>Scriptable</b> → antippen → Script: <b>Puls</b>. Über <b>Parameter</b> wählst du, was es zeigt:</p>
+    <ul class="steps small">
+      <li><b>Rund:</b> leer oder <code>recovery</code>, <code>schlaf</code>, <code>strain</code> – drei runde nebeneinander sehen aus wie bei Whoop.</li>
+      <li><b>Rechteckig:</b> leer = alle drei Ringe, <code>training</code> = Recovery mit deinem Training heute.</li>
+    </ul>
+    <p class="muted small" style="margin-top:8px">Widgets aktualisieren sich etwa alle 15–20 Minuten – wann genau, entscheidet iOS.</p>
   </section>`;
 }
 
@@ -2882,7 +2890,40 @@ app.addEventListener(
 );
 
 // Beim Öffnen und Zurückkehren: Daten nachladen und ggf. frischen Abruf anstoßen
+// ------------------------------------------------------------------ Aufruf aus dem Widget
+
+/** ?tab=schlaf · ?log=koffein · ?open=laufband – einmal ausführen, dann aus der Adresse nehmen. */
+function takeIntent() {
+  const q = new URLSearchParams(location.search);
+  const it = { tab: q.get('tab'), log: q.get('log'), open: q.get('open') };
+  if (!it.tab && !it.log && !it.open) return null;
+  history.replaceState(null, '', location.pathname + location.hash);
+  return it;
+}
+let intent = takeIntent();
+function applyIntent() {
+  if (!intent || state.view !== 'main' || state.onboarding != null || !state.model || state.model.empty) return;
+  const it = intent;
+  intent = null;
+  closeSheet();
+  state.sel = state.model.days.length - 1;
+  if (it.tab && [...DAY_TABS, 'coach', 'trends'].includes(it.tab)) setTab(it.tab);
+  if (it.log && Life.byId[it.log]) {
+    setTab('heute');
+    logLife(it.log);
+  }
+  if (it.open === 'laufband') {
+    setTab('heute');
+    openSheet({ type: 'pad-log' });
+  }
+  render();
+}
+
 document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    intent = takeIntent() || intent;
+    applyIntent();
+  }
   if (document.visibilityState !== 'visible' || state.view !== 'main' || state.demo) return;
   if (Date.now() - state.lastFetch > 60e3) await loadData({ silent: true });
   autoSync();
@@ -2959,5 +3000,6 @@ window.__puls = {
   Hud.boot();
   render();
   await loadData();
+  applyIntent();
   autoSync();
 })();

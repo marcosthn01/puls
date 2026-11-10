@@ -297,7 +297,7 @@ export function sealWidget(obj, pass) {
   return { v: 1, iv: iv.toString('base64'), ct: ct.toString('base64'), mac: mac.toString('base64') };
 }
 
-/** Was das Widget zeigt: Recovery, Schlaf, Strain, Training heute, Infekt-Stufe, Schlafenszeit, Woche. */
+/** Was das Widget zeigt: Ringe, Körperwerte, Training heute, Woche, Infekt-Stufe – nur Kennzahlen. */
 export function widgetPayload(model) {
   const i = model.days.length - 1;
   const d = model.days[i];
@@ -308,18 +308,41 @@ export function widgetPayload(model) {
   const short = plan.kind === 'rest' ? 'Pause' : plan.kind === 'bike' ? `Rad ${plan.min} Min.` : plan.kind === 'gym' ? plan.title.replace(' · ', ' ') : plan.kind === 'done' ? 'Training erledigt' : '';
   const sub = plan.kind === 'bike' ? plan.sub.replace(', längere Anstiege gern kräftig', '') : plan.kind === 'gym' ? plan.volume : (plan.sub || '').split(' – ')[0];
   const lvl = d.ill?.level ?? 0;
+  const r0 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v));
+  const r1 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 10) / 10);
+  const st = d.stats || {};
+  const prev = i > 0 ? model.days[i - 1] : null;
+  const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   return {
-    v: 1,
+    v: 2,
     date: d.date,
     at: model.generated,
     recovery: d.recovery,
     zone: d.zone,
+    recY: prev?.recovery ?? null,
     sleep: d.perf == null ? null : Math.round(d.perf),
-    strain: d.strain == null ? null : Math.round(d.strain * 10) / 10,
-    plan: plan.kind === 'none' || plan.kind === 'free' ? null : { title: plan.title, sub, short },
+    sleepMin: r0(d.sleepMin),
+    needMin: r0(d.need?.total),
+    strain: r1(d.strain),
+    target: d.target ? [d.target.low, d.target.high] : null,
+    hrv: r0(d.hrv),
+    hrvBase: d.base?.hrv ? r0(Math.exp(d.base.hrv.mean)) : null,
+    rhr: r0(d.rhr),
+    rhrBase: d.base?.rhr ? r0(d.base.rhr.mean) : null,
+    steps: r0(st.steps),
+    stepGoal: r0(st.stepGoal),
+    bb: r0(st.bbNow ?? st.bbHigh),
+    stress: r0(st.stress),
+    plan: plan.kind === 'none' || plan.kind === 'free' ? null : { title: plan.title, sub, short, kind: plan.kind },
     ill: { level: lvl, label: E.ILL_LEVELS[lvl] },
     bed: bed != null ? E.fmtClock(bed) : null,
     week: `${wk.count} ${wk.count === 1 ? 'Training' : 'Trainings'}${Object.keys(wk.byLabel).length ? ` (${Object.entries(wk.byLabel).map(([k, n]) => `${n}× ${k}`).join(', ')})` : ''}`,
+    wkPrev: wk.prevCount,
+    wk: wk.days.map((x, k) => {
+      const idx = model.index[x.date];
+      const s0 = x.sessions[0];
+      return { d: WD[k], z: idx != null ? model.days[idx].zone || null : null, k: s0?.kind || null, l: s0 ? s0.label : null, n: x.sessions.length, f: x.future, t: x.date === d.date };
+    }),
   };
 }
 
