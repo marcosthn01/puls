@@ -148,6 +148,14 @@ jobs:
           PULS_TIMEZONE: Europe/Berlin
         run: python sync/puls_sync.py --cache .puls-cache --site-url "${{ steps.pages.outputs.base_url }}"
 
+      - name: Diagnose bereitstellen
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diag != '' && hashFiles('.puls-cache/diag.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: puls-diag
+          path: .puls-cache/diag.json
+          retention-days: 1
+
       - name: Benachrichtigungen
         id: notify
         continue-on-error: true
@@ -207,6 +215,30 @@ jobs:
         run: |
           echo "::error::Der Garmin-Abruf hat nicht geklappt – Details im Schritt 'Garmin-Daten holen'. Die App zeigt weiter die letzten Daten."
           exit 1
+
+  # Fehlersuche: verschlüsselte Diagnose (nur mit dem privaten Schlüssel lesbar) in den Zweig „diag“ legen
+  diag:
+    needs: sync
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diag != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: puls-diag
+          path: diag
+      - name: In Zweig „diag“ ablegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd diag
+          git init -q -b diag
+          git config user.name "puls-bot"
+          git config user.email "puls-bot@users.noreply.github.com"
+          git add diag.json
+          git commit -q -m "Diagnose (verschlüsselt)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" diag
 
   tests:
     if: github.event_name == 'push'

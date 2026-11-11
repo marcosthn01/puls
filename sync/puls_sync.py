@@ -309,7 +309,7 @@ def _apply_activities(store: dict, raw: list, days: list[dt.date]) -> int:
     return sum(len(v) for v in grouped.values())
 
 
-def log_diagnosis(fetch: Fetcher, store: dict, today: dt.date, public_b64: str) -> None:
+def log_diagnosis(fetch: Fetcher, store: dict, today: dt.date, public_b64: str, out: Path | None = None) -> None:
     """Fehlersuche: Garmins Rohangaben zu den Einheiten der letzten Tage – nur verschlüsselt für den
     übergebenen öffentlichen Schlüssel (X25519) ins Log, damit im öffentlichen Log nichts lesbar ist."""
     if not re.fullmatch(r"[A-Za-z0-9+/]{43}=", public_b64):
@@ -325,6 +325,8 @@ def log_diagnosis(fetch: Fetcher, store: dict, today: dt.date, public_b64: str) 
     kinds = {d: [kalender.activity_kind(a) for a in (acts or [])] for d, acts in stored.items()}
     box = crypto_box.seal_import({"garmin": garmin, "stored": stored, "kinds": kinds, "labels": store.get("labels")}, public_b64)
     log("Diagnose (verschlüsselt): " + json.dumps(box))
+    if out is not None:
+        out.write_text(json.dumps(box))  # landet verschlüsselt im Zweig „diag“
 
 
 def sync_activities(fetch: Fetcher, store: dict, days: list[dt.date]) -> int:
@@ -526,7 +528,7 @@ def run(
             n_all = refresh_all_activities(fetch, store, today)
             log("Einheiten: alle Messwerte je Sportart neu geholt." if n_all is not None else "Einheiten: Neuabruf klappt beim nächsten Mal.")
         if inputs.get("diag"):
-            log_diagnosis(fetch, store, today, str(inputs["diag"]).strip())
+            log_diagnosis(fetch, store, today, str(inputs["diag"]).strip(), cache_dir / "diag.json")
     except garmin_module.GarminConnectTooManyRequestsError:
         log("WARNUNG: Garmin bremst gerade (zu viele Anfragen). Gespeichert wird, was schon da ist.")
         status = "partial"
