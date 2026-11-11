@@ -56,6 +56,10 @@ on:
         description: "Verlauf nachladen: ältere Tage pro Lauf (z. B. 60) – läuft von selbst weiter bis zum ersten Tag deiner Uhr"
         required: false
         default: ""
+      diag:
+        description: "Fehlersuche: öffentlicher X25519-Schlüssel – Garmins Rohangaben der letzten Tage kommen nur verschlüsselt ins Log"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths: ["app/**", "sync/**", ".github/workflows/sync.yml"]

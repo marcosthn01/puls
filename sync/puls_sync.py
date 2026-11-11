@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import crypto_box  # noqa: E402
 from crypto_box import CryptoError, box_salt, check_passphrase, decrypt_json, encrypt_json, import_key, import_public, open_import  # noqa: E402
 from garmin_auth import AuthProblem, MfaRequired, connect, save_tokens  # noqa: E402
 from garmin_data import (  # noqa: E402
@@ -308,6 +309,24 @@ def _apply_activities(store: dict, raw: list, days: list[dt.date]) -> int:
     return sum(len(v) for v in grouped.values())
 
 
+def log_diagnosis(fetch: Fetcher, store: dict, today: dt.date, public_b64: str) -> None:
+    """Fehlersuche: Garmins Rohangaben zu den Einheiten der letzten Tage – nur verschlüsselt für den
+    übergebenen öffentlichen Schlüssel (X25519) ins Log, damit im öffentlichen Log nichts lesbar ist."""
+    if not re.fullmatch(r"[A-Za-z0-9+/]{43}=", public_b64):
+        log("Diagnose: Schlüssel ungültig.")
+        return
+    start = (today - dt.timedelta(days=3)).isoformat()
+    raw = fetch("get_activities_by_date", start, today.isoformat())
+    keep = ("activityId", "activityName", "startTimeLocal", "activityType", "eventType", "sportTypeId", "duration",
+            "deviceId", "manufacturer", "parent", "favorite", "summarizedExerciseSets", "totalSets", "avgPower",
+            "averageBikingCadenceInRevPerMinute", "distance")
+    garmin = [{k: item.get(k) for k in keep if k in item} for item in raw] if isinstance(raw, list) else str(raw)
+    stored = {d: (store.get("days", {}).get(d) or {}).get("acts") for d in sorted(store.get("days", {})) if d >= start}
+    kinds = {d: [kalender.activity_kind(a) for a in (acts or [])] for d, acts in stored.items()}
+    box = crypto_box.seal_import({"garmin": garmin, "stored": stored, "kinds": kinds, "labels": store.get("labels")}, public_b64)
+    log("Diagnose (verschlüsselt): " + json.dumps(box))
+
+
 def sync_activities(fetch: Fetcher, store: dict, days: list[dt.date]) -> int:
     start, end = min(days).isoformat(), max(days).isoformat()
     raw = fetch("get_activities_by_date", start, end)
@@ -506,6 +525,8 @@ def run(
         if store.get("actsV") != ACTS_VERSION:
             n_all = refresh_all_activities(fetch, store, today)
             log("Einheiten: alle Messwerte je Sportart neu geholt." if n_all is not None else "Einheiten: Neuabruf klappt beim nächsten Mal.")
+        if inputs.get("diag"):
+            log_diagnosis(fetch, store, today, str(inputs["diag"]).strip())
     except garmin_module.GarminConnectTooManyRequestsError:
         log("WARNUNG: Garmin bremst gerade (zu viele Anfragen). Gespeichert wird, was schon da ist.")
         status = "partial"

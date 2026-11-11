@@ -475,3 +475,24 @@ def test_calendar_import_with_public_key_and_ical(tmp_path, monkeypatch):
 
 
 ICS = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20260919\r\nDTEND;VALUE=DATE:20260925\r\nSUMMARY:Krank\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+
+
+def test_diagnosis_is_only_readable_with_the_private_key(capsys):
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
+    key = X25519PrivateKey.generate()
+    pub = crypto_box.import_public(key)
+    store = {"days": {"2026-11-09": {"acts": [{"id": 1, "type": "indoor_cycling", "name": "Gym", "start": "07:00", "dur": 3000}]}}}
+
+    def fetch(name, *args):
+        return [{"activityId": 1, "activityName": "Gym", "activityType": {"typeKey": "indoor_cycling", "parentTypeId": 2}, "averageHR": 140}]
+
+    puls_sync.log_diagnosis(fetch, store, dt.date(2026, 11, 9), pub)
+    out = capsys.readouterr().out
+    assert "indoor_cycling" not in out and "Gym" not in out
+    box = json.loads(out.split("Diagnose (verschlüsselt): ", 1)[1].strip())
+    data = crypto_box.open_import(box, key)
+    assert data["garmin"][0]["activityType"]["typeKey"] == "indoor_cycling" and "averageHR" not in data["garmin"][0]
+    assert data["kinds"] == {"2026-11-09": ["bike"]}
+    puls_sync.log_diagnosis(fetch, store, dt.date(2026, 11, 9), "kaputt")
+    assert "ungültig" in capsys.readouterr().out
