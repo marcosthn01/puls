@@ -85,18 +85,48 @@ def split_of(a: dict[str, Any], labels: dict[str, str]) -> str | None:
     return None
 
 
+_SPORT_LABEL = re.compile(r"sport:[a-z0-9_]{2,40}")
+
+
+def _valid_label(v: Any) -> bool:
+    return v in SPLITS or (isinstance(v, str) and bool(_SPORT_LABEL.fullmatch(v)))
+
+
 def merge_labels(old: Any, raw: Any) -> dict[str, str]:
-    """Markierungen aus der App übernehmen (nur bekannte Splits, höchstens 1000 Einträge)."""
-    out = {str(k): v for k, v in (old or {}).items() if v in SPLITS} if isinstance(old, dict) else {}
+    """Markierungen aus der App übernehmen: Splits (Push/Pull …) und korrigierte Sportarten
+    („sport:indoor_cycling“; „sport:garmin“ = wieder wie von Garmin aufgezeichnet). Höchstens 1000."""
+    out = {str(k): v for k, v in (old or {}).items() if _valid_label(v)} if isinstance(old, dict) else {}
     try:
         new = json.loads(raw) if isinstance(raw, str) else raw
     except ValueError:
         new = None
     if isinstance(new, dict):
         for k, v in new.items():
-            if v in SPLITS and re.fullmatch(r"\d{1,20}", str(k)):
+            if not re.fullmatch(r"\d{1,20}", str(k)) or not _valid_label(v):
+                continue
+            if v == "sport:garmin":
+                if str(out.get(str(k), "")).startswith("sport:"):
+                    out.pop(str(k))
+            else:
                 out[str(k)] = v
     return dict(list(out.items())[-1000:])
+
+
+def apply_sport_labels(store: dict) -> int:
+    """Von dir korrigierte Sportarten anwenden (Garmins Angabe bleibt in ``typeGarmin``)."""
+    labels = store.get("labels") or {}
+    n = 0
+    for day in (store.get("days") or {}).values():
+        for a in (day or {}).get("acts") or []:
+            v = labels.get(str(a.get("id")))
+            if isinstance(v, str) and v.startswith("sport:") and v != "sport:garmin":
+                if "typeGarmin" not in a:
+                    a["typeGarmin"] = a.get("type")
+                a["type"] = v[6:]
+                n += 1
+            elif "typeGarmin" in a:
+                a["type"] = a.pop("typeGarmin")
+    return n
 
 
 def sessions(store: dict, min_minutes: int = 10) -> list[tuple[str, dict[str, Any]]]:

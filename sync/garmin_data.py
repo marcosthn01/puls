@@ -319,8 +319,9 @@ def _exercises(raw: Any) -> list[dict[str, Any]] | None:
         cat = item.get("category")
         if not isinstance(cat, str) or not cat:
             continue
-        ex = compact({"c": cat[:40], "s": rnd(item.get("sets"), 0), "r": rnd(item.get("reps"), 0)})
-        if ex.get("s") or ex.get("r"):
+        sub = item.get("subCategory")
+        ex = compact({"c": cat[:40], "sc": sub[:40] if isinstance(sub, str) and sub else None, "s": rnd(item.get("sets"), 0), "r": rnd(item.get("reps"), 0)})
+        if ex.get("r") or (ex.get("s") and cat != "UNKNOWN"):
             out.append(ex)
     return out[:20] or None
 

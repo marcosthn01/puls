@@ -496,3 +496,11 @@ def test_diagnosis_is_only_readable_with_the_private_key(capsys):
     assert data["kinds"] == {"2026-11-09": ["bike"]}
     puls_sync.log_diagnosis(fetch, store, dt.date(2026, 11, 9), "kaputt")
     assert "ungültig" in capsys.readouterr().out
+
+
+def test_exercises_keep_subcategory_and_drop_empty_unknown():
+    raw = {"activityId": 4, "startTimeLocal": "2026-11-08 18:41:15", "activityType": {"typeKey": "strength_training"}, "duration": 4193,
+           "summarizedExerciseSets": [{"category": "PULL_UP", "subCategory": "LAT_PULLDOWN", "reps": 50, "sets": 10},
+                                      {"category": "UNKNOWN", "reps": 0, "sets": 1}, {"category": "UNKNOWN", "reps": 10, "sets": 1}]}
+    _, act = gd.normalize_activity(raw)
+    assert act["ex"] == [{"c": "PULL_UP", "sc": "LAT_PULLDOWN", "s": 10, "r": 50}, {"c": "UNKNOWN", "s": 1, "r": 10}]

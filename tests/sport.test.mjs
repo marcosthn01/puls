@@ -56,3 +56,24 @@ test('Training heute: nach Indoor-Rad gilt der Tag als erledigt – kein Gym obe
   assert.equal(plan.kind, 'done');
   assert.match(plan.title, /^Erledigt: Indoor-Rad · 45 Min\.$/);
 });
+
+test('Sportart korrigieren: gilt für Auswertung und Plan, Garmins Angabe bleibt erhalten', () => {
+  const store = { days: { '2026-11-10': { acts: [{ id: 25, type: 'strength_training', name: 'Krafttraining', dur: 1974, sets: 1, reps: 0 }] }, '2026-11-09': { stats: {} } } };
+  const odd = S.suspicious(store.days['2026-11-10'].acts[0]);
+  assert.match(odd, /in 33 Min\. nur 1 Satz erkannt/);
+  const fixed = S.applySportLabels(store, { 25: 'sport:indoor_cycling', 3: 'push' });
+  const a = fixed.days['2026-11-10'].acts[0];
+  assert.equal(a.type, 'indoor_cycling');
+  assert.equal(a.typeGarmin, 'strength_training');
+  assert.equal(S.activityKind(a), 'bike');
+  assert.equal(S.suspicious(a), null);
+  assert.equal(store.days['2026-11-10'].acts[0].type, 'strength_training'); // Original unverändert
+  // „wie Garmin“ nimmt die Korrektur zurück (auch wenn der Abruf sie schon eingetragen hat)
+  const back = S.applySportLabels(fixed, { 25: 'sport:garmin' });
+  assert.equal(back.days['2026-11-10'].acts[0].type, 'strength_training');
+  assert.ok(!('typeGarmin' in back.days['2026-11-10'].acts[0]));
+  // Sportart-Markierungen sind keine Push/Pull-Splits
+  assert.equal(T.splitOf({ id: 25, name: 'Krafttraining' }, { 25: 'sport:indoor_cycling' }), null);
+  // echte Kraft-Einheit mit vielen Sätzen ist nicht verdächtig
+  assert.equal(S.suspicious({ id: 1, type: 'strength_training', dur: 4193, sets: 43, reps: 300 }), null);
+});

@@ -22,7 +22,7 @@ export { activityKind };
 
 /** Split einer Gym-Einheit: selbst markiert (labels[id]) oder aus dem Namen („Push“, „Pull“ …). */
 export function splitOf(a, labels = {}) {
-  if (a?.id != null && labels[a.id]) return labels[a.id];
+  if (a?.id != null && SPLITS[labels[a.id]]) return labels[a.id]; // nur Push/Pull …, keine Sportart-Korrektur
   const n = String(a?.name || '').toLowerCase();
   if (/push|drück|brust|chest|schulter/.test(n)) return 'push';
   if (/pull|zieh|rücken|back|bizeps/.test(n)) return 'pull';

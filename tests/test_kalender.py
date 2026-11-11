@@ -143,3 +143,21 @@ def test_sick_episodes_from_ical():
         {"s": "2026-09-19", "e": "2026-09-24"},  # gefaltete Zeile, „Erkältung“
         {"s": "2026-10-03", "e": "2026-10-03"},  # Termin mit Uhrzeit, „Fieber“
     ]
+
+
+def test_korrigierte_sportart_gilt_ueberall():
+    # Garmin hat „Krafttraining“ gespeichert, du warst aber auf dem Indoor-Rad
+    labels = kalender.merge_labels({"1": "push"}, '{"7": "sport:indoor_cycling", "8": "sport:DROP TABLE", "9": "sport:x"}')
+    assert labels == {"1": "push", "7": "sport:indoor_cycling"}
+    st = {"labels": labels, "days": {"2026-11-10": {"acts": [{"id": 7, "type": "strength_training", "name": "Krafttraining", "start": "15:31", "dur": 1974}]}}}
+    assert kalender.apply_sport_labels(st) == 1
+    a = st["days"]["2026-11-10"]["acts"][0]
+    assert a["type"] == "indoor_cycling" and a["typeGarmin"] == "strength_training"
+    assert kalender.activity_kind(a) == "bike" and kalender.title_of(a, {}) == "Cardio · Indoor-Rad"
+    # zweimal anwenden ändert nichts; „wie Garmin“ nimmt die Korrektur zurück
+    kalender.apply_sport_labels(st)
+    assert a["typeGarmin"] == "strength_training"
+    st["labels"] = kalender.merge_labels(st["labels"], '{"7": "sport:garmin"}')
+    assert st["labels"] == {"1": "push"}
+    kalender.apply_sport_labels(st)
+    assert a["type"] == "strength_training" and "typeGarmin" not in a

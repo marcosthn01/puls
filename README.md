@@ -22,6 +22,10 @@ und so auswertet wie Whoop:
   Leistung (Ø, normiert, max.), Trittfrequenz, Tempo/Pace, Höhenmeter, Zeit in Bewegung, Atmung,
   bei Kraft Sätze, Wiederholungen und die von der Uhr erkannten Übungen. Der Name einer Einheit zählt nur,
   wenn Garmin keine eindeutige Sportart liefert (z. B. „Fitnessgerät“).
+- **Falsche Sportart auf der Uhr gestartet?** Puls merkt es (z. B. „Krafttraining“ mit nur 1 Satz in 33 Min.)
+  und fragt nach – ein Tipp auf „Indoor-Rad“ korrigiert die Einheit überall (Tag, Woche, Trainingsplan,
+  Kalender, Widget, Push, Coach). Jede Einheit lässt sich auch selbst ändern (Einheit antippen → „Falsche
+  Sportart? Ändern“). Korrekturen in Garmin Connect der letzten 2 Wochen übernimmt Puls automatisch.
 - **Lifestyle-Log wie ein Tagebuch:** Symbol-Knöpfe auf „Heute“ (Kaffee, Alkohol, spätes Essen, Handy im Bett,
   Stress, Sauna, Meditation, Kälte …) – antippen, wenn es passiert, Puls merkt sich die Uhrzeit. Danach zeigt
   Puls, wie jedes Verhalten deine Nacht verändert (Recovery, HRV, Ruhepuls, Tiefschlaf), deine persönliche

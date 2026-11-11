@@ -250,11 +250,77 @@ export function sportMeta(a) {
     .map((x) => (x.k === 'Sätze' || x.k === 'Wiederholungen' ? `${x.v} ${x.k}` : `${x.v} ${x.u}`.trim()));
 }
 
+const SUB_EXERCISES = {
+  LAT_PULLDOWN: 'Latzug',
+  DUMBBELL_FLYE: 'Kurzhantel-Fliegende',
+  JUMP_ROPE: 'Seilspringen',
+  BARBELL_DEADLIFT: 'Kreuzheben (Langhantel)',
+  ROMANIAN_DEADLIFT: 'Rumänisches Kreuzheben',
+  BARBELL_BENCH_PRESS: 'Bankdrücken (Langhantel)',
+  DUMBBELL_BENCH_PRESS: 'Bankdrücken (Kurzhantel)',
+  INCLINE_DUMBBELL_BENCH_PRESS: 'Schrägbank (Kurzhantel)',
+  BARBELL_BACK_SQUAT: 'Kniebeuge (Langhantel)',
+  GOBLET_SQUAT: 'Goblet Squat',
+  BENT_OVER_ROW: 'Vorgebeugtes Rudern',
+  SEATED_CABLE_ROW: 'Rudern am Kabel',
+  DUMBBELL_ROW: 'Kurzhantel-Rudern',
+  CABLE_CROSSOVER: 'Kabelzug-Fliegende',
+  TRICEPS_PRESSDOWN: 'Trizepsdrücken am Kabel',
+  HAMMER_CURL: 'Hammer-Curls',
+  CHIN_UP: 'Klimmzüge (Untergriff)',
+};
+
 /** Übungen einer Kraft-Einheit (von der Uhr erkannt): [{ name, sets, reps }]. */
 export function exercises(a) {
   return (Array.isArray(a?.ex) ? a.ex : [])
-    .filter((x) => x && (x.s || x.r))
-    .map((x) => ({ name: exerciseName(x.c), sets: x.s || null, reps: x.r || null }));
+    .filter((x) => x && (x.r || (x.s && x.c !== 'UNKNOWN')))
+    .map((x) => ({ name: SUB_EXERCISES[x.sc] || exerciseName(x.c), sets: x.s || null, reps: x.r || null }));
+}
+
+// ------------------------------------------------------------------ Sportart korrigieren
+
+/** Auswahl, wenn Garmin die falsche Sportart gespeichert hat (z. B. Krafttraining statt Indoor-Rad). */
+export const CHOICES = ['indoor_cycling', 'cycling', 'road_biking', 'mountain_biking', 'strength_training', 'hiit', 'running', 'treadmill_running', 'walking', 'hiking', 'indoor_cardio', 'elliptical', 'indoor_rowing', 'yoga', 'lap_swimming', 'other'];
+
+/** Deine Korrekturen anwenden: Markierung „sport:<art>“ je Einheit (Garmins Angabe bleibt in typeGarmin). */
+export function applySportLabels(store, labels = {}) {
+  if (!store?.days) return store;
+  const fix = Object.entries(labels || {}).filter(([, v]) => typeof v === 'string' && v.startsWith('sport:'));
+  if (!fix.length && !Object.values(store.days).some((d) => d?.acts?.some((a) => a.typeGarmin))) return store;
+  const map = Object.fromEntries(fix);
+  const days = {};
+  for (const [date, d] of Object.entries(store.days)) {
+    if (!d?.acts?.length) {
+      days[date] = d;
+      continue;
+    }
+    days[date] = {
+      ...d,
+      acts: d.acts.map((a) => {
+        const v = map[String(a.id)];
+        const garmin = a.typeGarmin ?? a.type;
+        if (v && v !== 'sport:garmin') return { ...a, type: v.slice(6), typeGarmin: garmin };
+        if (v === 'sport:garmin' || a.typeGarmin) {
+          const { typeGarmin, ...rest } = a;
+          return { ...rest, type: garmin };
+        }
+        return a;
+      }),
+    };
+  }
+  return { ...store, days };
+}
+
+/**
+ * Sieht eine „Kraft“-Einheit eher nach etwas anderem aus? Die Uhr zählt beim Krafttraining Sätze –
+ * erkennt sie in 15+ Minuten höchstens 2 Sätze und kaum Wiederholungen, war es meist eine andere Sportart
+ * (z. B. Indoor-Rad mit dem falschen Profil gestartet).
+ */
+export function suspicious(a) {
+  if (!a || a.typeGarmin || activityKind(a) !== 'gym' || !isNum(a.dur) || a.dur < 900 || !isNum(a.sets)) return null;
+  if (a.sets > 2 || (a.reps ?? 0) > 10) return null;
+  const min = Math.round(a.dur / 60);
+  return `Deine Uhr hat in ${min} Min. nur ${a.sets === 1 ? '1 Satz' : `${a.sets} Sätze`} erkannt – war das wirklich Krafttraining?`;
 }
 
 /** Eine Zeile für den KI-Coach: Sportart, Dauer und die wichtigsten Messwerte. */

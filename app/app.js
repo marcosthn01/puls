@@ -11,7 +11,7 @@ import * as Sp from './sport.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.9.0';
+const VERSION = '5.9.1';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -37,6 +37,7 @@ const LS = {
   padPending: 'puls.padPending',
   illness: 'puls.illness',
   illAsked: 'puls.illAsked2',
+  sportAsked: 'puls.sportAsked',
   illSent: 'puls.illSent',
   ics: 'puls.ics',
 };
@@ -307,7 +308,9 @@ const illnessForModel = (store = state.store) => ({ ...illnessLabels(), cal: sto
 /** Zum Abruf: deine Angaben + die private iCal-Adresse (leer = Kalender getrennt). */
 const illnessUpload = () => ({ ...illnessLabels(), ics: state.demo ? '' : ls.get(LS.ics, '') });
 function analyzeStore(store, settings) {
-  state.model = E.analyze({ ...store, illness: illnessForModel(store) }, settings);
+  // Von dir korrigierte Sportarten (z. B. Krafttraining → Indoor-Rad) gelten sofort, nicht erst nach dem Abruf
+  const fixed = Sp.applySportLabels(store, { ...(store.labels || {}), ...ls.get(LS.splits, {}) });
+  state.model = E.analyze({ ...fixed, illness: illnessForModel(store) }, settings);
 }
 function refreshModel() {
   if (state.store) analyzeStore(state.store, ls.get(LS.settings, {}));
@@ -1005,7 +1008,7 @@ function viewToday(anim) {
     : '';
   const nutri = isLatest ? nutritionCard(m, i) : '';
   return `${setupCard()}${telemetry(d)}${dials(d, anim)}${dashTiles(m, i)}
-    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${isLatest ? lifestyleCard() + padLogRow(d) : ''}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${isLatest ? illQuestionCard(m) : ''}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
+    <h2 class="bighead">Mein Tag</h2>${illnessRow(m, i)}${planCard}${isLatest ? lifestyleCard() + padLogRow(d) : ''}${weekTrainingCard(m, i)}${report}${reviewCard(m, i)}${journalRow}${isLatest ? illQuestionCard(m) : ''}${isLatest ? sportQuestionCard(m) : ''}${healthRow}${acts}${goalsCard(m, i)}${nutri}${insightsCard}
     <h2 class="bighead">Mein Dashboard</h2>${statsCard(m, i)}${weekRow}`;
 }
 
@@ -1314,6 +1317,57 @@ function illQuestionCard(m) {
     <div class="illq-btns"><button class="btn" data-act="ill-yes" data-date="${c.date}">Ja, war krank</button><button class="btn ghost" data-act="ill-no" data-date="${c.date}">Nein</button></div>
     <button class="linkbtn" data-act="ill-skip" data-date="${c.date}">Weiß ich nicht mehr</button>
     <p class="note">Jede Antwort macht deine Frühwarnung genauer: Puls lernt, wie sich ein Infekt bei dir ankündigt – und was nur ein Ausreißer war.</p></section>`;
+}
+
+// ------------------------------------------------------------------ Sportart prüfen (Garmin hat sich vertan?)
+
+/** Einheit nach Garmin-ID (und Datum) im aktuellen Modell finden. */
+function findAct(id, date) {
+  const days = state.model?.days || [];
+  const pool = date ? days.filter((d) => d.date === date) : days;
+  for (const d of pool) for (const a of d.acts || []) if (String(a.id) === String(id)) return a;
+  return null;
+}
+
+/** Deine eigenen Sportarten (ohne Kraft), häufigste zuerst – für die Vorschläge. */
+function ownSports(m) {
+  const n = {};
+  for (const d of m.days.slice(-90)) for (const a of d.acts || []) if (Sp.activityKind(a) !== 'gym' && a.type) n[a.type] = (n[a.type] || 0) + 1;
+  const list = Object.entries(n).sort((x, y) => y[1] - x[1]).map(([k]) => k);
+  for (const k of ['indoor_cycling', 'cycling']) if (!list.includes(k)) list.push(k);
+  return list.slice(0, 2);
+}
+
+function setSport(id, sport) {
+  if (!id) return;
+  const labels = ls.get(LS.splits, {});
+  labels[String(id)] = sport === 'garmin' ? 'sport:garmin' : `sport:${sport}`;
+  ls.set(LS.splits, labels);
+  ls.set(LS.sportAsked, [...new Set([...ls.get(LS.sportAsked, []), String(id)])].slice(-200));
+  closeSheet();
+  refreshModel();
+  // gleich mitschicken, damit Kalender, Widget und Push es auch wissen
+  if (!state.demo && ghConfig().token) dispatch({}).catch(() => {});
+  toast(sport === 'garmin' ? 'Wieder so, wie Garmin es gespeichert hat.' : sport === 'ok' ? 'Alles klar.' : `Gespeichert: ${Sp.sportLabel({ type: sport })} – gilt jetzt überall in Puls.`);
+}
+
+/** Rückfrage auf „Heute“: Krafttraining mit kaum Sätzen in den letzten 3 Tagen – war es etwas anderes? */
+function sportQuestionCard(m) {
+  const asked = new Set(ls.get(LS.sportAsked, []));
+  for (const d of m.days.slice(-3).reverse()) {
+    for (const a of d.acts || []) {
+      const odd = Sp.suspicious(a);
+      if (!odd || a.id == null || asked.has(String(a.id))) continue;
+      const when = d.date === todayIso() ? 'heute' : d.date === E.addDays(todayIso(), -1) ? 'gestern' : longDate(d.date);
+      const sugg = ownSports(m);
+      return `<section class="card illq"><h2>Sportart prüfen</h2>
+        <p>Garmin hat deine Einheit ${esc(when)} um ${esc(a.start || '')} als <b>Krafttraining</b> gespeichert. ${esc(odd.replace(' – war das wirklich Krafttraining?', '.'))} Was war es?</p>
+        <div class="illq-btns">${sugg.map((k) => `<button class="btn" data-act="sport-q" data-id="${esc(String(a.id))}" data-sport="${k}">${esc(Sp.sportLabel({ type: k }))}</button>`).join('')}</div>
+        <div class="illq-btns" style="margin-top:8px"><button class="btn ghost" data-act="sport-pick" data-id="${esc(String(a.id))}" data-date="${d.date}">Andere …</button><button class="btn ghost" data-act="sport-ok" data-id="${esc(String(a.id))}">Stimmt so</button></div>
+        <p class="note">Puls übernimmt deine Antwort überall – und zählt die Einheit richtig für Training, Woche und Kalender.</p></section>`;
+    }
+  }
+  return '';
 }
 
 // ------------------------------------------------------------------ Tagesrückblick, Wochenziele
@@ -2283,9 +2337,27 @@ function renderSheet() {
       const exList = ex.length
         ? `<h3 class="subhead">Übungen (von der Uhr erkannt)</h3><ul class="exlist">${ex.map((x) => `<li><span>${esc(x.name)}</span><b>${x.sets ? `${x.sets} Sätze` : ''}${x.sets && x.reps ? ' · ' : ''}${x.reps ? `${x.reps} Wdh.` : ''}</b></li>`).join('')}</ul>`
         : '';
-      body = `<h3>${esc(title)}</h3><p class="muted small">${esc(label)} · ${esc(longDate(d.date))} · ${esc(a.start || '')}</p>
+      const odd = ls.get(LS.sportAsked, []).includes(String(a.id)) ? null : Sp.suspicious(a);
+      const fixNote = a.typeGarmin
+        ? `<p class="small sp-note">Von dir korrigiert – Garmin hatte „${esc(Sp.sportLabel({ type: a.typeGarmin }))}“ gespeichert.</p>`
+        : odd
+          ? `<p class="small sp-note warn">${esc(odd)}</p>`
+          : '';
+      body = `<h3>${esc(title)}</h3><p class="muted small">${esc(label)} · ${esc(longDate(d.date))} · ${esc(a.start || '')}</p>${fixNote}
+        <button class="linkbtn" data-act="sport-pick" data-id="${esc(String(a.id ?? ''))}" data-date="${esc(d.date)}" data-idx="${sh.idx}" style="margin-top:6px">Falsche Sportart? Ändern</button>
         <div class="grid" style="margin-top:12px">${t('Strain', de1(a.strain))}${t('Dauer', E.fmtDur(a.dur / 60), 'Std.')}${t('Ø Puls', a.avgHr, 'bpm')}${t('Max. Puls', a.maxHr, 'bpm')}${facts.map((f) => t(f.k, f.v, f.u)).join('')}${t('Kalorien', a.kcal != null ? int(a.kcal) : null, 'kcal')}${ml ? t('Muskeln', `${de1(ml.score)}`, ml.level) : ''}</div>
         ${exList}${zones}<button class="btn ghost" data-act="sheet-close" style="margin-top:14px">Schließen</button>`;
+    }
+  } else if (sh.type === 'sport-pick') {
+    const a = findAct(sh.id, sh.date);
+    if (a) {
+      const garmin = a.typeGarmin ?? a.type;
+      const cur = a.type;
+      body = `<h3>Welche Sportart war das?</h3>
+        <p class="muted small">Garmin hat „${esc(Sp.sportLabel({ type: garmin }))}“ gespeichert (${esc(longDate(sh.date))}, ${esc(a.start || '')}, ${Math.round((a.dur || 0) / 60)} Min.). Deine Auswahl gilt überall in Puls – Tag, Woche, Trainingsplan, Kalender, Widget und Coach.</p>
+        <div class="sp-grid">${Sp.CHOICES.map((k) => `<button class="sp-choice${k === cur ? ' on' : ''}" data-act="sport-set" data-id="${esc(String(sh.id))}" data-sport="${k}">${actIcon({ type: k })}<span>${esc(Sp.sportLabel({ type: k }))}</span></button>`).join('')}</div>
+        ${a.typeGarmin ? `<button class="btn ghost" data-act="sport-set" data-id="${esc(String(sh.id))}" data-sport="garmin" style="margin-top:12px">Wie Garmin: ${esc(Sp.sportLabel({ type: garmin }))}</button>` : ''}
+        <p class="note">Tipp: Ändere es auch in Garmin Connect (Aktivität öffnen → Stift → Aktivitätstyp) – Puls übernimmt Änderungen der letzten 2 Wochen automatisch.</p>`;
     }
   } else if (sh.type === 'profile') {
     const p = profile();
@@ -2468,6 +2540,8 @@ sheetEl.addEventListener('click', async (e) => {
   if (!t) return;
   const act = t.dataset.act;
   if (act === 'sheet-close') closeSheet();
+  if (act === 'sport-pick') return openSheet({ type: 'sport-pick', id: t.dataset.id, date: t.dataset.date });
+  if (act === 'sport-set') return setSport(t.dataset.id, t.dataset.sport);
   if (act === 'life-at') {
     const time = document.getElementById('life-time')?.value || null;
     logLife(t.dataset.id, time);
@@ -2924,6 +2998,17 @@ app.addEventListener('click', async (e) => {
       refreshModel();
       break;
     }
+    case 'sport-q':
+      setSport(t.dataset.id, t.dataset.sport);
+      break;
+    case 'sport-ok':
+      ls.set(LS.sportAsked, [...new Set([...ls.get(LS.sportAsked, []), String(t.dataset.id)])].slice(-200));
+      toast('Alles klar – bleibt Krafttraining.');
+      render();
+      break;
+    case 'sport-pick':
+      openSheet({ type: 'sport-pick', id: t.dataset.id, date: t.dataset.date });
+      break;
     case 'ill-del': {
       const own = illLocal();
       saveIll({ ...own, pos: (own.pos || []).filter((x) => x.s !== t.dataset.date) });

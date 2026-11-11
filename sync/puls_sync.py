@@ -271,6 +271,7 @@ def sync_days(fetch: Fetcher, store: dict, days: list[dt.date], today: dt.date, 
     return updated
 
 
+ACT_REFRESH_DAYS = 14
 ACTS_VERSION = 2  # 2: Sportart + alle Messwerte (Leistung, Trittfrequenz, Sätze …) je Einheit
 
 
@@ -397,6 +398,7 @@ def prune(store: dict, today: dt.date) -> None:
 
 
 def write_store(store: dict, cache_dir: Path, passphrase: str, salt: bytes | None, extra_out: Path | None) -> None:
+    kalender.apply_sport_labels(store)  # korrigierte Sportarten gelten überall (App, Kalender, Widget, Push)
     box = encrypt_json(store, passphrase, salt=salt)
     text = json.dumps(box, separators=(",", ":"))
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -522,7 +524,10 @@ def run(
             if normalized:
                 store["profile"] = normalized
         updated = sync_days(fetch, store, days, today, tz)
-        n_acts = sync_activities(fetch, store, days)
+        # Einheiten der letzten 2 Wochen immer neu holen: Änderungen in Garmin Connect (z. B. korrigierte
+        # Sportart) kommen so an – eine einzige Abfrage
+        act_days = sorted(set(days) | {today - dt.timedelta(days=k) for k in range(ACT_REFRESH_DAYS)})
+        n_acts = sync_activities(fetch, store, act_days)
         log(f"Aktualisiert: {updated} Tage, {n_acts} Aktivitäten, {fetch.calls} Abfragen.")
         if store.get("actsV") != ACTS_VERSION:
             n_all = refresh_all_activities(fetch, store, today)
