@@ -12,6 +12,7 @@ Lokal testen (Python 3.12+):
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime as dt
 import json
 import os
@@ -324,7 +325,22 @@ def log_diagnosis(fetch: Fetcher, store: dict, today: dt.date, public_b64: str, 
     garmin = [{k: item.get(k) for k in keep if k in item} for item in raw] if isinstance(raw, list) else str(raw)
     stored = {d: (store.get("days", {}).get(d) or {}).get("acts") for d in sorted(store.get("days", {})) if d >= start}
     kinds = {d: [kalender.activity_kind(a) for a in (acts or [])] for d, acts in stored.items()}
-    box = crypto_box.seal_import({"garmin": garmin, "stored": stored, "kinds": kinds, "labels": store.get("labels")}, public_b64)
+    # Alle Sportarten seit Tag 1 (Anzahl) – und Meditations-/Atem-/Yoga-Einheiten der letzten 30 Tage komplett,
+    # die neueste davon samt Original-FIT-Datei (ZIP), um die enthaltenen Felder zu prüfen
+    types: dict[str, int] = {}
+    for day in (store.get("days") or {}).values():
+        for a in (day or {}).get("acts") or []:
+            types[str(a.get("type"))] = types.get(str(a.get("type")), 0) + 1
+    recent = fetch("get_activities_by_date", (today - dt.timedelta(days=30)).isoformat(), today.isoformat())
+    calm = [x for x in (recent if isinstance(recent, list) else []) if re.search(r"medit|yoga|breath|mindful|relax", json.dumps((x or {}).get("activityType") or {}).lower())]
+    fit = None
+    if calm:
+        newest = max(calm, key=lambda x: str(x.get("startTimeLocal") or ""))
+        blob = fetch("download_activity", str(newest.get("activityId")), fetch.api.ActivityDownloadFormat.ORIGINAL)
+        if isinstance(blob, (bytes, bytearray)):
+            fit = {"activityId": newest.get("activityId"), "zip": base64.b64encode(bytes(blob)).decode()}
+    payload = {"garmin": garmin, "stored": stored, "kinds": kinds, "labels": store.get("labels"), "types": types, "calm": calm, "fit": fit}
+    box = crypto_box.seal_import(payload, public_b64)
     log("Diagnose (verschlüsselt): " + json.dumps(box))
     if out is not None:
         out.write_text(json.dumps(box))  # landet verschlüsselt im Zweig „diag“
