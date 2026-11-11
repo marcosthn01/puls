@@ -219,7 +219,7 @@ jobs:
   # Fehlersuche: verschlüsselte Diagnose (nur mit dem privaten Schlüssel lesbar) in den Zweig „diag“ legen
   diag:
     needs: sync
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diag != '' }}
+    if: ${{ !cancelled() && needs.sync.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.diag != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
