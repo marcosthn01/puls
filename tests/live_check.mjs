@@ -50,6 +50,10 @@ if (summary?.view === 'main') {
     const forward = await walk(1);
     console.log(`Bereich ${tab}: ${forward + 1} Tage geöffnet (${back} zurück, ${forward} vor)`);
   }
+  // Essen: Ansicht öffnet ohne Fehler (Tagebuch liegt nur auf dem iPhone – im Test-Browser leer)
+  await page.click('#tabbar [data-tab=essen]');
+  console.log('Essen: ' + ((await page.$('.fd-hero')) ? 'Ansicht bereit' : 'fehlt'));
+  if (!(await page.$('.fd-hero'))) errors.push('Essen-Ansicht fehlt.');
   await page.click('#tabbar [data-tab=coach]');
   // Der Coach-Schlüssel liegt nur auf dem iPhone – im Test-Browser gibt es ihn nie
   console.log('Coach: ' + ((await page.$('#askbox')) ? 'Chat bereit' : 'im Test-Browser ohne Schlüssel (auf dem iPhone separat eingerichtet)'));

@@ -8,10 +8,11 @@ import * as Coach from './coach.js';
 import * as Hud from './hud.js';
 import * as T from './training.js';
 import * as Sp from './sport.js';
+import * as Food from './food.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.9.1';
+const VERSION = '5.10.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -131,6 +132,9 @@ const I = {
   bell: svg('<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>'),
   send: svg('<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  camera: svg('<path d="M4 8h3l1.6-2.4A1.5 1.5 0 0 1 9.9 5h4.2a1.5 1.5 0 0 1 1.3.6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/>'),
+  pen: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+  trash: svg('<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
   run: svg('<circle cx="14" cy="4.5" r="1.8"/><path d="M8 21l3-6 3 2 1 4"/><path d="M6 12l3-4 5 1 2 4 3 1"/>'),
   bike: svg('<circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-8h5l3 8"/><path d="M9 8h3"/>'),
   lift: svg('<path d="M6 7v10M18 7v10M3 9v6M21 9v6M6 12h12"/>'),
@@ -240,6 +244,7 @@ const INFO = {
   age: ['Puls-Alter', 'Eine Schätzung, wie alt dein Körper wirkt – aus Fitness (VO₂max), Ruhepuls, Schlaf und Bewegung der letzten 30 Tage. Jeder Faktor zählt nur ein paar Jahre. Kein medizinischer Wert.'],
   load: ['Trainingslast', 'Deine Belastung der letzten 7 Tage im Vergleich zu den letzten 28. Zwischen 0,8 und 1,3 machst du Fortschritte, darüber steigt das Verletzungsrisiko.'],
   pad: ['Walking-Pad', 'Schritte von deinem Walking-Pad – von Hand eingetragen (Kilometer aus PitPat, umgerechnet mit deiner Schrittlänge) oder über Apple Health und den Kurzbefehl. Wenn du am Schreibtisch läufst, zählt die Uhr kaum mit, weil der Arm still bleibt. Puls zieht ab, was die Uhr in der Zeit schon gezählt hat, und addiert nur den Rest. So zählt nichts doppelt.'],
+  food: ['Tages-Check Ernährung', 'Puls vergleicht, was du gegessen hast, mit deinen Tageszielen (aus deinem Garmin-Verbrauch, Training und Ziel) und prüft Eiweiß und seine Verteilung, Ballaststoffe (≥ 30 g), Obst & Gemüse (≥ 400 g), Zucker (WHO: unter 10 % der Kalorien), gesättigte Fette (unter 10 %), Salz (max. 6 g), Alkohol, Hochverarbeitetes und das Timing (letzte Mahlzeit 3 Std. vor dem Schlafen, Koffein-Grenze). Der Score kommt abends, wenn der Tag komplett ist. Die Werte schätzt Claude aus deinen Fotos – gut für Tendenzen, nicht aufs Gramm.'],
   report: ['Dein Bericht – passend zur Uhrzeit', 'Der KI-Coach (Claude) schaut sich alle deine Werte an – wie ein Arzt, Trainer und Ernährungscoach zusammen – und schreibt je nach Tageszeit: morgens (4–11 Uhr) Nacht, Erholung und Plan für heute; mittags (11–15 Uhr) Bilanz des Vormittags und was noch ansteht; nachmittags (15–18 Uhr) Training und Essen bis zum Abend; abends (ab 18 Uhr) Tagesbilanz mit deinem Training, Schlafenszeit und Ausblick auf morgen. Ein neuer Bericht entsteht nur, wenn du die App in einer neuen Tageszeit öffnest (oder ein Training dazukommt) – höchstens etwa 4 am Tag, je ca. 5–15 Cent über deinen Claude-Schlüssel (mit Sonnet etwa die Hälfte). Keine ärztliche Diagnose.'],
   nutrition: ['Ernährung heute', 'Dein Tagesbedarf aus deinem echten Garmin-Verbrauch der letzten 2 Wochen, angepasst an die Belastung von heute und dein Ziel. Eiweiß je nach Ziel 1,4–2,0 g pro kg, Kohlenhydrate 3–7 g pro kg je nach Strain (harte Tage brauchen mehr), Fett mindestens 0,8 g pro kg. Wasser: 35 ml pro kg plus 0,6 L pro Trainingsstunde. Richtwerte, keine Diät.'],
   health: ['Gesundheits-Check', 'Wie ein Arzt auf Trends schaut: Der Schnitt deiner letzten 7 Tage wird mit deinen eigenen Werten der 2 Monate davor verglichen – Ruhepuls, HRV, Atemfrequenz, Schlaf, Schlafrhythmus, Blutsauerstoff, Bewegung und VO₂max. Einzelne schlechte Nächte sind normal; wichtig sind Veränderungen über Tage. Bei Hinweisen der Stufe „Arzt“ bitte ärztlich abklären lassen.'],
@@ -406,6 +411,7 @@ async function startDemo() {
   const store = makeDemoStore({ now: new Date() });
   state.demo = true;
   state.demoJournal = store.journal || {};
+  state.demoFood = demoFood();
   ls.set(LS.demo, true);
   setStore(store);
 }
@@ -676,12 +682,13 @@ async function enablePush() {
 
 // ------------------------------------------------------------------ Navigation
 
-const DAY_TABS = ['heute', 'schlaf', 'recovery', 'belastung'];
+const DAY_TABS = ['heute', 'schlaf', 'recovery', 'belastung', 'essen'];
 const TAB_LIST = [
   ['heute', 'Heute', I.home],
   ['schlaf', 'Schlaf', I.sleep],
   ['recovery', 'Recovery', I.recovery],
   ['belastung', 'Strain', I.strain],
+  ['essen', 'Essen', I.meal],
   ['coach', 'Coach', I.coach],
 ];
 
@@ -815,7 +822,7 @@ function render() {
     return;
   }
   const draft = document.getElementById('askbox')?.value || '';
-  const views = { heute: viewToday, schlaf: viewSleep, recovery: viewRecovery, belastung: viewStrain, coach: viewCoach, trends: viewTrends, settings: viewSettings };
+  const views = { heute: viewToday, schlaf: viewSleep, recovery: viewRecovery, belastung: viewStrain, essen: viewFood, coach: viewCoach, trends: viewTrends, settings: viewSettings };
   let head;
   if (DAY_TABS.includes(state.tab)) head = dayHeader();
   else if (state.tab === 'coach') head = simpleHeader('Coach', false, `<button class="chip" data-act="chat-new" aria-label="Neuer Chat">${I.plus}Neu</button>`);
@@ -1523,17 +1530,507 @@ function nutritionCard(m, i) {
     n.lastMeal ? [I.fork, n.lastMeal, '', 'Essen bis'] : null,
   ].filter(Boolean);
   const tips = n.tips.filter((t) => t.key !== 'koffein').slice(0, 2);
+  // Gegessen (Foto-Tagebuch) gegen das Ziel
+  const eaten = Food.mealsOn(foodList(), m.days[i].date);
+  const et = Food.dayTotals(eaten);
+  const eatenRow = eaten.length
+    ? `<button class="fd-eaten" data-tab="essen"><span><b>${int(et.kcal)}</b> von ${int(n.kcal)} kcal gegessen</span><span class="muted">Eiweiß ${Math.round(et.p)}/${n.protein} g · ${eaten.length} ${eaten.length === 1 ? 'Eintrag' : 'Einträge'}</span><div class="fd-bar"><i style="width:${Math.min(100, (100 * et.kcal) / n.kcal).toFixed(0)}%;background:${et.kcal > n.kcal * 1.05 ? 'var(--yellow)' : 'var(--green)'}"></i></div></button>`
+    : '';
   return card(
     'Ernährung heute',
     `<div class="nhero"><div class="nk"><b>${int(n.kcal)}</b><small>kcal</small></div><span class="ntag">${esc(n.goal === 'gesund' ? n.strainWord : n.goalLabel)}</span></div>
+    ${eatenRow}
     <div class="nbar">${bar}</div>
     <div class="nmacros">${macros}</div>
+    ${foodAddButtons(m.days[i].date)}
     <div class="nmini">${mini.map(([ic, v, u, l]) => `<div class="nmi"><span class="dt-ic">${ic}</span><span><b>${v}${u ? `<small>${u}</small>` : ''}</b><em>${l}</em></span></div>`).join('')}</div>
     ${tips.length ? `<ul class="ntips">${tips.map((t) => `<li>${esc(t.text)}</li>`).join('')}</ul>` : ''}
     <details class="disclose"><summary>Warum diese Werte</summary><p>${esc(n.basis)}</p><button class="linkbtn" data-act="profile">Ziel & Gewicht ändern</button></details>`,
     'nutrition',
     'nutrition',
   );
+}
+
+// ------------------------------------------------------------------ Essen: Foto → Nährwerte (Claude), Tagebuch, Auswertung
+
+/** Speicher für Mahlzeiten und Vorschaubilder – nur auf diesem iPhone (IndexedDB, sonst localStorage ohne Fotos). */
+const FoodDB = (() => {
+  let dbp = null;
+  const open = () =>
+    (dbp ||= new Promise((resolve, reject) => {
+      if (!('indexedDB' in self)) return reject(new Error('kein IndexedDB'));
+      const r = indexedDB.open('puls-food', 1);
+      r.onupgradeneeded = () => {
+        r.result.createObjectStore('meals', { keyPath: 'id' });
+        r.result.createObjectStore('photos');
+      };
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    }));
+  const run = async (name, mode, fn) => {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(name, mode);
+      const req = fn(tx.objectStore(name));
+      tx.oncomplete = () => resolve(req?.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  };
+  const LS_FOOD = 'puls.food';
+  return {
+    async all() {
+      try {
+        return (await run('meals', 'readonly', (st) => st.getAll())) || [];
+      } catch {
+        return ls.get(LS_FOOD, []);
+      }
+    },
+    async put(meal) {
+      try {
+        await run('meals', 'readwrite', (st) => st.put(meal));
+      } catch {
+        ls.set(LS_FOOD, [...ls.get(LS_FOOD, []).filter((m) => m.id !== meal.id), meal]);
+      }
+    },
+    async del(id) {
+      try {
+        await run('meals', 'readwrite', (st) => st.delete(id));
+        await run('photos', 'readwrite', (st) => st.delete(id));
+      } catch {
+        ls.set(LS_FOOD, ls.get(LS_FOOD, []).filter((m) => m.id !== id));
+      }
+    },
+    async photo(id) {
+      try {
+        return await run('photos', 'readonly', (st) => st.get(id));
+      } catch {
+        return null;
+      }
+    },
+    async putPhoto(id, dataUrl) {
+      try {
+        await run('photos', 'readwrite', (st) => st.put(dataUrl, id));
+      } catch {
+        /* ohne Foto weiter */
+      }
+    },
+    async clear() {
+      try {
+        await run('meals', 'readwrite', (st) => st.clear());
+        await run('photos', 'readwrite', (st) => st.clear());
+      } catch {
+        /* egal */
+      }
+      ls.del(LS_FOOD);
+    },
+  };
+})();
+
+state.food = [];
+state.thumbs = {};
+state.foodJob = null;
+const foodList = () => (state.demo ? state.demoFood || [] : state.food);
+
+async function loadFood() {
+  state.food = await FoodDB.all();
+  if (state.view === 'main' && ['essen', 'heute'].includes(state.tab) && !state.sheet) render();
+}
+loadFood();
+
+async function saveMeal(meal) {
+  if (state.demo) {
+    state.demoFood = [...(state.demoFood || []).filter((m) => m.id !== meal.id), meal];
+    return;
+  }
+  state.food = [...state.food.filter((m) => m.id !== meal.id), meal];
+  await FoodDB.put(meal);
+}
+async function deleteMeal(id) {
+  if (state.demo) {
+    state.demoFood = (state.demoFood || []).filter((m) => m.id !== id);
+    return;
+  }
+  state.food = state.food.filter((m) => m.id !== id);
+  delete state.thumbs[id];
+  await FoodDB.del(id);
+}
+const findMeal = (id) => foodList().find((m) => m.id === id) || null;
+
+/** Vorschaubilder der sichtbaren Mahlzeiten nachladen (danach einmal neu zeichnen). */
+function wantThumbs(meals) {
+  const missing = meals.filter((m) => m.photo && state.thumbs[m.id] === undefined);
+  if (!missing.length) return;
+  for (const m of missing) state.thumbs[m.id] = null;
+  Promise.all(missing.map(async (m) => (state.thumbs[m.id] = (await FoodDB.photo(m.id)) || ''))).then(() => {
+    if (state.sheet?.type === 'meal') renderSheet();
+    else if (state.tab === 'essen') render();
+  });
+}
+
+/** Ziele des Tages aus Puls (Verbrauch, Training, Ziel) – oder null ohne Gewicht. */
+function foodPlan(date) {
+  const m = state.model;
+  if (!m || m.empty) return null;
+  const i = m.days.findIndex((d) => d.date === date);
+  if (i < 0) return null;
+  const n = E.nutritionPlan(m, i, profile(), journal(), { partial: date === todayIso() });
+  return n.missing ? null : n;
+}
+
+/** Was Claude für den persönlichen Tipp wissen soll: Ziele, Ernährungsform, was heute schon gegessen wurde. */
+function foodAbout(date) {
+  const p = profile();
+  const plan = foodPlan(date);
+  const meals = Food.mealsOn(foodList(), date);
+  const t = Food.dayTotals(meals);
+  const lines = [];
+  if (p.goal) lines.push(`Ziel: ${E.GOALS[p.goal] || p.goal}.`);
+  if (p.diet && p.diet !== 'alles') lines.push(`Ernährung: ${E.DIETS[p.diet] || p.diet}.`);
+  if (p.food) lines.push(`Vorlieben/Unverträglichkeiten: ${p.food}`);
+  if (p.health) lines.push(`Gesundheit: ${p.health}`);
+  if (plan) lines.push(`Tagesziele von Puls: ${plan.kcal} kcal, Eiweiß ${plan.protein} g, Kohlenhydrate ${plan.carbs} g, Fett ${plan.fat} g, Ballaststoffe ≥ 30 g; ${plan.strainWord}${plan.trainMin ? `, ${plan.trainMin} Min. Training` : ''}${plan.lastMeal ? `; letzte große Mahlzeit bis ${plan.lastMeal}` : ''}.`);
+  lines.push(meals.length ? `Heute schon gegessen: ${meals.map((m) => `${m.time} ${m.title}`).join('; ')} – zusammen ${Math.round(t.kcal)} kcal, Eiweiß ${Math.round(t.p)} g.` : 'Heute noch nichts eingetragen.');
+  return lines.join('\n');
+}
+
+const nowHHMM = () => {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// Foto-Auswahl: iPhone fragt „Foto aufnehmen“ oder „Fotomediathek“
+const foodInput = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true });
+foodInput.hidden = true;
+document.body.append(foodInput);
+foodInput.addEventListener('change', () => {
+  const files = [...(foodInput.files || [])].slice(0, 4);
+  foodInput.value = '';
+  if (files.length) addFoodPhotos(files);
+});
+
+function pickFoodPhoto(date) {
+  if (state.foodJob?.busy) return toast('Moment – die letzte Mahlzeit wird noch ausgewertet.');
+  if (!state.demo && !Coach.coachConfig().apiKey) return openSheet({ type: 'setup-coach' });
+  state.foodDate = date || todayIso();
+  foodInput.click();
+}
+
+async function imageToJpeg(file, maxSide, quality) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * k));
+    c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', quality);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Uhrzeit der Mahlzeit: Aufnahmezeit des Fotos, wenn sie zum Tag passt – sonst jetzt (bzw. mittags). */
+function photoTime(files, date) {
+  const t = Math.max(...files.map((f) => f.lastModified || 0));
+  if (t) {
+    const d = new Date(t);
+    const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    if (iso === date) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  return date === todayIso() ? nowHHMM() : '12:00';
+}
+
+async function addFoodPhotos(files) {
+  const date = state.foodDate || todayIso();
+  const job = { id: Food.newId(), date, time: photoTime(files, date), busy: true, step: 'Bereite Foto vor …' };
+  state.foodJob = job;
+  openSheet({ type: 'food-wait' });
+  try {
+    job.images = [];
+    for (const f of files) job.images.push((await imageToJpeg(f, 1568, 0.82)).split(',')[1]);
+    job.thumb = await imageToJpeg(files[0], 420, 0.72);
+    renderSheet();
+    await runFoodJob(job);
+  } catch (err) {
+    job.busy = false;
+    job.error = err?.message || 'Foto konnte nicht gelesen werden.';
+    if (state.sheet?.type === 'food-wait') renderSheet();
+  }
+}
+
+async function runFoodJob(job) {
+  job.busy = true;
+  job.error = null;
+  job.step = 'Claude erkennt dein Essen …';
+  if (state.sheet?.type === 'food-wait') renderSheet();
+  try {
+    if (state.demo) throw new Error('In der Demo gibt es keine Foto-Analyse – richte dafür den KI-Coach ein.');
+    const { result, model } = await Coach.analyzeMeal({ images: job.images || [], text: job.text || '', time: job.time, about: foodAbout(job.date) });
+    const meal = Food.mealFromAnalysis(result, { id: job.id, date: job.date, time: job.time, src: job.images?.length ? 'foto' : 'text', note: job.text || '', model });
+    meal.photo = !!job.thumb;
+    if (job.thumb) {
+      state.thumbs[meal.id] = job.thumb;
+      if (!state.demo) await FoodDB.putPhoto(meal.id, job.thumb);
+    }
+    await saveMeal(meal);
+    state.foodJob = null;
+    if (state.tab === 'essen' || state.tab === 'heute') render();
+    openSheet({ type: 'meal', id: meal.id, fresh: true });
+  } catch (err) {
+    job.busy = false;
+    job.error = err?.message || 'Die Analyse hat nicht geklappt.';
+    if (state.sheet?.type === 'food-wait') renderSheet();
+  }
+}
+
+/** Korrektur („nur die Hälfte“, „Vollkornnudeln“) oder Antwort auf die Rückfrage: Claude rechnet neu. */
+async function correctMeal(id, text) {
+  const meal = findMeal(id);
+  if (!meal || !text.trim()) return;
+  state.foodFix = { id, busy: true };
+  renderSheet();
+  try {
+    const previous = { titel: meal.title, mahlzeit: meal.type, lebensmittel: meal.items.map((x) => ({ name: x.name, menge: x.menge, gramm: x.g, kcal: x.kcal, eiweiss: x.p, kohlenhydrate: x.c, fett: x.f })), fazit: meal.fazit };
+    const { result, model } = await Coach.analyzeMeal({ text, time: meal.time, about: foodAbout(meal.date), previous });
+    const next = Food.mealFromAnalysis(result, { id, date: meal.date, time: meal.time, src: meal.src, note: [meal.note, text].filter(Boolean).join(' · '), model });
+    next.photo = meal.photo;
+    await saveMeal(next);
+    state.foodFix = null;
+    toast('Neu berechnet.');
+  } catch (err) {
+    state.foodFix = { id, error: err?.message || 'Hat nicht geklappt.' };
+  }
+  renderSheet();
+  if (state.tab === 'essen' || state.tab === 'heute') render();
+}
+
+// ---------------------------------------------------------------- Ansicht „Essen“
+
+const MAC = [
+  ['p', 'Eiweiß', 'protein', 'var(--green)'],
+  ['c', 'Kohlenhydrate', 'carbs', 'var(--strain)'],
+  ['f', 'Fett', 'fat', 'var(--yellow)'],
+];
+const fmt1 = (v) => (v >= 100 ? int(v) : de1(v));
+
+function mealThumb(m) {
+  const src = m.photo ? state.thumbs[m.id] : null;
+  return src ? `<img class="fd-thumb" src="${src}" alt="">` : `<span class="fd-thumb ic">${m.type === 'getraenk' ? I.drop : I.meal}</span>`;
+}
+
+function mealRow(m) {
+  const t = Food.mealTotals(m);
+  return `<button class="fd-meal" data-act="meal-open" data-id="${m.id}">${mealThumb(m)}
+    <span class="fd-main"><b>${esc(m.title)}</b><small>${esc(m.time)} · Eiweiß ${Math.round(t.p)} g · KH ${Math.round(t.c)} g · Fett ${Math.round(t.f)} g</small></span>
+    <span class="fd-kcal">${int(t.kcal)}<small>kcal</small></span></button>`;
+}
+
+function foodAddButtons(date) {
+  return `<div class="fd-add"><button class="btn" data-act="food-photo" data-date="${date}">${I.camera}Foto</button><button class="btn ghost" data-act="food-text" data-date="${date}">${I.pen}Text</button></div>`;
+}
+
+function viewFood() {
+  const m = state.model;
+  const d = m.days[state.sel];
+  const date = d.date;
+  const isToday = date === todayIso();
+  const meals = Food.mealsOn(foodList(), date);
+  wantThumbs(meals);
+  const plan = foodPlan(date);
+  const now = new Date();
+  const review = Food.dayReview(meals, { sex: m.settings.sex, plan, isToday, nowMin: now.getHours() * 60 + now.getMinutes() });
+  const t = review?.totals || Food.dayTotals([]);
+  const parts = [];
+
+  if (!state.demo && !Coach.coachConfig().apiKey) {
+    parts.push(`<section class="card slim">${rowLink(I.camera, 'var(--green)', 'Foto-Analyse aktivieren', 'Essen fotografieren – Claude erkennt Lebensmittel, Portionen und Nährwerte. Braucht deinen KI-Coach.', 'data-act="setup-coach"')}</section>`);
+  }
+
+  // Bilanz: Kalorien und Makros gegen das Ziel
+  const kcalT = plan?.kcal || null;
+  const left = kcalT ? kcalT - t.kcal : null;
+  const ringPct = kcalT ? Math.min(1, t.kcal / kcalT) : 0;
+  const over = kcalT && t.kcal > kcalT * 1.05;
+  const R = 52;
+  const C = 2 * Math.PI * R;
+  const ringSvg = `<svg viewBox="0 0 120 120" class="fd-ring"><circle cx="60" cy="60" r="${R}" class="trk"/><circle cx="60" cy="60" r="${R}" class="val${over ? ' over' : ''}" stroke-dasharray="${(C * ringPct).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 60 60)"/></svg>`;
+  const macroBars = MAC.map(([k, label, pk, col]) => {
+    const target = plan?.[pk];
+    const pct = target ? Math.min(100, (100 * t[k]) / target) : 0;
+    return `<div class="fd-mac"><span class="fd-ml">${label}</span><div class="fd-bar"><i style="width:${pct.toFixed(0)}%;background:${col}"></i></div><span class="fd-mv"><b>${Math.round(t[k])}</b>${target ? ` / ${target}` : ''} g</span></div>`;
+  }).join('');
+  parts.push(`<section class="card fd-hero">
+    <div class="fd-top"><div class="fd-ringbox">${ringSvg}<div class="fd-rtxt"><b>${int(t.kcal)}</b><small>${kcalT ? `von ${int(kcalT)} kcal` : 'kcal'}</small></div></div>
+      <div class="fd-left">${kcalT ? `<b class="${over ? 'warn' : ''}">${left >= 0 ? int(left) : int(-left)}</b><small>${left >= 0 ? (isToday ? 'kcal noch offen' : 'kcal unter Ziel') : 'kcal über Ziel'}</small>` : '<small>Gewicht & Ziel eintragen – dann kennt Puls dein Kalorienziel.</small>'}
+      ${t.h2o ? `<span class="fd-water">${I.drop}${de1(t.h2o / 1000)}${plan ? ` / ${de1(plan.water)}` : ''} L</span>` : ''}</div></div>
+    ${macroBars}
+    ${foodAddButtons(date)}
+    ${!plan && !state.demo ? '<button class="linkbtn" data-act="profile">Gewicht & Ziel eintragen</button>' : ''}
+  </section>`);
+
+  // Mahlzeiten nach Art
+  if (meals.length) {
+    const groups = Object.keys(Food.MEAL_TYPES)
+      .sort((a, b) => Food.typeRank(a) - Food.typeRank(b))
+      .map((type) => [type, meals.filter((x) => x.type === type)])
+      .filter(([, list]) => list.length);
+    parts.push(
+      card(
+        'Mahlzeiten',
+        groups.map(([type, list]) => `<div class="fd-group"><div class="fd-gh"><span>${Food.MEAL_TYPES[type]}</span><span>${int(list.reduce((s2, x) => s2 + Food.mealTotals(x).kcal, 0))} kcal</span></div>${list.map(mealRow).join('')}</div>`).join(''),
+      ),
+    );
+  } else {
+    parts.push(card('Mahlzeiten', `<p class="muted small">${isToday ? 'Noch nichts eingetragen. Fotografier einfach alles, was du isst und trinkst – Claude erkennt Lebensmittel, Portionen und Nährwerte. Verpackt? Dann gern auch die Nährwerttabelle fotografieren.' : 'An diesem Tag ist nichts eingetragen.'}</p>`));
+  }
+
+  // Tages-Check mit Tipps
+  if (review?.items.length) {
+    const ic = { good: ['var(--green)', I.check], warn: ['var(--yellow)', I.alert], info: ['var(--muted)', I.info || I.check] };
+    const rows = review.items
+      .sort((a, b) => ({ warn: 0, info: 1, good: 2 })[a.tone] - { warn: 0, info: 1, good: 2 }[b.tone])
+      .map((x) => `<li class="fd-tip ${x.tone}"><span class="dt-ic" style="color:${ic[x.tone][0]}">${ic[x.tone][1]}</span><span>${esc(x.text)}</span></li>`)
+      .join('');
+    const score = review.score != null ? `<div class="fd-score"><b style="color:${review.score >= 80 ? 'var(--green)' : review.score >= 60 ? 'var(--yellow)' : 'var(--red)'}">${review.score}</b><small>Ernährungs-Score</small></div>` : '';
+    parts.push(card(review.done ? 'Tages-Check' : 'Bis jetzt', `${score}<ul class="fd-tips">${rows}</ul>`, '', 'food'));
+  }
+
+  // Nährstoffe
+  if (meals.length) {
+    const sumRow = (label, v, unit, goal, bad = false) => `<div class="trow"><span class="tl">${label}</span><span class="tv">${fmt1(v)} ${unit}</span><span class="td muted">${goal}</span><span class="ts" style="color:${bad ? 'var(--yellow)' : 'var(--muted)'}">${bad ? '!' : ''}</span></div>`;
+    const kc = Math.max(1, t.kcal);
+    const rows = [
+      sumRow('Ballaststoffe', t.fib, 'g', 'Ziel ≥ 30 g', review?.done && t.fib < 20),
+      sumRow('Zucker', t.sug, 'g', `${Math.round((400 * t.sug) / kc)} % der kcal`, t.kcal > 600 && (t.sug * 4) / kc > 0.1),
+      sumRow('Gesättigte Fette', t.sat, 'g', `${Math.round((900 * t.sat) / kc)} % der kcal`, t.kcal > 600 && (t.sat * 9) / kc > 0.12),
+      sumRow('Salz', t.salt, 'g', 'max. 6 g', t.salt > 6),
+      sumRow('Obst & Gemüse', t.veg, 'g', 'Ziel ≥ 400 g', review?.done && t.veg < 250),
+      t.caf ? sumRow('Koffein', t.caf, 'mg', plan?.caffeineCut ? `bis ${plan.caffeineCut}` : '', false) : '',
+      t.alc ? sumRow('Alkohol', t.alc, 'g', 'am besten 0', true) : '',
+    ].join('');
+    const micro = (review?.micro || [])
+      .map((x) => {
+        const pct = Math.round(100 * (x.pct || 0));
+        // tagsüber neutral – bewertet wird erst, wenn der Tag komplett ist
+        const col = pct >= 80 ? 'var(--green)' : !review?.done ? 'var(--strain)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+        return `<div class="fd-mic"><span>${x.label}</span><div class="fd-bar"><i style="width:${Math.min(100, pct)}%;background:${col}"></i></div><span class="fd-mv">${pct} %</span></div>`;
+      })
+      .join('');
+    parts.push(card('Nährstoffe', `<div class="trows">${rows}</div><h3 class="subhead">Vitamine & Mineralstoffe <small class="muted">(% vom Tagesbedarf)</small></h3>${micro}<p class="note">Vom Foto geschätzt – gut für Tendenzen, nicht aufs Milligramm. Richtwerte: DGE, WHO, EFSA.</p>`));
+  }
+
+  // Woche
+  const wk = Food.weekStats(foodList(), date, (x) => foodPlan(x));
+  if (wk.days.some((x) => x.meals)) {
+    const max = Math.max(1, ...wk.days.map((x) => Math.max(x.totals?.kcal || 0, x.target?.kcal || 0)));
+    const bars = wk.days
+      .map((x) => {
+        const h = x.totals ? (100 * x.totals.kcal) / max : 0;
+        const th = x.target?.kcal ? (100 * x.target.kcal) / max : null;
+        const ok = x.target?.kcal && x.totals && Math.abs(x.totals.kcal - x.target.kcal) <= x.target.kcal * 0.1;
+        return `<div class="fd-wd${x.date === date ? ' on' : ''}"><div class="fd-wcol">${th != null ? `<i class="tg" style="bottom:${th.toFixed(0)}%"></i>` : ''}<i class="v${ok ? ' ok' : ''}" style="height:${h.toFixed(0)}%"></i></div><span>${wdShort(x.date)}</span></div>`;
+      })
+      .join('');
+    const facts = [
+      wk.kcal != null ? `Ø ${int(wk.kcal)} kcal` : null,
+      wk.p != null ? `Ø ${wk.p} g Eiweiß` : null,
+      wk.proteinOf ? `Eiweiß-Ziel an ${wk.proteinDays} von ${wk.proteinOf} Tagen` : null,
+      wk.veg != null ? `Ø ${wk.veg} g Obst & Gemüse` : null,
+    ].filter(Boolean);
+    parts.push(card('Diese Woche', `<div class="fd-week">${bars}</div><p class="small" style="margin-top:8px">${facts.length ? esc(facts.join(' · ')) : 'Noch kein Tag vollständig eingetragen.'}</p><p class="note">${wk.logged} von 7 Tagen vollständig eingetragen (mind. 2 Mahlzeiten). Strich = dein Kalorienziel.</p>`));
+  }
+
+  // Zusammenhänge mit Schlaf und Recovery
+  if (foodList().length) {
+    const fx = Food.foodEffects(foodList(), m.days, (x) => foodPlan(x));
+    const ready = fx.factors.filter((x) => x.ready);
+    const pct = (v, unit = ' %') => (v == null ? '–' : `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v)}${unit}`);
+    const body = ready.length
+      ? ready.map((x) => `<div class="trow"><span class="tl">${x.label}</span><span class="tv">Recovery ${pct(x.rec, '')}</span><span class="td muted">HRV ${pct(x.hrv)}</span><span class="ts muted">${x.n[0]}/${x.n[1]} T.</span></div>`).join('') + '<p class="note">Nacht danach: Tage „mit“ gegen „ohne“, jeweils dein Schnitt.</p>'
+      : `<p class="small muted">Noch zu wenig Daten: Puls vergleicht z. B. Tage mit später Mahlzeit gegen Tage ohne – erst ab ${Food.MIN_DAYS} Tagen je Gruppe ist das aussagekräftig. Bisher ${fx.rows} vollständig eingetragene Tage mit Nacht danach.</p>`;
+    parts.push(card('Was dein Essen mit dir macht', body));
+  }
+
+  parts.push(`<section class="card slim">${rowLink(I.coach, 'var(--green)', 'Frag den Coach', 'z. B. „Was soll ich heute noch essen?“', 'data-ask="Was soll ich heute noch essen, damit mein Tag ernährungsmäßig passt?"')}</section>`);
+  return parts.join('');
+}
+
+// ---------------------------------------------------------------- Sheets: Warten, Text, Mahlzeit
+
+function foodSheet(sh) {
+  if (sh.type === 'food-wait') {
+    const j = state.foodJob;
+    if (!j) return '';
+    return `<div class="fd-wait">${j.thumb ? `<img class="fd-photo" src="${j.thumb}" alt="">` : ''}
+      ${j.error ? `<p class="error">${esc(j.error)}</p><div class="illq-btns"><button class="btn" data-act="food-retry">Nochmal versuchen</button><button class="btn ghost" data-act="food-cancel">Abbrechen</button></div>` : `<div class="rp-wait"><span class="spinner small"></span><span>${esc(j.step || 'Claude erkennt dein Essen …')} <span class="muted">(ca. 10–30 Sek.)</span></span></div>`}</div>`;
+  }
+  if (sh.type === 'food-text') {
+    const date = sh.date || todayIso();
+    return `<h3>Essen eintragen</h3><p class="muted small">Schreib einfach, was du gegessen oder getrunken hast – mit Menge, wenn du sie weißt.</p>
+      <label class="field"><span>Was gab es?</span><textarea id="food-text" rows="3" placeholder="z. B. 2 Brezeln mit Butter und ein großer Cappuccino mit Hafermilch"></textarea></label>
+      <label class="field"><span>Uhrzeit</span><input id="food-time" type="time" value="${date === todayIso() ? nowHHMM() : '12:00'}"></label>
+      <button class="btn" data-act="food-text-go" data-date="${date}">Analysieren</button>`;
+  }
+  if (sh.type === 'meal') {
+    const m = findMeal(sh.id);
+    if (!m) return '<p class="muted">Diese Mahlzeit gibt es nicht mehr.</p>';
+    wantThumbs([m]);
+    const t = Food.mealTotals(m);
+    const fix = state.foodFix?.id === m.id ? state.foodFix : null;
+    const photo = m.photo && state.thumbs[m.id] ? `<img class="fd-photo" src="${state.thumbs[m.id]}" alt="">` : '';
+    const conf = { hoch: 'sicher erkannt', mittel: 'gut geschätzt', niedrig: 'grob geschätzt' }[m.conf];
+    const items = m.items
+      .map(
+        (x, k) => `<div class="fd-item"><div class="fd-in"><b>${esc(x.name)}</b><small>${esc(x.menge || '')} · ${int(x.kcal)} kcal · E ${Math.round(x.p)} · KH ${Math.round(x.c)} · F ${Math.round(x.f)}</small></div>
+        <label class="fd-g"><input type="number" inputmode="decimal" min="0" step="5" value="${Math.round(x.g)}" data-food-g="${k}" data-id="${m.id}"><span>g</span></label>
+        <button class="iconbtn small" data-act="food-item-del" data-id="${m.id}" data-idx="${k}" aria-label="Entfernen">${I.trash}</button></div>`,
+      )
+      .join('');
+    return `${photo}<input class="fd-title" data-food-title="${m.id}" value="${esc(m.title)}" aria-label="Name der Mahlzeit">
+      <div class="fd-meta"><select data-food-type="${m.id}">${Object.entries(Food.MEAL_TYPES).map(([k, l]) => `<option value="${k}" ${k === m.type ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <input type="time" data-food-time="${m.id}" value="${esc(m.time)}"><span class="muted small">${esc(conf || '')}</span></div>
+      <div class="grid" style="margin-top:10px">${tile('Kalorien', int(t.kcal), 'kcal')}${tile('Eiweiß', Math.round(t.p), 'g')}${tile('Kohlenhydrate', Math.round(t.c), 'g')}${tile('Fett', Math.round(t.f), 'g')}${tile('Ballaststoffe', de1(t.fib), 'g')}${tile('Zucker', Math.round(t.sug), 'g')}</div>
+      ${m.fazit || m.tipp ? `<div class="rp-focus" style="margin-top:12px"><span>Fazit</span>${esc(m.fazit)}${m.tipp ? `<br><b>Tipp:</b> ${esc(m.tipp)}` : ''}</div>` : ''}
+      ${m.ask ? `<div class="fd-ask"><b>Rückfrage:</b> ${esc(m.ask)}</div>` : ''}
+      <h3 class="subhead">Lebensmittel <small class="muted">(Menge ändern rechnet alles neu)</small></h3>${items || '<p class="muted small">Nichts erkannt.</p>'}
+      <label class="field" style="margin-top:12px"><span>${m.ask ? 'Antwort oder Korrektur' : 'Stimmt etwas nicht?'}</span><textarea id="food-fix" rows="2" placeholder="z. B. „nur die Hälfte gegessen“, „Vollkornnudeln“, „dazu ein Glas Cola“"></textarea></label>
+      ${fix?.error ? `<p class="error">${esc(fix.error)}</p>` : ''}
+      <button class="btn" data-act="food-fix" data-id="${m.id}" ${fix?.busy ? 'disabled' : ''}>${fix?.busy ? '<span class="spinner small"></span> Rechne neu …' : 'Neu berechnen'}</button>
+      <button class="btn ghost" data-act="food-del" data-id="${m.id}" style="margin-top:8px">Mahlzeit löschen</button>
+      <p class="note">Werte von Claude geschätzt${m.model ? ` (${esc(Coach.MODELS[m.model]?.label || m.model)})` : ''}. Foto bleibt nur auf diesem iPhone.</p>`;
+  }
+  return '';
+}
+
+/** Demo: ein paar Beispiel-Mahlzeiten für heute und gestern. */
+function demoFood() {
+  const mk = (date, time, mahlzeit, titel, list, fazit, tipp) =>
+    Food.mealFromAnalysis(
+      {
+        titel,
+        mahlzeit,
+        lebensmittel: list.map(([name, menge, gramm, kcal, eiweiss, kohlenhydrate, fett, ballaststoffe, zucker, obst_gemuese_gramm = 0, getraenk_ml = 0, koffein_mg = 0]) => ({ name, menge, gramm, kcal, eiweiss, kohlenhydrate, fett, ballaststoffe, zucker, gesaettigte_fette: fett * 0.3, salz: 0.4, alkohol: 0, koffein_mg, obst_gemuese_gramm, getraenk_ml, verarbeitung: 'frisch' })),
+        mikro: { vitamin_c_mg: 25, vitamin_d_ug: 1, vitamin_b12_ug: 0.8, folat_ug: 70, eisen_mg: 2.5, zink_mg: 2.5, magnesium_mg: 90, calcium_mg: 220, kalium_mg: 700, omega3_g: 0.05 },
+        sicherheit: 'hoch',
+        rueckfrage: '',
+        fazit,
+        tipp,
+      },
+      { id: `demo-${date}-${time}`, date, time },
+    );
+  const today = todayIso();
+  const y = E.addDays(today, -1);
+  return [
+    mk(y, '07:40', 'fruehstueck', 'Haferflocken mit Skyr und Beeren', [['Haferflocken', '60 g', 60, 222, 8, 35, 4, 6, 1], ['Skyr', '200 g', 200, 126, 22, 8, 0.4, 0, 8], ['Heidelbeeren', '1 Handvoll', 100, 42, 0.6, 7.4, 0.6, 4.9, 7.4, 100]], 'Ballaststoffe und Eiweiß – starker Start.', 'Mittags noch eine Portion Gemüse.'),
+    mk(y, '12:45', 'mittagessen', 'Hähnchen-Reis-Bowl mit Gemüse', [['Hähnchenbrust', '150 g', 150, 165, 35, 0, 2, 0, 0], ['Basmatireis (gekocht)', '200 g', 200, 260, 5, 57, 0.6, 1, 0], ['Brokkoli & Paprika', '200 g', 200, 62, 5, 9, 0.8, 5, 5, 200], ['Olivenöl', '1 EL', 10, 88, 0, 0, 10, 0, 0]], 'Ausgewogen, viel Eiweiß.', 'Abends reicht eine leichte Mahlzeit.'),
+    mk(y, '19:30', 'abendessen', 'Lachs mit Kartoffeln und Spinat', [['Lachsfilet', '150 g', 150, 300, 30, 0, 20, 0, 0], ['Kartoffeln', '250 g', 250, 180, 5, 38, 0.3, 4, 1], ['Blattspinat', '150 g', 150, 35, 4, 2, 0.6, 3.5, 0.6, 150]], 'Omega-3 und Kalium – gut für die Nacht.', 'Perfektes Abendessen vor dem Schlafen.'),
+    mk(today, '07:30', 'fruehstueck', 'Vollkornbrot mit Ei und Avocado', [['Vollkornbrot', '2 Scheiben', 100, 220, 8, 38, 2, 7, 3], ['Eier', '2 Stück', 120, 170, 14, 1, 12, 0, 0.5], ['Avocado', '½ Stück', 70, 112, 1.4, 1, 10, 4.7, 0.3, 70]], 'Gute Fette, Eiweiß und Ballaststoffe.', 'Mittags Gemüse einplanen.'),
+    mk(today, '08:00', 'getraenk', 'Cappuccino', [['Cappuccino mit Vollmilch', '1 Tasse', 200, 90, 5, 7, 4.5, 0, 7, 0, 200, 80]], 'Koffein am Morgen – passt.', 'Letzten Kaffee bis zum frühen Nachmittag.'),
+  ];
 }
 
 function healthTrendsCard(m, i) {
@@ -2156,6 +2653,7 @@ const coachApp = {
     analyzeStore(state.store, user);
   },
   profile,
+  foodBlock: () => Food.foodBlock(foodList(), todayIso(), foodPlan(todayIso()), { sex: state.model?.settings?.sex }),
   saveProfile: (patch) => {
     ls.set(LS.profile, { ...profile(), ...patch });
   },
@@ -2348,6 +2846,8 @@ function renderSheet() {
         <div class="grid" style="margin-top:12px">${t('Strain', de1(a.strain))}${t('Dauer', E.fmtDur(a.dur / 60), 'Std.')}${t('Ø Puls', a.avgHr, 'bpm')}${t('Max. Puls', a.maxHr, 'bpm')}${facts.map((f) => t(f.k, f.v, f.u)).join('')}${t('Kalorien', a.kcal != null ? int(a.kcal) : null, 'kcal')}${ml ? t('Muskeln', `${de1(ml.score)}`, ml.level) : ''}</div>
         ${exList}${zones}<button class="btn ghost" data-act="sheet-close" style="margin-top:14px">Schließen</button>`;
     }
+  } else if (['food-wait', 'food-text', 'meal'].includes(sh.type)) {
+    body = foodSheet(sh);
   } else if (sh.type === 'sport-pick') {
     const a = findAct(sh.id, sh.date);
     if (a) {
@@ -2526,8 +3026,21 @@ sheetEl.addEventListener('input', (e) => {
     if (est) est.innerHTML = padEstimate();
   }
 });
-sheetEl.addEventListener('change', (e) => {
+sheetEl.addEventListener('change', async (e) => {
   if (e.target.matches('[data-profile]')) saveProfileFields();
+  const el = e.target;
+  const id = el.dataset.id || el.dataset.foodTitle || el.dataset.foodType || el.dataset.foodTime;
+  const meal = id ? findMeal(id) : null;
+  if (!meal) return;
+  let next = null;
+  if (el.dataset.foodG != null) next = Food.scaleItem(meal, Number(el.dataset.foodG), Math.max(0, Number(String(el.value).replace(',', '.')) || 0));
+  else if (el.dataset.foodTitle != null) next = { ...meal, title: el.value.trim().slice(0, 90) || meal.title };
+  else if (el.dataset.foodType != null) next = { ...meal, type: el.value };
+  else if (el.dataset.foodTime != null && /^\d{2}:\d{2}$/.test(el.value)) next = { ...meal, time: el.value };
+  if (!next) return;
+  await saveMeal(next);
+  if (el.dataset.foodG != null) renderSheet();
+  render();
 });
 
 sheetEl.addEventListener('click', async (e) => {
@@ -2541,6 +3054,39 @@ sheetEl.addEventListener('click', async (e) => {
   const act = t.dataset.act;
   if (act === 'sheet-close') closeSheet();
   if (act === 'sport-pick') return openSheet({ type: 'sport-pick', id: t.dataset.id, date: t.dataset.date });
+  if (act === 'food-retry' && state.foodJob) return runFoodJob(state.foodJob);
+  if (act === 'food-cancel') {
+    state.foodJob = null;
+    return closeSheet();
+  }
+  if (act === 'food-text-go') {
+    const text = document.getElementById('food-text')?.value.trim();
+    if (!text) return toast('Schreib kurz, was es gab.');
+    if (state.foodJob?.busy) return toast('Moment – die letzte Mahlzeit wird noch ausgewertet.');
+    const job = { id: Food.newId(), date: t.dataset.date || todayIso(), time: document.getElementById('food-time')?.value || nowHHMM(), text, images: [], busy: true };
+    state.foodJob = job;
+    openSheet({ type: 'food-wait' });
+    return runFoodJob(job);
+  }
+  if (act === 'food-item-del') {
+    const meal = findMeal(t.dataset.id);
+    if (!meal) return;
+    await saveMeal(Food.removeItem(meal, Number(t.dataset.idx)));
+    renderSheet();
+    return render();
+  }
+  if (act === 'food-fix') return correctMeal(t.dataset.id, document.getElementById('food-fix')?.value || '');
+  if (act === 'food-del') {
+    if (!confirm('Diese Mahlzeit löschen?')) return;
+    await deleteMeal(t.dataset.id);
+    closeSheet();
+    toast('Gelöscht.');
+    return render();
+  }
+  if (act === 'food-photo') {
+    closeSheet();
+    return pickFoodPhoto(t.dataset.date);
+  }
   if (act === 'sport-set') return setSport(t.dataset.id, t.dataset.sport);
   if (act === 'life-at') {
     const time = document.getElementById('life-time')?.value || null;
@@ -2822,6 +3368,11 @@ function viewSettings() {
     <label class="toggle"><span><b>Tagesbericht automatisch</b><small>jeden Morgen, sobald die Nacht da ist · ca. 5–15 Cent</small></span><input type="checkbox" data-report-auto ${ls.get(LS.reportAuto, true) === false ? '' : 'checked'}><i></i></label>` : ''}
   </section>
 
+  <section class="card"><h2>Essen</h2>
+    <p class="muted small">Mahlzeiten und Foto-Vorschauen bleiben nur auf diesem iPhone. Zur Analyse geht das Foto einmal an Claude (über deinen Schlüssel, ca. 2–4 Cent pro Foto mit Opus, mit Sonnet etwa die Hälfte).</p>
+    <div class="illq-btns"><button class="btn ghost" data-act="food-export">Exportieren</button><button class="btn ghost" data-act="food-wipe">Alles löschen</button></div>
+  </section>
+
   ${setup.push ? `<section class="card"><h2>Benachrichtigungen</h2>
     ${PUSH_KINDS.map(([k, label, sub]) => `<label class="toggle"><span><b>${label}</b><small>${sub}</small></span><input type="checkbox" data-pushpref="${k}" ${ls.get(LS.pushPrefs, {})[k] === false ? '' : 'checked'}><i></i></label>`).join('')}
   </section>` : ''}
@@ -2998,6 +3549,32 @@ app.addEventListener('click', async (e) => {
       refreshModel();
       break;
     }
+    case 'food-photo':
+      pickFoodPhoto(t.dataset.date);
+      break;
+    case 'food-text':
+      if (!state.demo && !Coach.coachConfig().apiKey) openSheet({ type: 'setup-coach' });
+      else openSheet({ type: 'food-text', date: t.dataset.date || todayIso() });
+      break;
+    case 'food-export': {
+      const blob = new Blob([JSON.stringify({ app: 'Puls', version: VERSION, exported: new Date().toISOString(), meals: state.food }, null, 1)], { type: 'application/json' });
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `puls-essen-${todayIso()}.json` });
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      break;
+    }
+    case 'food-wipe':
+      if (confirm('Alle Mahlzeiten und Fotos auf diesem iPhone löschen?')) {
+        await FoodDB.clear();
+        state.food = [];
+        state.thumbs = {};
+        toast('Essens-Tagebuch gelöscht.');
+        render();
+      }
+      break;
+    case 'meal-open':
+      openSheet({ type: 'meal', id: t.dataset.id });
+      break;
     case 'sport-q':
       setSport(t.dataset.id, t.dataset.sport);
       break;

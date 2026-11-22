@@ -11,6 +11,16 @@ und so auswertet wie Whoop:
   zum Abend, **abends** (ab 18 Uhr) Tagesbilanz mit deinem Training, Schlafenszeit und Ausblick auf morgen –
   plus klare Hinweise, wann etwas ärztlich abgeklärt werden sollte. Ein neuer Bericht entsteht nur beim
   Öffnen in einer neuen Tageszeit oder nach einem neuen Training.
+- **Essen wie bei Yazio/MyFitnessPal – nur per Foto:** Tab „Essen“ → Foto (oder kurz tippen, was es gab).
+  Claude erkennt jedes Lebensmittel, schätzt Portionen über Teller- und Besteckgröße, liest Nährwerttabellen
+  und liefert Kalorien, Eiweiß, Kohlenhydrate, Fett, Ballaststoffe, Zucker, gesättigte Fette, Salz, Alkohol,
+  Koffein, Obst & Gemüse, Getränkemenge und 10 Vitamine/Mineralstoffe – dazu ein Fazit und einen Tipp, der deine
+  Ziele und den bisherigen Tag kennt. Unsicher? Dann stellt Claude genau eine Rückfrage. Mengen lassen sich per
+  Gramm korrigieren (rechnet alles neu) oder per Satz („nur die Hälfte“). Tages-Check mit Score (Eiweiß und
+  Verteilung, Ballaststoffe, „5 am Tag“, Zucker < 10 %, Salz ≤ 6 g, Alkohol, Hochverarbeitetes, letzte Mahlzeit
+  und Koffein vs. Schlafenszeit), Wochenansicht gegen dein Kalorienziel und – ab 14 Tagen je Gruppe – was spätes
+  Essen, Alkohol, Zucker oder Eiweiß mit deiner Recovery und HRV in der Nacht danach machen. Coach und Bericht
+  kennen dein Tagebuch. Fotos und Mahlzeiten bleiben auf dem iPhone (IndexedDB); ca. 2–4 Cent pro Foto mit Opus.
 - **Ernährung heute:** Kalorien, Eiweiß, Kohlenhydrate, Fett und Wasser aus deinem echten
   Garmin-Verbrauch, angepasst an die Belastung des Tages und dein Ziel (abnehmen, Muskeln, Ausdauer …).
 - **Training heute:** Puls lernt aus deinen Garmin-Aktivitäten, was du trainierst (z. B. Gym im Push/Pull-Wechsel
@@ -256,6 +266,7 @@ app/          Web-App (ohne Build-Schritt, ohne externe Bibliotheken)
   engine.js   Auswertung: Recovery, Strain, Schlafbedarf, Puls-Alter, Coach-Kontext
   app.js      Oberfläche
   sport.js    Sportarten wie auf der Garmin-Uhr + alle Messwerte je Einheit
+  food.js     Essens-Tagebuch: Nährwerte, Tages-Check, Woche, Zusammenhang mit Recovery
   coach.js    KI-Coach (Claude, Werkzeuge, Chat-Verlauf, Bericht je Tageszeit)
   vendor/     Anthropic-SDK als Browser-Datei
   charts.js   Diagramme (SVG)
