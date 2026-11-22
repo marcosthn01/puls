@@ -11,7 +11,13 @@ und so auswertet wie Whoop:
   zum Abend, **abends** (ab 18 Uhr) Tagesbilanz mit deinem Training, Schlafenszeit und Ausblick auf morgen –
   plus klare Hinweise, wann etwas ärztlich abgeklärt werden sollte. Ein neuer Bericht entsteht nur beim
   Öffnen in einer neuen Tageszeit oder nach einem neuen Training.
-- **Essen wie bei Yazio/MyFitnessPal – nur per Foto:** Tab „Essen“ → Foto (oder kurz tippen, was es gab).
+- **Essen wie bei Yazio/MyFitnessPal – nur per Foto:** Tab „Essen“ → Foto. Die Kamera läuft in der App –
+  nichts landet in deiner Galerie. Schreiben musst du nichts; „Nachtragen“ ist für alles ohne Foto, auch im
+  Nachhinein („hab mir noch einen Nachschlag geholt“ – Claude hängt es an die richtige Mahlzeit an).
+  Datenquellen je Lebensmittel sichtbar: Nährwerttabelle vom Foto, Barcode → Open Food Facts (exakte
+  Herstellerwerte) oder Lebensmitteltabelle (BLS/USDA-Werte). **Was koche ich?** – 3 Rezepte passend zu Zielen
+  und dem, was heute noch fehlt; mit Kühlschrank-Foto aus dem, was da ist (mit Einkaufsliste), gekocht → ein Tipp
+  trägt es als Mahlzeit ein.
   Claude erkennt jedes Lebensmittel, schätzt Portionen über Teller- und Besteckgröße, liest Nährwerttabellen
   und liefert Kalorien, Eiweiß, Kohlenhydrate, Fett, Ballaststoffe, Zucker, gesättigte Fette, Salz, Alkohol,
   Koffein, Obst & Gemüse, Getränkemenge und 10 Vitamine/Mineralstoffe – dazu ein Fazit und einen Tipp, der deine

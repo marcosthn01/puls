@@ -150,3 +150,53 @@ test('Schema für Claude ist strikt (strukturierte Ausgabe) und die Anfrage enth
   assert.equal(body.output_config.format.type, 'json_schema');
   assert.equal(body.system[0].cache_control.type, 'ephemeral');
 });
+
+test('Open Food Facts: Herstellerwerte je 100 g × gegessene Menge', () => {
+  const m = Food.mealFromAnalysis(analysis('Skyr', [item({ name: 'Skyr', gramm: 450, kcal: 280, eiweiss: 40, barcode: '4 000 400 123 456 7'.replace(/\s/g, '').slice(0, 13) })]), { date: '2026-11-22', time: '10:00' });
+  assert.equal(m.items[0].code, '4000400123456');
+  assert.equal(m.items[0].src, 'tabelle');
+  const p = { product_name: 'Skyr Natur', brands: 'Arla, Arla Foods', nutriments: { 'energy-kcal_100g': 63, proteins_100g: 11, carbohydrates_100g: 4, sugars_100g: 4, fat_100g: 0.2, 'saturated-fat_100g': 0.1, salt_100g: 0.1 } };
+  const x = Food.applyProduct(m.items[0], p);
+  assert.equal(x.name, 'Arla Skyr Natur');
+  assert.equal(x.kcal, 284);
+  assert.equal(x.p, 49.5);
+  assert.equal(x.src, 'off');
+  assert.equal(Food.applyProduct(m.items[0], { nutriments: {} }), m.items[0]); // ohne Energie: unverändert
+  assert.equal(Food.applyProduct(m.items[0], null), m.items[0]);
+  // Energie nur in kJ
+  assert.equal(Food.applyProduct(m.items[0], { nutriments: { energy_100g: 418.4 } }).kcal, 450);
+});
+
+test('Nachschlag wird an die Mahlzeit angehängt, Rezept wird zur Mahlzeit', () => {
+  const lunch = Food.mealFromAnalysis(analysis('Nudeln', [item({ name: 'Nudeln', kcal: 400, eiweiss: 14 })]), { date: '2026-11-22', time: '12:30' });
+  const more = Food.mealFromAnalysis(analysis('Nachschlag', [item({ name: 'Nudeln', kcal: 200, eiweiss: 7 })], { tipp: 'Abends leichter' }), { date: '2026-11-22', time: '12:50', note: 'Nachschlag' });
+  const merged = Food.mergeAddon(lunch, more);
+  assert.equal(merged.id, lunch.id);
+  assert.equal(merged.time, '12:30');
+  assert.equal(merged.items.length, 2);
+  assert.equal(merged.items[1].add, true);
+  assert.equal(Food.mealTotals(merged).kcal, 600);
+  assert.equal(merged.micro.vitc, 40);
+  assert.equal(merged.tipp, 'Abends leichter');
+  const r = { name: 'Lachs-Bowl', kurz: '40 g Eiweiß', pro_portion: { gramm: 450, kcal: 620, eiweiss: 41, kohlenhydrate: 55, fett: 24, ballaststoffe: 9, zucker: 6, gesaettigte_fette: 4, salz: 1.8, obst_gemuese_gramm: 200 } };
+  const meal = Food.mealFromRecipe(r, { date: '2026-11-22', time: '19:00', portions: 1.5 });
+  assert.equal(meal.title, 'Lachs-Bowl');
+  assert.equal(meal.type, 'abendessen');
+  assert.equal(Food.mealTotals(meal).kcal, 930);
+  assert.equal(meal.items[0].src, 'rezept');
+  assert.equal(meal.items[0].menge, '1,5 Portionen');
+});
+
+test('Rezept-Schema ist strikt', async () => {
+  const Coach = await import('../app/coach.js');
+  const check = (node, path = 'root') => {
+    if (node.type === 'object') {
+      assert.equal(node.additionalProperties, false, path);
+      assert.deepEqual([...node.required].sort(), Object.keys(node.properties).sort(), path);
+      for (const [k, v] of Object.entries(node.properties)) check(v, `${path}.${k}`);
+    }
+    if (node.type === 'array') check(node.items, `${path}[]`);
+  };
+  check(Coach.RECIPE_SCHEMA);
+  assert.ok(Coach.FOOD_SCHEMA.required.includes('zu_mahlzeit'));
+});

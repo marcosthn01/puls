@@ -12,7 +12,7 @@ import * as Food from './food.js';
 import * as Life from './lifestyle.js';
 import { widgetScript } from './widget.js';
 
-const VERSION = '5.10.0';
+const VERSION = '5.11.0';
 const DATA_URL = 'data.enc.json';
 const WORKFLOW = 'sync.yml';
 const LS = {
@@ -39,6 +39,7 @@ const LS = {
   illness: 'puls.illness',
   illAsked: 'puls.illAsked2',
   sportAsked: 'puls.sportAsked',
+  recipes: 'puls.recipes',
   illSent: 'puls.illSent',
   ics: 'puls.ics',
 };
@@ -134,6 +135,8 @@ const I = {
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   camera: svg('<path d="M4 8h3l1.6-2.4A1.5 1.5 0 0 1 9.9 5h4.2a1.5 1.5 0 0 1 1.3.6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/>'),
   pen: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+  close: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  fridge: svg('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 10h14M9 6v2M9 13v3"/>'),
   trash: svg('<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
   run: svg('<circle cx="14" cy="4.5" r="1.8"/><path d="M8 21l3-6 3 2 1 4"/><path d="M6 12l3-4 5 1 2 4 3 1"/>'),
   bike: svg('<circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-8h5l3 8"/><path d="M9 8h3"/>'),
@@ -1699,22 +1702,131 @@ const nowHHMM = () => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-// Foto-Auswahl: iPhone fragt „Foto aufnehmen“ oder „Fotomediathek“
+// Fotos aus der Mediathek (oder Kamera-Fallback ohne Speichern in der Galerie: capture)
 const foodInput = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true });
 foodInput.hidden = true;
 document.body.append(foodInput);
-foodInput.addEventListener('change', () => {
+foodInput.addEventListener('change', async () => {
   const files = [...(foodInput.files || [])].slice(0, 4);
   foodInput.value = '';
-  if (files.length) addFoodPhotos(files);
+  if (!files.length) return;
+  if (state.camMode === 'fridge') {
+    const images = [];
+    for (const f of files) images.push((await imageToJpeg(f, 1568, 0.82)).split(',')[1]);
+    return startRecipeJob({ images });
+  }
+  addFoodPhotos(files);
 });
+function pickFromLibrary(mode, { camera = false } = {}) {
+  state.camMode = mode;
+  if (camera) foodInput.setAttribute('capture', 'environment');
+  else foodInput.removeAttribute('capture');
+  foodInput.click();
+}
 
+/** Essen fotografieren – mit der Kamera in der App (nichts landet in deiner Galerie). */
 function pickFoodPhoto(date) {
   if (state.foodJob?.busy) return toast('Moment – die letzte Mahlzeit wird noch ausgewertet.');
   if (!state.demo && !Coach.coachConfig().apiKey) return openSheet({ type: 'setup-coach' });
   state.foodDate = date || todayIso();
-  foodInput.click();
+  Cam.open({
+    mode: 'meal',
+    title: 'Essen',
+    hint: 'Alles aufs Bild, was du isst und trinkst. Verpackt? Gern auch Etikett oder Barcode.',
+    onDone: ({ images, thumb }) => startMealJob({ images, thumb, date: state.foodDate, time: state.foodDate === todayIso() ? nowHHMM() : '12:00' }),
+  });
 }
+
+/** Kamera in der App: Sucher, Auslöser, bis zu 4 Fotos – Bilder bleiben nur im Speicher der App. */
+const Cam = (() => {
+  let root = null;
+  let stream = null;
+  let shots = [];
+  let opts = null;
+  const stop = () => {
+    stream?.getTracks().forEach((t) => t.stop());
+    stream = null;
+  };
+  function close() {
+    stop();
+    root?.remove();
+    root = null;
+    document.body.classList.remove('cam-open');
+  }
+  function drawShots() {
+    if (!root) return;
+    root.querySelector('.cam-shots').innerHTML = shots.map((x) => `<img src="${x.thumb}" alt="">`).join('');
+    const done = root.querySelector('[data-cam=done]');
+    done.disabled = !shots.length;
+    done.textContent = shots.length ? `Fertig (${shots.length})` : 'Fertig';
+  }
+  function shoot() {
+    const v = root?.querySelector('video');
+    if (!v?.videoWidth || shots.length >= 4) return;
+    const frame = (max, q) => {
+      const k = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(v.videoWidth * k);
+      c.height = Math.round(v.videoHeight * k);
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', q);
+    };
+    shots.push({ image: frame(1568, 0.82).split(',')[1], thumb: frame(420, 0.72) });
+    const fl = root.querySelector('.cam-flash');
+    fl.classList.remove('on');
+    void fl.offsetWidth;
+    fl.classList.add('on');
+    navigator.vibrate?.(15);
+    drawShots();
+    if (shots.length >= 4) finish();
+  }
+  function finish() {
+    if (!shots.length) return;
+    const out = { images: shots.map((x) => x.image), thumb: shots[0].thumb };
+    const cb = opts.onDone;
+    close();
+    cb(out);
+  }
+  async function open(o) {
+    opts = o;
+    shots = [];
+    if (!navigator.mediaDevices?.getUserMedia) return pickFromLibrary(o.mode, { camera: true });
+    root = document.createElement('div');
+    root.className = 'cam';
+    root.innerHTML = `<video playsinline muted autoplay></video>
+      <div class="cam-top"><button class="cam-btn" data-cam="close" aria-label="Schließen">${I.close || '✕'}</button><b>${esc(o.title)}</b><button class="cam-btn txt" data-cam="lib">Mediathek</button></div>
+      <p class="cam-hint">${esc(o.hint || '')}</p>
+      <div class="cam-bottom"><div class="cam-shots"></div><button class="cam-shutter" data-cam="shoot" aria-label="Foto"></button><button class="cam-done" data-cam="done" disabled>Fertig</button></div>
+      <div class="cam-flash"></div>`;
+    document.body.append(root);
+    document.body.classList.add('cam-open');
+    root.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-cam]')?.dataset.cam;
+      if (a === 'close') close();
+      if (a === 'shoot') shoot();
+      if (a === 'done') finish();
+      if (a === 'lib') {
+        const mode = opts.mode;
+        close();
+        pickFromLibrary(mode);
+      }
+    });
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+      if (!root) return stop();
+      const v = root.querySelector('video');
+      v.srcObject = stream;
+      await v.play().catch(() => {});
+    } catch {
+      // Keine Kamera-Erlaubnis: iPhone-Kamera direkt (speichert auch nicht in der Galerie)
+      const mode = opts.mode;
+      close();
+      toast('Kamera-Zugriff nicht erlaubt – ich öffne die iPhone-Kamera.');
+      pickFromLibrary(mode, { camera: true });
+    }
+  }
+  return { open, close };
+})();
 
 async function imageToJpeg(file, maxSide, quality) {
   const url = URL.createObjectURL(file);
@@ -1761,6 +1873,31 @@ async function addFoodPhotos(files) {
     if (state.sheet?.type === 'food-wait') renderSheet();
   }
 }
+function startMealJob({ images, thumb, date, time }) {
+  const job = { id: Food.newId(), date, time, images, thumb, busy: true };
+  state.foodJob = job;
+  openSheet({ type: 'food-wait' });
+  return runFoodJob(job);
+}
+
+/** Barcodes aus dem Foto: exakte Herstellerwerte aus Open Food Facts (bei Fehler bleiben Claudes Werte). */
+async function offProduct(code) {
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 7000);
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,brands,nutriments`, { signal: ctl.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.status === 1 ? j.product : null;
+  } catch {
+    return null;
+  }
+}
+async function enrichMeal(meal) {
+  const items = await Promise.all(meal.items.map(async (x) => (x.code && x.src !== 'etikett' ? Food.applyProduct(x, await offProduct(x.code)) : x)));
+  return { ...meal, items };
+}
 
 async function runFoodJob(job) {
   job.busy = true;
@@ -1769,9 +1906,17 @@ async function runFoodJob(job) {
   if (state.sheet?.type === 'food-wait') renderSheet();
   try {
     if (state.demo) throw new Error('In der Demo gibt es keine Foto-Analyse – richte dafür den KI-Coach ein.');
-    const { result, model } = await Coach.analyzeMeal({ images: job.images || [], text: job.text || '', time: job.time, about: foodAbout(job.date) });
-    const meal = Food.mealFromAnalysis(result, { id: job.id, date: job.date, time: job.time, src: job.images?.length ? 'foto' : 'text', note: job.text || '', model });
-    meal.photo = !!job.thumb;
+    const { result, model } = await Coach.analyzeMeal({ images: job.images || [], text: job.text || '', time: job.time, about: foodAbout(job.date), meals: job.addTo || null });
+    job.step = 'Gleiche mit der Datenbank ab …';
+    if (state.sheet?.type === 'food-wait') renderSheet();
+    let meal = await enrichMeal(Food.mealFromAnalysis(result, { id: job.id, date: job.date, time: job.time, src: job.images?.length ? 'foto' : 'text', note: job.text || '', model }));
+    // Nachschlag zu einer bestehenden Mahlzeit?
+    const target = job.addTo && result.zu_mahlzeit && result.zu_mahlzeit !== 'neu' ? findMeal(result.zu_mahlzeit) : null;
+    if (target && target.date === job.date) {
+      meal = Food.mergeAddon(target, meal);
+      toast(`Zu „${target.title}“ hinzugefügt.`);
+    }
+    meal.photo = meal.photo || !!job.thumb;
     if (job.thumb) {
       state.thumbs[meal.id] = job.thumb;
       if (!state.demo) await FoodDB.putPhoto(meal.id, job.thumb);
@@ -1796,7 +1941,7 @@ async function correctMeal(id, text) {
   try {
     const previous = { titel: meal.title, mahlzeit: meal.type, lebensmittel: meal.items.map((x) => ({ name: x.name, menge: x.menge, gramm: x.g, kcal: x.kcal, eiweiss: x.p, kohlenhydrate: x.c, fett: x.f })), fazit: meal.fazit };
     const { result, model } = await Coach.analyzeMeal({ text, time: meal.time, about: foodAbout(meal.date), previous });
-    const next = Food.mealFromAnalysis(result, { id, date: meal.date, time: meal.time, src: meal.src, note: [meal.note, text].filter(Boolean).join(' · '), model });
+    const next = await enrichMeal(Food.mealFromAnalysis(result, { id, date: meal.date, time: meal.time, src: meal.src, note: [meal.note, text].filter(Boolean).join(' · '), model }));
     next.photo = meal.photo;
     await saveMeal(next);
     state.foodFix = null;
@@ -1830,7 +1975,7 @@ function mealRow(m) {
 }
 
 function foodAddButtons(date) {
-  return `<div class="fd-add"><button class="btn" data-act="food-photo" data-date="${date}">${I.camera}Foto</button><button class="btn ghost" data-act="food-text" data-date="${date}">${I.pen}Text</button></div>`;
+  return `<div class="fd-add"><button class="btn" data-act="food-photo" data-date="${date}">${I.camera}Foto</button><button class="btn ghost" data-act="food-text" data-date="${date}">${I.pen}Nachtragen</button></div>`;
 }
 
 function viewFood() {
@@ -1885,7 +2030,7 @@ function viewFood() {
       ),
     );
   } else {
-    parts.push(card('Mahlzeiten', `<p class="muted small">${isToday ? 'Noch nichts eingetragen. Fotografier einfach alles, was du isst und trinkst – Claude erkennt Lebensmittel, Portionen und Nährwerte. Verpackt? Dann gern auch die Nährwerttabelle fotografieren.' : 'An diesem Tag ist nichts eingetragen.'}</p>`));
+    parts.push(card('Mahlzeiten', `<p class="muted small">${isToday ? 'Noch nichts eingetragen. Ein Foto reicht – Claude erkennt Lebensmittel, Portionen und Nährwerte selbst. Schreiben musst du nichts. „Nachtragen“ ist für alles ohne Foto, z. B. „hab mir noch einen Nachschlag geholt“.' : 'An diesem Tag ist nichts eingetragen – mit „Nachtragen“ kannst du es nachholen.'}</p>`));
   }
 
   // Tages-Check mit Tipps
@@ -1955,8 +2100,80 @@ function viewFood() {
     parts.push(card('Was dein Essen mit dir macht', body));
   }
 
+  // Was koche ich? Rezepte passend zu Zielen – auch aus dem, was im Kühlschrank ist
+  const last = ls.get(LS.recipes, null);
+  parts.push(
+    card(
+      'Was koche ich?',
+      `<p class="muted small">Rezepte, die zu deinen Zielen und zu dem passen, was dir heute noch fehlt – mit Nährwerten pro Portion.</p>
+      <div class="fd-add"><button class="btn" data-act="recipe-fridge">${I.fridge}Kühlschrank</button><button class="btn ghost" data-act="recipe-ideas">${I.meal}Ideen</button></div>
+      ${last?.rezepte?.length ? `<button class="linkbtn" data-act="recipe-last">Letzte Vorschläge ansehen (${last.rezepte.length})</button>` : ''}`,
+    ),
+  );
   parts.push(`<section class="card slim">${rowLink(I.coach, 'var(--green)', 'Frag den Coach', 'z. B. „Was soll ich heute noch essen?“', 'data-ask="Was soll ich heute noch essen, damit mein Tag ernährungsmäßig passt?"')}</section>`);
   return parts.join('');
+}
+
+// ---------------------------------------------------------------- Rezepte
+
+/** Was die Rezepte wissen müssen: Ziele, was heute noch offen ist, nächste Mahlzeit, Geschmack. */
+function recipeAbout() {
+  const date = todayIso();
+  const plan = foodPlan(date);
+  const t = Food.dayTotals(Food.mealsOn(foodList(), date));
+  const now = new Date();
+  const h = now.getHours();
+  const next = h < 10 ? 'Frühstück' : h < 14 ? 'Mittagessen' : h < 17 ? 'Snack oder frühes Abendessen' : 'Abendessen';
+  const recent = foodList()
+    .filter((m) => m.date >= E.addDays(date, -3))
+    .map((m) => m.title)
+    .slice(-8);
+  const lines = [foodAbout(date)];
+  if (plan) lines.push(`Heute noch offen: ${Math.max(0, Math.round(plan.kcal - t.kcal))} kcal, Eiweiß ${Math.max(0, Math.round(plan.protein - t.p))} g, Kohlenhydrate ${Math.max(0, Math.round(plan.carbs - t.c))} g, Fett ${Math.max(0, Math.round(plan.fat - t.f))} g, Ballaststoffe ${Math.max(0, Math.round(30 - t.fib))} g, Obst & Gemüse ${Math.max(0, Math.round(400 - t.veg))} g.`);
+  lines.push(`Jetzt ist ${nowHHMM()} Uhr – als Nächstes: ${next}.`);
+  if (recent.length) lines.push(`Zuletzt gegessen (bitte nicht wiederholen): ${recent.join('; ')}.`);
+  return lines.join('\n');
+}
+
+async function startRecipeJob({ images = [], wish = '' } = {}) {
+  if (state.recipeJob?.busy) return toast('Moment – die Vorschläge kommen gleich.');
+  state.recipeJob = { busy: true, images, wish, fridge: images.length > 0 };
+  openSheet({ type: 'recipes' });
+  try {
+    if (state.demo) throw new Error('In der Demo gibt es keine Rezept-Vorschläge – richte dafür den KI-Coach ein.');
+    const out = await Coach.suggestRecipes({ images, wish, about: recipeAbout() });
+    ls.set(LS.recipes, { at: Date.now(), fridge: images.length > 0, erkannt: out.erkannt || '', rezepte: out.rezepte.slice(0, 5) });
+    state.recipeJob = null;
+  } catch (err) {
+    state.recipeJob = { ...state.recipeJob, busy: false, error: err?.message || 'Hat nicht geklappt.' };
+  }
+  if (state.sheet?.type === 'recipes') renderSheet();
+  if (state.tab === 'essen') render();
+}
+
+function recipesSheet() {
+  const j = state.recipeJob;
+  if (j?.busy) return `<h3>${j.fridge ? 'Was kann ich daraus kochen?' : 'Rezept-Ideen'}</h3><div class="rp-wait"><span class="spinner small"></span><span>${j.fridge ? 'Claude schaut in deinen Kühlschrank …' : 'Claude sucht passende Rezepte …'} <span class="muted">(ca. 20–40 Sek.)</span></span></div>`;
+  if (j?.error) return `<h3>Rezepte</h3><p class="error">${esc(j.error)}</p><div class="illq-btns"><button class="btn" data-act="recipe-retry">Nochmal versuchen</button><button class="btn ghost" data-act="sheet-close">Schließen</button></div>`;
+  const last = ls.get(LS.recipes, null);
+  if (!last?.rezepte?.length) return '<p class="muted">Noch keine Vorschläge.</p>';
+  const cards = last.rezepte
+    .map((r, k) => {
+      const pp = r.pro_portion || {};
+      const missing = (r.zutaten || []).filter((z) => !z.vorhanden);
+      return `<div class="rc"><div class="rc-head"><b>${esc(r.name)}</b><span class="muted small">${Math.round(r.dauer_min || 0)} Min. · ${Math.round(pp.kcal || 0)} kcal · ${Math.round(pp.eiweiss || 0)} g Eiweiß pro Portion</span></div>
+        <p class="small">${esc(r.kurz || '')}</p>
+        <details class="rc-more"><summary>Zutaten & Zubereitung</summary>
+          <ul class="rc-z">${(r.zutaten || []).map((z) => `<li class="${z.vorhanden ? 'ok' : 'buy'}"><span>${z.vorhanden ? '✓' : '+'}</span>${esc(z.menge)} ${esc(z.name)}</li>`).join('')}</ul>
+          ${missing.length ? `<p class="muted small">Einkaufen: ${esc(missing.map((z) => z.name).join(', '))}</p>` : ''}
+          <ol class="rc-s">${(r.schritte || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
+          <p class="muted small">Pro Portion (${Math.round(pp.gramm || 0)} g): KH ${Math.round(pp.kohlenhydrate || 0)} g · Fett ${Math.round(pp.fett || 0)} g · Ballaststoffe ${Math.round(pp.ballaststoffe || 0)} g · ${Math.round(r.portionen || 1)} ${Math.round(r.portionen || 1) === 1 ? 'Portion' : 'Portionen'}</p>
+        </details>
+        <button class="btn ghost small" data-act="recipe-log" data-idx="${k}">Gekocht & gegessen – eintragen</button></div>`;
+    })
+    .join('');
+  return `<h3>${last.fridge ? 'Aus deinem Kühlschrank' : 'Rezept-Ideen für dich'}</h3>${last.erkannt ? `<p class="muted small">Erkannt: ${esc(last.erkannt)}</p>` : ''}${cards}
+    <div class="illq-btns" style="margin-top:10px"><button class="btn ghost" data-act="recipe-ideas">Andere Ideen</button><button class="btn ghost" data-act="recipe-fridge">${I.fridge}Kühlschrank</button></div>`;
 }
 
 // ---------------------------------------------------------------- Sheets: Warten, Text, Mahlzeit
@@ -1970,11 +2187,19 @@ function foodSheet(sh) {
   }
   if (sh.type === 'food-text') {
     const date = sh.date || todayIso();
-    return `<h3>Essen eintragen</h3><p class="muted small">Schreib einfach, was du gegessen oder getrunken hast – mit Menge, wenn du sie weißt.</p>
-      <label class="field"><span>Was gab es?</span><textarea id="food-text" rows="3" placeholder="z. B. 2 Brezeln mit Butter und ein großer Cappuccino mit Hafermilch"></textarea></label>
-      <label class="field"><span>Uhrzeit</span><input id="food-time" type="time" value="${date === todayIso() ? nowHHMM() : '12:00'}"></label>
-      <button class="btn" data-act="food-text-go" data-date="${date}">Analysieren</button>`;
+    const meals = Food.mealsOn(foodList(), date);
+    return `<h3>Nachtragen</h3><p class="muted small">Für alles ohne Foto – auch im Nachhinein. Schreib einfach, was du (noch) gegessen oder getrunken hast. Gehört es zu einer Mahlzeit (Nachschlag, Dessert …), ordnet Claude es selbst zu.</p>
+      <label class="field"><span>Was gab es?</span><textarea id="food-text" rows="3" placeholder="z. B. „Hab mir noch einen Nachschlag Nudeln geholt“ oder „um 16 Uhr ein Stück Käsekuchen und ein Latte“"></textarea></label>
+      <div class="fields2"><label class="field"><span>Uhrzeit</span><input id="food-time" type="time" value="${date === todayIso() ? nowHHMM() : '12:00'}"></label>
+      <label class="field"><span>Gehört zu</span><select id="food-to"><option value="auto">Claude entscheidet</option>${meals.map((m) => `<option value="${m.id}">${esc(m.time)} ${esc(m.title)}</option>`).join('')}<option value="neu">Neue Mahlzeit</option></select></label></div>
+      <button class="btn" data-act="food-text-go" data-date="${date}">Eintragen</button>`;
   }
+  if (sh.type === 'recipe-ask') {
+    return `<h3>Rezept-Ideen</h3><p class="muted small">Passend zu deinen Zielen und zu dem, was dir heute noch fehlt. Optional: ein Wunsch.</p>
+      <label class="field"><span>Wunsch (optional)</span><textarea id="recipe-wish" rows="2" placeholder="z. B. schnell, max. 20 Minuten · vegetarisch · Meal Prep für 3 Tage · was mit Lachs"></textarea></label>
+      <button class="btn" data-act="recipe-go">Vorschläge holen</button>`;
+  }
+  if (sh.type === 'recipes') return recipesSheet();
   if (sh.type === 'meal') {
     const m = findMeal(sh.id);
     if (!m) return '<p class="muted">Diese Mahlzeit gibt es nicht mehr.</p>';
@@ -1985,7 +2210,7 @@ function foodSheet(sh) {
     const conf = { hoch: 'sicher erkannt', mittel: 'gut geschätzt', niedrig: 'grob geschätzt' }[m.conf];
     const items = m.items
       .map(
-        (x, k) => `<div class="fd-item"><div class="fd-in"><b>${esc(x.name)}</b><small>${esc(x.menge || '')} · ${int(x.kcal)} kcal · E ${Math.round(x.p)} · KH ${Math.round(x.c)} · F ${Math.round(x.f)}</small></div>
+        (x, k) => `<div class="fd-item"><div class="fd-in"><b>${x.add ? '+ ' : ''}${esc(x.name)}</b><small>${esc(x.menge || '')} · ${int(x.kcal)} kcal · E ${Math.round(x.p)} · KH ${Math.round(x.c)} · F ${Math.round(x.f)}</small><small class="fd-src ${x.src || 'tabelle'}">${esc(Food.SOURCES[x.src] || Food.SOURCES.tabelle)}</small></div>
         <label class="fd-g"><input type="number" inputmode="decimal" min="0" step="5" value="${Math.round(x.g)}" data-food-g="${k}" data-id="${m.id}"><span>g</span></label>
         <button class="iconbtn small" data-act="food-item-del" data-id="${m.id}" data-idx="${k}" aria-label="Entfernen">${I.trash}</button></div>`,
       )
@@ -2846,7 +3071,7 @@ function renderSheet() {
         <div class="grid" style="margin-top:12px">${t('Strain', de1(a.strain))}${t('Dauer', E.fmtDur(a.dur / 60), 'Std.')}${t('Ø Puls', a.avgHr, 'bpm')}${t('Max. Puls', a.maxHr, 'bpm')}${facts.map((f) => t(f.k, f.v, f.u)).join('')}${t('Kalorien', a.kcal != null ? int(a.kcal) : null, 'kcal')}${ml ? t('Muskeln', `${de1(ml.score)}`, ml.level) : ''}</div>
         ${exList}${zones}<button class="btn ghost" data-act="sheet-close" style="margin-top:14px">Schließen</button>`;
     }
-  } else if (['food-wait', 'food-text', 'meal'].includes(sh.type)) {
+  } else if (['food-wait', 'food-text', 'meal', 'recipe-ask', 'recipes'].includes(sh.type)) {
     body = foodSheet(sh);
   } else if (sh.type === 'sport-pick') {
     const a = findAct(sh.id, sh.date);
@@ -3059,11 +3284,31 @@ sheetEl.addEventListener('click', async (e) => {
     state.foodJob = null;
     return closeSheet();
   }
+  if (act === 'recipe-fridge') {
+    closeSheet();
+    return Cam.open({ mode: 'fridge', title: 'Kühlschrank', hint: 'Kühlschrank, Vorrat oder Zutaten fotografieren – gern mehrere Fotos.', onDone: ({ images }) => startRecipeJob({ images }) });
+  }
+  if (act === 'recipe-ideas') return openSheet({ type: 'recipe-ask' });
+  if (act === 'recipe-go') return startRecipeJob({ wish: document.getElementById('recipe-wish')?.value.trim() || '' });
+  if (act === 'recipe-retry' && state.recipeJob) return startRecipeJob({ images: state.recipeJob.images || [], wish: state.recipeJob.wish || '' });
+  if (act === 'recipe-log') {
+    const r = ls.get(LS.recipes, null)?.rezepte?.[Number(t.dataset.idx)];
+    if (!r) return;
+    const meal = Food.mealFromRecipe(r, { date: todayIso(), time: nowHHMM(), portions: 1 });
+    await saveMeal(meal);
+    toast('Eingetragen – Menge bei Bedarf anpassen.');
+    render();
+    return openSheet({ type: 'meal', id: meal.id });
+  }
   if (act === 'food-text-go') {
     const text = document.getElementById('food-text')?.value.trim();
     if (!text) return toast('Schreib kurz, was es gab.');
     if (state.foodJob?.busy) return toast('Moment – die letzte Mahlzeit wird noch ausgewertet.');
-    const job = { id: Food.newId(), date: t.dataset.date || todayIso(), time: document.getElementById('food-time')?.value || nowHHMM(), text, images: [], busy: true };
+    const date = t.dataset.date || todayIso();
+    const to = document.getElementById('food-to')?.value || 'auto';
+    const dayMeals = Food.mealsOn(foodList(), date);
+    const addTo = to === 'neu' || !dayMeals.length ? null : to === 'auto' ? dayMeals : dayMeals.filter((m) => m.id === to);
+    const job = { id: Food.newId(), date, time: document.getElementById('food-time')?.value || nowHHMM(), text, images: [], addTo, busy: true };
     state.foodJob = job;
     openSheet({ type: 'food-wait' });
     return runFoodJob(job);
@@ -3571,6 +3816,17 @@ app.addEventListener('click', async (e) => {
         toast('Essens-Tagebuch gelöscht.');
         render();
       }
+      break;
+    case 'recipe-fridge':
+      if (!state.demo && !Coach.coachConfig().apiKey) openSheet({ type: 'setup-coach' });
+      else Cam.open({ mode: 'fridge', title: 'Kühlschrank', hint: 'Kühlschrank, Vorrat oder Zutaten fotografieren – gern mehrere Fotos.', onDone: ({ images }) => startRecipeJob({ images }) });
+      break;
+    case 'recipe-ideas':
+      if (!state.demo && !Coach.coachConfig().apiKey) openSheet({ type: 'setup-coach' });
+      else openSheet({ type: 'recipe-ask' });
+      break;
+    case 'recipe-last':
+      openSheet({ type: 'recipes' });
       break;
     case 'meal-open':
       openSheet({ type: 'meal', id: t.dataset.id });

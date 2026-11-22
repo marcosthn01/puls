@@ -54,6 +54,17 @@ if (summary?.view === 'main') {
   await page.click('#tabbar [data-tab=essen]');
   console.log('Essen: ' + ((await page.$('.fd-hero')) ? 'Ansicht bereit' : 'fehlt'));
   if (!(await page.$('.fd-hero'))) errors.push('Essen-Ansicht fehlt.');
+  // Barcode-Datenbank aus der App heraus erreichbar (CORS)? Nur Hinweis – ohne bleiben Claudes Werte.
+  const off = await page.evaluate(async () => {
+    try {
+      const r = await fetch('https://world.openfoodfacts.org/api/v2/product/3017624010701.json?fields=product_name,nutriments');
+      const j = await r.json();
+      return j?.status === 1 && j.product?.nutriments?.['energy-kcal_100g'] != null ? 'erreichbar' : `Antwort ohne Nährwerte (${r.status})`;
+    } catch (e) {
+      return `nicht erreichbar (${e.name})`;
+    }
+  });
+  console.log('Open Food Facts: ' + off);
   await page.click('#tabbar [data-tab=coach]');
   // Der Coach-Schlüssel liegt nur auf dem iPhone – im Test-Browser gibt es ihn nie
   console.log('Coach: ' + ((await page.$('#askbox')) ? 'Chat bereit' : 'im Test-Browser ohne Schlüssel (auf dem iPhone separat eingerichtet)'));

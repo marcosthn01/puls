@@ -85,6 +85,9 @@ export function mealFromAnalysis(a, { id, date, time, src = 'foto', note = '', m
     veg: num(x?.obst_gemuese_gramm, 3000),
     h2o: num(x?.getraenk_ml, 5000),
     proc: ['frisch', 'verarbeitet', 'hochverarbeitet'].includes(x?.verarbeitung) ? x.verarbeitung : 'verarbeitet',
+    // Woher die Nährwerte stammen: Etikett auf dem Foto, Lebensmitteltabelle (Claude) – später ggf. Open Food Facts
+    src: x?.quelle === 'etikett' ? 'etikett' : 'tabelle',
+    code: /^\d{8,14}$/.test(String(x?.barcode || '').replace(/\D/g, '')) ? String(x.barcode).replace(/\D/g, '') : '',
   }));
   const m = a?.mikro || {};
   const micro = {
@@ -114,6 +117,100 @@ export function mealFromAnalysis(a, { id, date, time, src = 'foto', note = '', m
     src,
     note: String(note || '').slice(0, 500),
     model,
+    at: Date.now(),
+  };
+}
+
+/** Herkunft der Nährwerte eines Lebensmittels (für die Anzeige). */
+export const SOURCES = {
+  etikett: 'Nährwerttabelle vom Foto',
+  off: 'Open Food Facts (Barcode)',
+  tabelle: 'Lebensmitteltabelle (BLS/USDA-Werte)',
+  rezept: 'Rezept',
+};
+
+/**
+ * Produkt aus Open Food Facts übernehmen: Nährwerte je 100 g × gegessene Menge (exakte Herstellerangaben).
+ * Koffein, Obst & Gemüse und Getränkemenge bleiben von Claude; ohne Energieangabe bleibt alles, wie es war.
+ */
+export function applyProduct(item, product) {
+  const n = product?.nutriments || {};
+  const per = (k) => (isNum(Number(n[`${k}_100g`])) ? Number(n[`${k}_100g`]) : null);
+  const kcal100 = per('energy-kcal') ?? (per('energy') != null ? per('energy') / 4.184 : null);
+  if (kcal100 == null || !(item.g > 0)) return item;
+  const k = item.g / 100;
+  const val = (key, fallback) => (per(key) != null ? r1(per(key) * k) : fallback);
+  const name = [product.brands?.split(',')[0]?.trim(), product.product_name].filter(Boolean).join(' ');
+  return {
+    ...item,
+    name: name ? name.slice(0, 80) : item.name,
+    kcal: Math.round(kcal100 * k),
+    p: val('proteins', item.p),
+    c: val('carbohydrates', item.c),
+    sug: val('sugars', item.sug),
+    f: val('fat', item.f),
+    sat: val('saturated-fat', item.sat),
+    fib: val('fiber', item.fib),
+    salt: val('salt', item.salt),
+    src: 'off',
+  };
+}
+
+/**
+ * Nachgeholtes zu einer Mahlzeit hinzufügen („Nachschlag Nudeln“, „noch ein Dessert“): Lebensmittel anhängen,
+ * Mikronährstoffe addieren, Tipp aktualisieren.
+ */
+export function mergeAddon(meal, addon) {
+  const micro = Object.fromEntries(Object.keys(MICROS).map((k) => [k, r1((meal.micro?.[k] || 0) + (addon.micro?.[k] || 0))]));
+  return {
+    ...meal,
+    items: [...meal.items, ...addon.items.map((x) => ({ ...x, add: true }))],
+    micro,
+    tipp: addon.tipp || meal.tipp,
+    note: [meal.note, addon.note].filter(Boolean).join(' · ').slice(0, 500),
+    at: Date.now(),
+  };
+}
+
+/** Gekochtes Rezept als Mahlzeit eintragen (Nährwerte pro Portion × gegessene Portionen). */
+export function mealFromRecipe(recipe, { date, time, portions = 1 } = {}) {
+  const pp = recipe?.pro_portion || {};
+  const k = Math.max(0.25, Math.min(6, Number(portions) || 1));
+  const item = {
+    name: String(recipe?.name || 'Rezept').slice(0, 80),
+    menge: k === 1 ? '1 Portion' : `${String(k).replace('.', ',')} Portionen`,
+    g: Math.round(num(pp.gramm, 3000) * k),
+    kcal: Math.round(num(pp.kcal) * k),
+    p: r1(num(pp.eiweiss) * k),
+    c: r1(num(pp.kohlenhydrate) * k),
+    f: r1(num(pp.fett) * k),
+    fib: r1(num(pp.ballaststoffe) * k),
+    sug: r1(num(pp.zucker) * k),
+    sat: r1(num(pp.gesaettigte_fette) * k),
+    salt: r1(num(pp.salz) * k),
+    alc: 0,
+    caf: 0,
+    veg: Math.round(num(pp.obst_gemuese_gramm) * k),
+    h2o: 0,
+    proc: 'frisch',
+    src: 'rezept',
+    code: '',
+  };
+  return {
+    id: newId(),
+    date,
+    time,
+    type: guessType(time),
+    title: item.name,
+    items: [item],
+    micro: Object.fromEntries(Object.keys(MICROS).map((key) => [key, 0])),
+    conf: 'hoch',
+    ask: '',
+    fazit: String(recipe?.kurz || '').slice(0, 300),
+    tipp: '',
+    src: 'rezept',
+    note: '',
+    model: '',
     at: Date.now(),
   };
 }
