@@ -113,7 +113,7 @@ jobs:
     timeout-minutes: 25
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy1.outputs.page_url || steps.deploy2.outputs.page_url || steps.deploy3.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
 
@@ -197,8 +197,30 @@ jobs:
         with:
           path: _site
 
+      # GitHub findet das eben hochgeladene Paket manchmal erst nach ein paar Sekunden
+      # („No artifacts named github-pages“) – dann kurz warten und noch zweimal versuchen.
       - name: Veröffentlichen
-        id: deploy
+        id: deploy1
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Kurz warten
+        if: steps.deploy1.outcome == 'failure'
+        run: sleep 20
+
+      - name: Veröffentlichen (2. Versuch)
+        id: deploy2
+        if: steps.deploy1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Länger warten
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 60
+
+      - name: Veröffentlichen (3. Versuch)
+        id: deploy3
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
         uses: actions/deploy-pages@v5
 
       - name: Verlauf weiter nachladen
